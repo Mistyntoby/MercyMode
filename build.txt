@@ -1,0 +1,4 @@
+displayName = Mercy Mode
+author = Nick
+version = 0.2
+side = Both

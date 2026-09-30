@@ -1,0 +1,363 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Audio;
+using Microsoft.Xna.Framework.Graphics;
+using Terraria;
+using Terraria.Audio;
+using Terraria.ModLoader;
+
+namespace MercyMode.Deltarune
+{
+	/// <summary>
+	/// Pulls real Deltarune assets out of the player's own install at runtime.
+	/// Nothing from Deltarune ships with the mod, so this only works if you own the game.
+	/// </summary>
+	public class DeltaruneAssets : ModSystem
+	{
+		public enum LoadState { NotStarted, Loading, Ready, NotFound, Failed, Disabled }
+
+		public static LoadState State = LoadState.NotStarted;
+		public static string StatusMessage = "";
+		public static string LoadedFrom = "";
+		public static string DumpPath = "";
+
+		public static Texture2D Soul;
+		private static readonly Dictionary<string, SoundEffect> sounds = new();
+		private static readonly Dictionary<string, float> soundVolumes = new();
+
+		// Role -> sprite/sound names to try, in order. Exact names get confirmed by the asset dump.
+		private static readonly string[] SoulNames = { "spr_heart", "spr_heart_centered", "spr_soul" };
+		public static readonly Dictionary<string, string[]> SoundRoles = new()
+		{
+			["graze"] = new[] { "snd_graze" },
+			["spare"] = new[] { "snd_spare" },
+			["heal"] = new[] { "snd_power", "snd_heal_c", "snd_heal" },
+			["act"] = new[] { "snd_select", "snd_menumove" },
+			["error"] = new[] { "snd_error", "snd_cantselect" },
+			["hurt"] = new[] { "snd_hurt1" },
+		};
+
+		public override void PostSetupContent()
+		{
+			if (!Main.dedServ)
+				StartLoading();
+		}
+
+		public override void Unload()
+		{
+			Main.QueueMainThreadAction(() =>
+			{
+				Soul?.Dispose();
+				foreach (var s in sounds.Values)
+					s.Dispose();
+			});
+			Soul = null;
+			sounds.Clear();
+			soundVolumes.Clear();
+			State = LoadState.NotStarted;
+		}
+
+		public static void StartLoading()
+		{
+			if (State == LoadState.Loading)
+				return;
+
+			var config = ModContent.GetInstance<MercyConfig>();
+			if (config == null || !config.UseDeltaruneAssets)
+			{
+				State = LoadState.Disabled;
+				StatusMessage = "Using Deltarune assets is turned off in the mod config.";
+				return;
+			}
+
+			State = LoadState.Loading;
+			StatusMessage = "Looking for Deltarune...";
+			string folderOverride = config.DeltaruneFolder;
+			int chapterPref = config.Chapter;
+
+			Task.Run(() =>
+			{
+				try
+				{
+					LoadFromInstall(folderOverride, chapterPref);
+				}
+				catch (Exception e)
+				{
+					State = LoadState.Failed;
+					StatusMessage = "Failed to read Deltarune: " + e.Message;
+					ModContent.GetInstance<MercyMode>().Logger.Error("Deltarune asset load failed", e);
+				}
+			});
+		}
+
+		private static void LoadFromInstall(string folderOverride, int chapterPref)
+		{
+			var log = ModContent.GetInstance<MercyMode>().Logger;
+
+			string install = !string.IsNullOrWhiteSpace(folderOverride) && Directory.Exists(folderOverride)
+				? folderOverride
+				: InstallFinder.FindDeltarune();
+
+			if (install == null)
+			{
+				State = LoadState.NotFound;
+				StatusMessage = "Couldn't find Deltarune. Set the folder in the Mercy Mode config if it's installed somewhere unusual.";
+				return;
+			}
+
+			var dataFiles = InstallFinder.FindDataFiles(install);
+			if (dataFiles.Count == 0)
+			{
+				State = LoadState.NotFound;
+				StatusMessage = $"Found {install} but no data.win inside it.";
+				return;
+			}
+
+			// Chapter 0 = auto: newest chapter first. Otherwise try the chosen chapter first.
+			var ordered = dataFiles.OrderByDescending(d => d.chapter == chapterPref ? int.MaxValue : d.chapter).ToList();
+
+			foreach (var (chapter, path) in ordered)
+			{
+				StatusMessage = $"Reading chapter {chapter}...";
+				using var data = new DataWin(path);
+
+				RawSprite soul = null;
+				foreach (string n in SoulNames)
+					if ((soul = data.ReadSprite(n)) != null && soul.Frames.Count > 0)
+						break;
+				if (soul == null)
+				{
+					log.Info($"No SOUL sprite in {path}, trying next data file");
+					continue;
+				}
+
+				var rawSounds = new Dictionary<string, RawSound>();
+				foreach (var (role, names) in SoundRoles)
+				{
+					foreach (string n in names)
+					{
+						RawSound s = data.ReadSound(n);
+						if (s != null)
+						{
+							rawSounds[role] = s;
+							break;
+						}
+					}
+				}
+
+				DumpPath = WriteDump(data, chapter);
+				data.ClearPageCache();
+				LoadedFrom = $"chapter {chapter} ({path})";
+
+				// GPU resources have to be created on the main thread
+				RawFrame f = soul.Frames[0];
+				Main.QueueMainThreadAction(() =>
+				{
+					Soul = MakeTexture(f);
+					foreach (var (role, raw) in rawSounds)
+					{
+						try
+						{
+							sounds[role] = AudioDecoder.ToSoundEffect(raw.Data);
+							soundVolumes[role] = raw.Volume <= 0 ? 1f : raw.Volume;
+						}
+						catch (Exception e)
+						{
+							log.Warn($"Couldn't decode {raw.Name}: {e.Message}");
+						}
+					}
+					State = LoadState.Ready;
+					StatusMessage = $"Loaded SOUL and {sounds.Count}/{SoundRoles.Count} sounds from {LoadedFrom}";
+					log.Info(StatusMessage);
+				});
+				return;
+			}
+
+			State = LoadState.Failed;
+			StatusMessage = "Found Deltarune but none of its data files had the SOUL sprite. Check the asset dump for the right names.";
+		}
+
+		private static Texture2D MakeTexture(RawFrame frame)
+		{
+			// SpriteBatch expects premultiplied alpha
+			byte[] px = (byte[])frame.Rgba.Clone();
+			for (int i = 0; i < px.Length; i += 4)
+			{
+				int a = px[i + 3];
+				px[i] = (byte)(px[i] * a / 255);
+				px[i + 1] = (byte)(px[i + 1] * a / 255);
+				px[i + 2] = (byte)(px[i + 2] * a / 255);
+			}
+			var tex = new Texture2D(Main.graphics.GraphicsDevice, frame.Width, frame.Height);
+			tex.SetData(px);
+			return tex;
+		}
+
+		/// <summary>Writes every sprite and sound name to a text file so we can find the exact asset names.</summary>
+		private static string WriteDump(DataWin data, int chapter)
+		{
+			try
+			{
+				string path = Path.Combine(Main.SavePath, $"MercyMode_deltarune_ch{chapter}_assets.txt");
+				var sb = new StringBuilder();
+				sb.AppendLine($"# Asset names from {data.Path}");
+				sb.AppendLine($"# {data.Sprites.Count} sprites, {data.Sounds.Count} sounds");
+				sb.AppendLine("\n## Sounds");
+				foreach (string n in data.Sounds.Keys.OrderBy(n => n))
+					sb.AppendLine(n);
+				sb.AppendLine("\n## Sprites");
+				foreach (string n in data.Sprites.Keys.OrderBy(n => n))
+					sb.AppendLine(n);
+				File.WriteAllText(path, sb.ToString());
+				return path;
+			}
+			catch
+			{
+				return "";
+			}
+		}
+
+		/// <summary>Plays the real Deltarune sound for a role if we have it, otherwise the vanilla fallback.</summary>
+		public static void Play(string role, SoundStyle fallback, Vector2? position = null)
+		{
+			if (sounds.TryGetValue(role, out var effect))
+			{
+				float vol = MathHelper.Clamp(Main.soundVolume * soundVolumes.GetValueOrDefault(role, 1f), 0f, 1f);
+				if (vol > 0f)
+					effect.Play(vol, 0f, 0f);
+				return;
+			}
+			SoundEngine.PlaySound(fallback, position);
+		}
+
+		/// <summary>Only plays if the real sound loaded. For effects that vanilla Terraria has no good match for.</summary>
+		public static void PlayIfLoaded(string role)
+		{
+			if (sounds.TryGetValue(role, out var effect))
+			{
+				float vol = MathHelper.Clamp(Main.soundVolume * soundVolumes.GetValueOrDefault(role, 1f), 0f, 1f);
+				if (vol > 0f)
+					effect.Play(vol, 0f, 0f);
+			}
+		}
+
+		public static int LoadedSoundCount => sounds.Count;
+
+		public static bool HasSound(string role) => sounds.ContainsKey(role);
+	}
+
+	public static class InstallFinder
+	{
+		public static string FindDeltarune()
+		{
+			foreach (string lib in SteamLibraries())
+			{
+				foreach (string name in new[] { "DELTARUNE", "Deltarune", "deltarune" })
+				{
+					string p = Path.Combine(lib, "steamapps", "common", name);
+					if (Directory.Exists(p))
+						return p;
+				}
+			}
+			return null;
+		}
+
+		private static IEnumerable<string> SteamLibraries()
+		{
+			var roots = new List<string>();
+			string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+			if (OperatingSystem.IsWindows())
+			{
+				try
+				{
+					if (Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) is string reg)
+						roots.Add(reg.Replace('/', '\\'));
+				}
+				catch { }
+				roots.Add(@"C:\Program Files (x86)\Steam");
+				roots.Add(@"C:\Program Files\Steam");
+			}
+			else if (OperatingSystem.IsMacOS())
+			{
+				roots.Add(Path.Combine(home, "Library", "Application Support", "Steam"));
+			}
+			else
+			{
+				roots.Add(Path.Combine(home, ".steam", "steam"));
+				roots.Add(Path.Combine(home, ".local", "share", "Steam"));
+			}
+
+			var libs = new List<string>();
+			foreach (string root in roots.Where(Directory.Exists))
+			{
+				libs.Add(root);
+				string vdf = Path.Combine(root, "steamapps", "libraryfolders.vdf");
+				if (!File.Exists(vdf))
+					continue;
+				foreach (Match m in Regex.Matches(File.ReadAllText(vdf), "\"path\"\\s+\"(.+?)\""))
+					libs.Add(m.Groups[1].Value.Replace("\\\\", "\\"));
+			}
+			return libs.Distinct(StringComparer.OrdinalIgnoreCase);
+		}
+
+		/// <summary>Every GameMaker data file in the install, tagged with its chapter (0 = launcher / unknown).</summary>
+		public static List<(int chapter, string path)> FindDataFiles(string install)
+		{
+			var result = new List<(int, string)>();
+			string[] names = { "data.win", "game.unx", "game.ios", "game.droid" };
+			foreach (string file in Directory.EnumerateFiles(install, "*", SearchOption.AllDirectories))
+			{
+				if (!names.Contains(Path.GetFileName(file), StringComparer.OrdinalIgnoreCase))
+					continue;
+				string rel = Path.GetRelativePath(install, file);
+				Match m = Regex.Match(rel, @"chapter\s*_?(\d+)", RegexOptions.IgnoreCase);
+				int chapter = m.Success ? int.Parse(m.Groups[1].Value) : 0;
+				result.Add((chapter, file));
+			}
+			return result;
+		}
+	}
+
+	public static class AudioDecoder
+	{
+		public static SoundEffect ToSoundEffect(byte[] data)
+		{
+			if (data.Length > 4 && data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F')
+			{
+				using var ms = new MemoryStream(data);
+				return SoundEffect.FromStream(ms);
+			}
+
+			if (data.Length > 4 && data[0] == 'O' && data[1] == 'g' && data[2] == 'g' && data[3] == 'S')
+			{
+				using var ms = new MemoryStream(data);
+				using var vorbis = new NVorbis.VorbisReader(ms, false);
+				int channels = vorbis.Channels;
+				var samples = new List<float>();
+				float[] buffer = new float[4096 * channels];
+				int read;
+				while ((read = vorbis.ReadSamples(buffer, 0, buffer.Length)) > 0)
+					for (int i = 0; i < read; i++)
+						samples.Add(buffer[i]);
+
+				byte[] pcm = new byte[samples.Count * 2];
+				for (int i = 0; i < samples.Count; i++)
+				{
+					short s = (short)(MathHelper.Clamp(samples[i], -1f, 1f) * short.MaxValue);
+					pcm[i * 2] = (byte)s;
+					pcm[i * 2 + 1] = (byte)(s >> 8);
+				}
+				return new SoundEffect(pcm, vorbis.SampleRate, channels == 1 ? AudioChannels.Mono : AudioChannels.Stereo);
+			}
+
+			throw new InvalidDataException("Unknown audio format");
+		}
+	}
+}
