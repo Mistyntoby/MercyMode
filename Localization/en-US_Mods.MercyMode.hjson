@@ -1,0 +1,26 @@
+Keybinds: {
+	Act.DisplayName: ACT
+	Spare.DisplayName: SPARE
+	HealPrayer.DisplayName: Heal Prayer (32% TP)
+}
+
+Configs: {
+	MercyConfig: {
+		DisplayName: Mercy Mode
+
+		UseDeltaruneAssets: {
+			Label: Use assets from your Deltarune install
+			Tooltip: Loads the real SOUL sprite and sounds from your own copy of Deltarune. Nothing from Deltarune ships with this mod.
+		}
+
+		DeltaruneFolder: {
+			Label: Deltarune folder (leave empty to auto-detect)
+			Tooltip: Only needed if Deltarune isn't in a normal Steam library.
+		}
+
+		Chapter: {
+			Label: Chapter to load from (0 = newest)
+			Tooltip: Which chapter's data.win to read assets from.
+		}
+	}
+}
