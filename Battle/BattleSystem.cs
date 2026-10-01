@@ -224,6 +224,9 @@ namespace MercyMode.Battle
 
 			// No owls or wind over the battle; Terraria's ambience comes back when it ends
 			AmbienceMute.Mute();
+			// The boss's own track, turned up to sit level with the battle's sounds
+			if (bossMusic)
+				AmbienceMute.BoostMusic(ModContent.GetInstance<MercyConfig>()?.BossMusicBoost ?? 1.6f);
 
 			SetText(encounter.EncounterText);
 			SetPhase(Phase.Intro);

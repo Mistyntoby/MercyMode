@@ -236,6 +236,12 @@ Resolution 640x480. All sizes below in those pixels.
   BossHigh) is only active while that instance exists, so Terraria's own boss-track selection plays (vanilla,
   modded ModNPC.Music, Otherworldly). Config BossBattleMusic (default on); off = Rude Buster everywhere. Regular
   enemies keep Rude Buster.
+- Boss music boost: AmbienceMute.BoostMusic(config BossMusicBoost, default 1.6) raises Main.musicVolume for boss
+  battles (capped at 1), restored at End unless the player moved it; the SaveSettings detour saves the real value.
+- Explosion/impact SFX: DeltaruneAssets.PlayFading plays an instance (or a Terraria slot via ActiveSound.Volume)
+  and fades it after a hold (explosion x0.5, hold 8, fade 14 ticks; impact x0.7, 10/16).
+- Prime: one arm per type (this head's, nearest to it); leftovers from earlier Primes pointing at a reused head slot
+  were floating around as extra cannon/saw/vice.
 - The Dungeon Guardian never starts a battle (Eligible): vanilla behaviour. As a regular enemy it was 1000-damage
   bullets vs 9999 HP/defense, or a two-ACT spare that skipped the pre-Skeletron Dungeon barrier.
 - Skeletron's DrawCenter raised to (500, 150): its bones hang below the parts the bounds measure.
