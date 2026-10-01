@@ -328,8 +328,9 @@ namespace MercyMode.Battle.Encounters
 				p.rotation = 0f;
 				if (p.type != NPCID.SkeletronHand)
 					continue;
-				p.position.X = anchor.Center.X - 120f * p.ai[0] - p.width / 2f;
-				p.position.Y = anchor.position.Y + 230f;
+				// A little tighter than the AI's 120 / 230: the bones still meet, bending more at the elbow
+				p.position.X = anchor.Center.X - 90f * p.ai[0] - p.width / 2f;
+				p.position.Y = anchor.position.Y + 175f;
 			}
 		}
 		public override string EncounterText => "* SKELETRON rises to guard the dungeon!";

@@ -51,6 +51,13 @@ namespace MercyMode.Battle
 			// so lower slots end up on top (Golem's head over its body)
 			parts = parts.OrderByDescending(n => n.behindTiles).ThenByDescending(n => n.whoAmI).ToList();
 
+			// Pose first (restored after the draw), so the size and centring below use the posed layout
+			Vector2[] savedPosition = parts.Select(n => n.position).ToArray();
+			Rectangle[] savedFrame = parts.Select(n => n.frame).ToArray();
+			float[] savedRotation = parts.Select(n => n.rotation).ToArray();
+			int[] savedDirection = parts.Select(n => n.spriteDirection).ToArray();
+			encounter.PoseForBattle(parts, anchorNpc, time, phase == Phase.EnemyTurn ? MathHelper.Clamp(enemyAttackEnergy, 0f, 1f) : 0f);
+
 			Rectangle bounds = PartBounds(parts);
 			// Never smaller than the boss's known size (its drawing can be far bigger than its hitboxes)
 			Vector2 min = encounter.CompositeSize;
@@ -85,10 +92,6 @@ namespace MercyMode.Battle
 			Vector2 savedScreen = Main.screenPosition;
 			bool savedMenu = Main.gameMenu;
 			int[] savedAlpha = parts.Select(n => n.alpha).ToArray();
-			Vector2[] savedPosition = parts.Select(n => n.position).ToArray();
-			Rectangle[] savedFrame = parts.Select(n => n.frame).ToArray();
-			float[] savedRotation = parts.Select(n => n.rotation).ToArray();
-			int[] savedDirection = parts.Select(n => n.spriteDirection).ToArray();
 			EnemyLight = WorldLightTint(anchor);
 
 			// Immediate, like the Bestiary: some bosses apply shaders mid-draw (the Empress's wings)
@@ -104,7 +107,6 @@ namespace MercyMode.Battle
 				Main.gameMenu = true;
 				// Move every part first: a part's drawing can reach for another's position (hands draw their arms
 				// to the core)
-				encounter.PoseForBattle(parts, anchorNpc, time, phase == Phase.EnemyTurn ? MathHelper.Clamp(enemyAttackEnergy, 0f, 1f) : 0f);
 				for (int i = 0; i < parts.Count; i++)
 				{
 					// As a Bestiary icon, NPC drawing never restarts the sprite batch with the world camera
