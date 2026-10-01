@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
+using Terraria.DataStructures;
 using Terraria.GameContent;
 using Terraria.ID;
 using static MercyMode.Battle.BattleConstants;
@@ -11,7 +12,8 @@ namespace MercyMode.Battle
 {
 	/// <summary>
 	/// The player's side of the battle screen: the Terraria character standing where Kris stands, its
-	/// Deltarune-style poses, and the small animations around it (damage numbers, heal sparkles, screen shake).
+	/// Deltarune-style poses, the intro glide, and the small animations around it (damage numbers, heal sparkles,
+	/// screen shake).
 	/// </summary>
 	public partial class BattleSystem
 	{
@@ -28,12 +30,22 @@ namespace MercyMode.Battle
 		/// <summary>scr_moveheart: the SOUL leaves from (kris.x + 10, kris.y + 40).</summary>
 		private static readonly Vector2 HeroHeart = new(HeroX + 10, HeroY + 40);
 
+		// ---- intro timeline (ticks into the Intro phase) ----
+		/// <summary>Hero and enemy glide from the world to their battle spots (and sizes) while the background fades in.</summary>
+		private const int GlideTicks = 15 * TicksPerFrame;
+		/// <summary>Then the hero swings their weapon (the weapon-draw sound plays)...</summary>
+		private const int IntroSwingAt = GlideTicks + 3 * TicksPerFrame;
+		private const int SwingFrames = 12; // attackframes 6 at speed 0.5
+		/// <summary>...and once the swing is over the bottom UI glides up.</summary>
+		private const int IntroPanelAt = IntroSwingAt + SwingFrames * TicksPerFrame;
+
 		private HeroPose heroPose = HeroPose.Idle;
 		private float heroTimer; // Deltarune frames into the current pose
 		private int hurtTimer = -1; // hurttimer, frames
-		private Vector2 heroWorldScreen; // where the player was on the battle screen's coordinates when it started
+		private Vector2 heroWorldScreen; // the player's feet in the world, in battle-screen coordinates
+		private float heroWorldScale;
 		private Vector2 enemyWorldScreen;
-		private const int FlyTicks = 10 * TicksPerFrame; // the party flies in over 10 frames
+		private float enemyWorldScale;
 		private int shake; // obj_shake: 4 px, flips each frame, decays by 1
 		private int shakeSign = 1;
 		private int pendingHealFx = -1;
@@ -41,6 +53,19 @@ namespace MercyMode.Battle
 		private readonly List<BattleEffect> effects = new();
 		private EnemySnapshot enemySnap;
 		private BattleEffect enemyOverride; // spare / death animation replaces the enemy sprite
+		private int usedItemType;
+
+		/// <summary>Afterimages left behind while gliding (obj_afterimage).</summary>
+		private struct TrailPoint
+		{
+			public Vector2 HeroFeet;
+			public float HeroScale;
+			public Vector2 EnemyPos;
+			public float EnemyScale;
+			public int Age;
+		}
+		private readonly List<TrailPoint> trail = new();
+		private const int TrailLife = 8; // frames
 
 		private void SetHeroPose(HeroPose pose)
 		{
@@ -65,8 +90,29 @@ namespace MercyMode.Battle
 				SetHeroPose(HeroPose.Idle);
 			if (heroPose == HeroPose.Item && heroTimer >= 24)
 				SetHeroPose(HeroPose.Idle);
-			if (heroPose == HeroPose.Attack && heroTimer >= 30 && phase != Phase.FightResult)
+			if (heroPose == HeroPose.Attack && heroTimer >= SwingFrames + 6 && phase != Phase.FightResult)
 				SetHeroPose(HeroPose.Idle);
+
+			// Afterimages: drop one every frame while gliding, let the old ones fade out
+			for (int i = trail.Count - 1; i >= 0; i--)
+			{
+				var t = trail[i];
+				t.Age++;
+				if (t.Age > TrailLife)
+					trail.RemoveAt(i);
+				else
+					trail[i] = t;
+			}
+			if (Gliding)
+			{
+				trail.Add(new TrailPoint
+				{
+					HeroFeet = HeroFeetNow,
+					HeroScale = HeroScaleNow,
+					EnemyPos = EnemyPosNow,
+					EnemyScale = EnemyScaleNow(out _, out _),
+				});
+			}
 
 			foreach (var e in effects)
 				e.Frame();
@@ -96,7 +142,7 @@ namespace MercyMode.Battle
 			return HeroPose.Idle;
 		}
 
-		// ---- coordinates ----
+		// ---- coordinates and the glide ----
 
 		private float drScale = 1f, drOx, drOy;
 
@@ -116,185 +162,265 @@ namespace MercyMode.Battle
 			return new Vector2((screen.X - drOx) / drScale, (screen.Y - drOy) / drScale);
 		}
 
-		/// <summary>0 at the world position, 1 at the battle position (fly-in at the start, fly-out at the end).</summary>
+		/// <summary>How big one world pixel is on the battle screen: the size things start the glide at.</summary>
+		private float WorldPixelScale()
+		{
+			ComputeScreenTransform();
+			return Main.GameViewMatrix.Zoom.X / drScale;
+		}
+
+		private bool Gliding => phase == Phase.Intro && phaseTicks <= GlideTicks || phase == Phase.Outro && phaseTicks <= GlideTicks;
+
+		/// <summary>0 at the world position, 1 at the battle position. Eases out going in, eases in coming back.</summary>
 		private float FlyProgress()
 		{
+			float t;
 			if (phase == Phase.Intro)
-				return MathHelper.Clamp(phaseTicks / (float)FlyTicks, 0f, 1f);
+			{
+				t = MathHelper.Clamp(phaseTicks / (float)GlideTicks, 0f, 1f);
+				return 1f - (float)Math.Pow(1f - t, 3); // ease-out cubic
+			}
 			if (phase == Phase.Outro)
-				return 1f - MathHelper.Clamp(phaseTicks / (float)FlyTicks, 0f, 1f);
+			{
+				t = MathHelper.Clamp(phaseTicks / (float)GlideTicks, 0f, 1f);
+				return 1f - t * t * t; // ease-in cubic on the way back
+			}
 			return 1f;
 		}
 
 		private Vector2 HeroFeetNow => Vector2.Lerp(heroWorldScreen, HeroFeet, FlyProgress());
+		private float HeroScaleNow => MathHelper.Lerp(heroWorldScale, HeroScale, FlyProgress());
+		private Vector2 EnemyPosNow => encounter == null ? Vector2.Zero : Vector2.Lerp(enemyWorldScreen, encounter.DrawCenter, FlyProgress());
 
-		// ---- drawing ----
+		/// <summary>The enemy's sprite frame and its size right now (world size at the start of the glide).</summary>
+		private float EnemyScaleNow(out Texture2D tex, out Rectangle frame)
+		{
+			tex = null;
+			frame = default;
+			NPC npc = encounter?.DrawNpc;
+			if (npc == null || !npc.active)
+				return 1f;
+			Main.instance.LoadNPC(npc.type);
+			tex = TextureAssets.Npc[npc.type].Value;
+			frame = npc.frame.Width > 0 && npc.frame.Height > 0 ? npc.frame : new Rectangle(0, 0, tex.Width, tex.Height / Math.Max(1, Main.npcFrameCount[npc.type]));
+			return MathHelper.Lerp(enemyWorldScale, encounter.DrawScale(frame), FlyProgress());
+		}
+
+		/// <summary>Called when the battle starts: remembers where and how big things were in the world.</summary>
+		private void CaptureWorldPositions(NPC root)
+		{
+			heroWorldScreen = WorldToBattle(Player.Bottom);
+			heroWorldScale = WorldPixelScale();
+			enemyWorldScreen = WorldToBattle(root.Center);
+			enemyWorldScale = WorldPixelScale() * root.scale;
+			trail.Clear();
+		}
+
+		// ---- drawing the hero ----
 
 		private void DrawHero(SpriteBatch sb, Matrix m)
 		{
 			Player p = Player;
 			if (p.dead)
 				return;
+
+			// Fading afterimages first (Terraria's own "shadow" draw makes them see-through)
+			foreach (var t in trail)
+				DrawPlayerPose(sb, m, p, t.HeroFeet, t.HeroScale, HeroPose.Idle, 0f, shadow: 0.35f + 0.6f * t.Age / TrailLife);
+
 			HeroPose pose = CurrentPose();
-			Vector2 feet = HeroFeetNow;
-
-			// Poses use Terraria's own body frames: 0 stand, 1-4 use-item swing, 5 jump
-			int bodyFrame = 0, legFrame = 0;
-			float bob = 0f;
-			float squashY = 1f;
-			switch (pose)
-			{
-				case HeroPose.Idle:
-					bob = (float)Math.Round(Math.Sin(time / 20f) * 1f);
-					break;
-				case HeroPose.AttackReady:
-					bodyFrame = 3;
-					break;
-				case HeroPose.Attack:
-				{
-					// attackframes 6 at speed 0.5: the swing takes 12 frames
-					float t = Math.Min(1f, heroTimer / 12f);
-					bodyFrame = t < 0.25f ? 1 : t < 0.5f ? 2 : t < 0.75f ? 3 : 4;
-					break;
-				}
-				case HeroPose.ActReady:
-					bodyFrame = 2;
-					break;
-				case HeroPose.Act:
-				{
-					// A little hop while acting (actframes 7, then back)
-					float t = Math.Min(1f, heroTimer / 14f);
-					bodyFrame = legFrame = t < 1f ? 5 : 0;
-					bob = -(float)Math.Sin(t * Math.PI) * 10f;
-					break;
-				}
-				case HeroPose.ItemReady:
-				case HeroPose.Item:
-					bodyFrame = 1;
-					break;
-				case HeroPose.Defend:
-					bodyFrame = 3;
-					squashY = 0.92f;
-					break;
-				case HeroPose.Victory:
-				{
-					float t = Math.Min(1f, heroTimer / 27f); // victoryframes 9 at 0.334
-					bodyFrame = legFrame = t < 0.7f ? 5 : 0;
-					bob = -(float)Math.Abs(Math.Sin(t * Math.PI * 2)) * 8f;
-					break;
-				}
-			}
-
+			float bob = 0f, hurtShift = 0f;
+			if (pose == HeroPose.Idle)
+				bob = (float)Math.Round(Math.Sin(time / 20f) * 1f);
+			else if (pose == HeroPose.Act)
+				bob = -(float)Math.Sin(Math.Min(1f, heroTimer / 14f) * Math.PI) * 10f;
+			else if (pose == HeroPose.Victory)
+				bob = -(float)Math.Abs(Math.Sin(Math.Min(1f, heroTimer / 27f) * Math.PI * 2)) * 8f;
 			// Hurt: drawn at x - 20 + hurtindex * 10 (hurtindex = hurttimer / 2, max 2) for 15 frames
-			float hurtShift = 0f;
-			Color tintHurt = Color.White;
 			if (hurtTimer >= 0)
-			{
 				hurtShift = -20 + Math.Min(2, hurtTimer / 2) * 10;
-				if (pose != HeroPose.Defend)
-					bodyFrame = legFrame = 5;
-			}
 
-			// Swap in the pose, draw, then put everything back
+			DrawPlayerPose(sb, m, p, HeroFeetNow + new Vector2(hurtShift, bob), HeroScaleNow, pose, heroTimer, 0f);
+		}
+
+		/// <summary>How far through a weapon swing a pose is (0 = start, 1 = end), or -1 for no weapon.</summary>
+		private static float SwingProgress(HeroPose pose, float timer) => pose switch
+		{
+			HeroPose.AttackReady => 0.5f,
+			HeroPose.Attack => Math.Min(1f, timer / SwingFrames),
+			HeroPose.Defend => 0.12f,
+			_ => -1f,
+		};
+
+		/// <summary>
+		/// Draws the player in a pose. Weapons are posed with Terraria's own use-style code so they sit exactly in
+		/// the hand; items that Terraria doesn't draw while used (shortswords, spears...) and potions are drawn at
+		/// the hand position of a posed arm.
+		/// </summary>
+		private void DrawPlayerPose(SpriteBatch sb, Matrix m, Player p, Vector2 feet, float scale, HeroPose pose, float timer, float shadow)
+		{
+			// Save everything we touch
 			Rectangle oldBody = p.bodyFrame, oldLeg = p.legFrame;
 			int oldDir = p.direction;
-			Item oldHeld = p.inventory[p.selectedItem];
-			int oldAnim = p.itemAnimation;
-			p.bodyFrame.Y = bodyFrame * p.bodyFrame.Height;
-			p.legFrame.Y = legFrame * p.legFrame.Height;
+			int oldSlot = p.selectedItem;
+			Item oldHeld = p.inventory[oldSlot];
+			int oldAnim = p.itemAnimation, oldAnimMax = p.itemAnimationMax, oldTime = p.itemTime;
+			float oldRot = p.itemRotation;
+			Vector2 oldLoc = p.itemLocation;
+			Player.CompositeArmData oldFront = p.compositeFrontArm, oldBack = p.compositeBackArm;
+
 			p.direction = 1;
 			p.itemAnimation = 0;
-			p.inventory[p.selectedItem] = new Item();
+			p.compositeFrontArm = default;
+			p.compositeBackArm = default;
+			int bodyFrame = 0, legFrame = 0;
+
+			Item weapon = WeaponForDisplay();
+			float swing = SwingProgress(pose, timer);
+			Item manualItem = null; // drawn by us at the hand
+			float manualRotation = 0f;
+			Vector2 manualHand = Vector2.Zero;
+			Vector2 manualOrigin = Vector2.Zero;
+			float manualThrust = 0f;
+
+			if (swing >= 0f && weapon != null && shadow == 0f)
+			{
+				p.inventory[oldSlot] = weapon;
+				p.itemAnimationMax = 30;
+				p.itemAnimation = Math.Max(1, (int)Math.Round(30 * (1f - swing)));
+				p.itemTime = p.itemAnimation;
+				p.itemRotation = 0f; // guns and bows point straight ahead
+				if (!weapon.noUseGraphic)
+				{
+					Main.instance.LoadItem(weapon.type);
+					p.ItemCheck_ApplyUseStyle(p.mount.PlayerOffsetHitbox, weapon, Item.GetDrawHitbox(weapon.type, p));
+					bodyFrame = VanillaUseBodyFrame(p, weapon);
+				}
+				else
+				{
+					// Shortswords and spears: arm straight out, item in the hand, a short thrust when attacking
+					float armRot = pose == HeroPose.Defend ? -MathHelper.Pi * 0.85f : -MathHelper.PiOver2;
+					p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot);
+					manualItem = weapon;
+					manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot);
+					manualRotation = armRot + MathHelper.PiOver2; // along the arm
+					if (pose == HeroPose.Attack)
+						manualThrust = (float)Math.Sin(Math.Min(1f, timer / 8f) * Math.PI) * 10f;
+					p.itemAnimation = 0;
+				}
+			}
+			else
+			{
+				p.inventory[oldSlot] = new Item(); // nothing in hand
+				switch (pose)
+				{
+					case HeroPose.ActReady:
+						bodyFrame = 2;
+						break;
+					case HeroPose.Act:
+						bodyFrame = legFrame = Math.Min(1f, timer / 14f) < 1f ? 5 : 0;
+						break;
+					case HeroPose.ItemReady:
+					case HeroPose.Item:
+						if (usedItemType > 0 && (pose == HeroPose.ItemReady || timer <= 15) && shadow == 0f)
+						{
+							// Arm raised, holding the item up; it's used up at 15 frames
+							float armRot = MathHelper.Pi;
+							p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot);
+							manualItem = ContentSamples.ItemsByType[usedItemType];
+							manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot);
+							manualThrust = pose == HeroPose.Item ? Math.Min(timer, 15) * 0.6f : 0f;
+						}
+						else
+						{
+							bodyFrame = 1;
+						}
+						break;
+					case HeroPose.Victory:
+						bodyFrame = legFrame = Math.Min(1f, timer / 27f) < 0.7f ? 5 : 0;
+						break;
+				}
+			}
+			if (hurtTimer >= 0 && shadow == 0f && pose != HeroPose.Defend)
+				bodyFrame = legFrame = 5;
+
+			p.bodyFrame.Y = bodyFrame * p.bodyFrame.Height;
+			p.legFrame.Y = legFrame * p.legFrame.Height;
+
+			// Where the player's hitbox bottom-centre lands on the battle screen; world offsets scale around it
+			Vector2 anchorWorld = p.position + new Vector2(p.width / 2f, p.height);
+			Vector2 ToBattle(Vector2 world) => feet + (world - anchorWorld) * scale;
 
 			sb.End();
-			Matrix squash = Matrix.CreateTranslation(-feet.X, -feet.Y, 0) * Matrix.CreateScale(1f, squashY, 1f) * Matrix.CreateTranslation(feet.X, feet.Y, 0);
-			sb.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, squash * m);
+			sb.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, m);
 			DrawingHero = true;
 			try
 			{
-				// DrawPlayer scales around the bottom-centre of the hitbox and draws at (position - screenPosition)
-				Vector2 position = Main.screenPosition + feet + new Vector2(hurtShift, bob) - new Vector2(p.width / 2f, p.height);
-				Main.PlayerRenderer.DrawPlayer(Main.Camera, p, position, 0f, Vector2.Zero, 0f, HeroScale);
+				// DrawPlayer draws at (position - screenPosition) and scales around the hitbox's bottom-centre
+				Vector2 position = Main.screenPosition + feet - new Vector2(p.width / 2f, p.height);
+				Main.PlayerRenderer.DrawPlayer(Main.Camera, p, position, 0f, Vector2.Zero, shadow, scale);
 			}
 			finally
 			{
 				DrawingHero = false;
+				sb.End();
+				sb.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, m);
+
+				if (manualItem != null && !manualItem.IsAir)
+				{
+					Main.instance.LoadItem(manualItem.type);
+					Texture2D tex = TextureAssets.Item[manualItem.type].Value;
+					Rectangle src = Main.itemAnimations[manualItem.type] != null ? Main.itemAnimations[manualItem.type].GetFrame(tex) : tex.Bounds;
+					Vector2 hand = ToBattle(manualHand);
+					if (pose == HeroPose.Item || pose == HeroPose.ItemReady)
+					{
+						// Potion held up by its bottom, rising as it's used
+						DrDraw.Sb.Draw(tex, hand - new Vector2(0, manualThrust), src, Color.White, 0f, new Vector2(src.Width / 2f, src.Height), scale * 0.75f, SpriteEffects.None, 0f);
+					}
+					else
+					{
+						// Blade sprites point up-right (-45 degrees); turn them to follow the arm, handle in the hand
+						Vector2 along = manualRotation.ToRotationVector2();
+						DrDraw.Sb.Draw(tex, hand + along * manualThrust, src, Color.White, manualRotation + MathHelper.PiOver4,
+							new Vector2(0, src.Height), scale * 0.85f, SpriteEffects.None, 0f);
+					}
+				}
+
 				p.bodyFrame = oldBody;
 				p.legFrame = oldLeg;
 				p.direction = oldDir;
+				p.inventory[oldSlot] = oldHeld;
 				p.itemAnimation = oldAnim;
-				p.inventory[p.selectedItem] = oldHeld;
-				sb.End();
-				sb.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, m);
+				p.itemAnimationMax = oldAnimMax;
+				p.itemTime = oldTime;
+				p.itemRotation = oldRot;
+				p.itemLocation = oldLoc;
+				p.compositeFrontArm = oldFront;
+				p.compositeBackArm = oldBack;
 			}
-
-			DrawHeroWeapon(pose, feet + new Vector2(hurtShift, bob));
 		}
 
-		/// <summary>The held weapon (or used item) drawn in the hero's hand for the poses that show it.</summary>
-		private void DrawHeroWeapon(HeroPose pose, Vector2 feet)
+		/// <summary>Player.PlayerFrame's body frame while an item is in use, by use style.</summary>
+		private static int VanillaUseBodyFrame(Player p, Item item)
 		{
-			Item item;
-			if (pose == HeroPose.Item || pose == HeroPose.ItemReady)
-				item = usedItemType > 0 ? ContentSamples.ItemsByType[usedItemType] : null;
-			else if (pose == HeroPose.Attack || pose == HeroPose.AttackReady || pose == HeroPose.Defend)
-				item = WeaponForDisplay();
-			else
-				return;
-			if (item == null || item.IsAir)
-				return;
-			if (pose == HeroPose.Item && heroTimer > 15)
-				return; // the item is used up at 15 frames
-
-			Main.instance.LoadItem(item.type);
-			Texture2D tex = TextureAssets.Item[item.type].Value;
-			Rectangle src = Main.itemAnimations[item.type] != null ? Main.itemAnimations[item.type].GetFrame(tex) : tex.Bounds;
-			Vector2 shoulder = feet + new Vector2(2, -30 * HeroScale);
-			float scale = HeroScale * 0.75f;
-
-			if (pose == HeroPose.Item || pose == HeroPose.ItemReady)
+			float a = p.itemAnimation, max = p.itemAnimationMax;
+			switch (item.useStyle)
 			{
-				// Held up above the head
-				float rise = pose == HeroPose.Item ? Math.Min(heroTimer, 15) * 0.6f : 0f;
-				DrDraw.Sb.Draw(tex, shoulder + new Vector2(4, -26 - rise), src, Color.White, 0f, src.Size() / 2f, scale, SpriteEffects.None, 0f);
-				return;
-			}
-
-			bool swing = item.useStyle == ItemUseStyleID.Swing;
-			if (item.useStyle == ItemUseStyleID.Rapier)
-			{
-				// Shortswords and rapiers: point forward (the sprite points up-right) and thrust
-				float thrust = pose == HeroPose.Attack ? (float)Math.Sin(Math.Min(1f, heroTimer / 8f) * Math.PI) * 14f : 0f;
-				float r = pose == HeroPose.Defend ? -1.2f : MathHelper.PiOver4;
-				DrDraw.Sb.Draw(tex, shoulder + new Vector2(6 + thrust, 6), src, Color.White, r, new Vector2(0, src.Height), scale, SpriteEffects.None, 0f);
-				return;
-			}
-			float rot;
-			if (pose == HeroPose.Attack && swing)
-			{
-				// Swing from over the shoulder to in front, like a Terraria sword swing
-				float t = Math.Min(1f, heroTimer / 12f);
-				rot = MathHelper.Lerp(-2.4f, 0.5f, t);
-			}
-			else if (pose == HeroPose.Defend)
-			{
-				rot = -1.9f; // held up across the body
-			}
-			else
-			{
-				rot = swing ? -0.8f : 0f;
-			}
-
-			if (swing)
-			{
-				// Swords: rotate around the handle (bottom-left corner), blade pointing up-right at rotation -pi/4
-				DrDraw.Sb.Draw(tex, shoulder, src, Color.White, rot + MathHelper.PiOver4, new Vector2(0, src.Height), scale, SpriteEffects.None, 0f);
-			}
-			else
-			{
-				// Bows, guns, staves: held out in front; kick back a little when attacking
-				float recoil = pose == HeroPose.Attack ? Math.Max(0, 6 - heroTimer) : 0;
-				DrDraw.Sb.Draw(tex, shoulder + new Vector2(10 - recoil, 4), src, Color.White, rot, new Vector2(src.Width * 0.3f, src.Height / 2f), scale, SpriteEffects.None, 0f);
+				case ItemUseStyleID.Swing:
+				case ItemUseStyleID.Rapier:
+					return a < max * 0.333f ? 3 : a < max * 0.666f ? 2 : 1;
+				case ItemUseStyleID.Shoot:
+				{
+					float r = p.itemRotation * p.direction;
+					return r < -0.75f ? 2 : r > 0.6f ? 4 : 3;
+				}
+				case ItemUseStyleID.HoldUp:
+				case ItemUseStyleID.EatFood:
+					return 2;
+				case ItemUseStyleID.DrinkLiquid:
+					return a > max * 0.5f ? 3 : 2;
+				default:
+					return 3;
 			}
 		}
 
@@ -312,8 +438,6 @@ namespace MercyMode.Battle
 			}
 			return best;
 		}
-
-		private int usedItemType;
 
 		private void DrawEffects()
 		{

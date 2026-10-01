@@ -51,6 +51,7 @@ namespace MercyMode.Battle
 					player.QuickSpawnItem(src, ItemID.Mushroom, 2);
 					player.QuickSpawnItem(src, ItemID.WoodenBow, 1);
 					player.QuickSpawnItem(src, ItemID.WoodenArrow, 100);
+					player.QuickSpawnItem(src, ItemID.CopperBroadsword, 1);
 					caller.Reply("* Got some healing items.", MercyMode.TextWhite);
 					return;
 				case "bosshp" when args.Length == 2 && int.TryParse(args[1], out int hp):

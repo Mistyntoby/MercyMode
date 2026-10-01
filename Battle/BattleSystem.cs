@@ -97,6 +97,7 @@ namespace MercyMode.Battle
 		private int battleLife;
 		private int lastHeal = -1;
 		private int attackPending = -1;
+		private int musicDelay;
 		private float soulAlpha = 1f;
 
 		/// <summary>Heals the player during the battle. Returns how much HP was actually restored.</summary>
@@ -150,8 +151,10 @@ namespace MercyMode.Battle
 			usedItemType = 0;
 			attackPending = -1;
 			// The party and the enemy fly in from where they stood in the world
-			heroWorldScreen = WorldToBattle(Player.Bottom);
-			enemyWorldScreen = WorldToBattle(root.Center);
+			CaptureWorldPositions(root);
+			enemyWorldRotation = root.rotation;
+			tpBarX = -40f;
+			tpBarSpeed = 0f;
 			panel = 0;
 			panelDir = 0;
 			screenFade = 0;
@@ -175,7 +178,8 @@ namespace MercyMode.Battle
 				music = DeltaruneAssets.BattleMusic.CreateInstance();
 				music.IsLooped = true;
 				music.Volume = MathHelper.Clamp(Main.musicVolume, 0f, 1f);
-				music.Play();
+				// The music comes in half a second after the battle-start sound
+				musicDelay = 30;
 			}
 
 			SetText(encounter.EncounterText);
@@ -300,8 +304,12 @@ namespace MercyMode.Battle
 
 			time++;
 			phaseTicks++;
-			if (music != null)
+			if (music != null && phase != Phase.Outro)
+			{
 				music.Volume = MathHelper.Clamp(Main.musicVolume, 0f, 1f);
+				if (musicDelay > 0 && --musicDelay == 0)
+					music.Play();
+			}
 
 			// Hold the player in place, no falling or fall damage
 			Player.position = playerPosition;
@@ -344,8 +352,21 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>The parts of obj_battlecontroller / obj_tensionbar that count in Deltarune frames.</summary>
+		private float tpBarX = -40f, tpBarSpeed;
+		private float enemyWorldRotation;
+
 		private void UpdateHudFrame()
 		{
+			// obj_tensionbar: x = -40, hspeed 13, friction 1 -> stops at 38. Slides back out at the end.
+			if (panelDir < 0)
+			{
+				tpBarX = Math.Max(-40f, tpBarX - 13f);
+			}
+			else if (tpBarSpeed > 0f)
+			{
+				tpBarSpeed = Math.Max(0f, tpBarSpeed - 1f);
+				tpBarX += tpBarSpeed;
+			}
 			// Bottom panel slide (bp)
 			if (panelDir > 0 && panel < PanelHeight)
 			{
@@ -412,13 +433,23 @@ namespace MercyMode.Battle
 
 		private void UpdateIntro()
 		{
-			if (phaseTicks == FlyTicks)
-				panelDir = 1;
-			if (panel >= PanelHeight && phaseTicks > FlyTicks + 20)
+			// 1. glide in (FlyProgress) while the background fades in
+			// 2. the hero swings their weapon, with the weapon-draw sound
+			if (phaseTicks == IntroSwingAt)
 			{
+				SetHeroPose(HeroPose.Attack);
 				Sfx("weaponpull");
-				BeginPlayerTurn(keepText: true);
 			}
+			// 3. after the swing, the bottom UI glides up and the TP bar slides in (hspeed 13, friction 1)
+			if (phaseTicks == IntroPanelAt)
+			{
+				panelDir = 1;
+				tpBarSpeed = 13f;
+				SetHeroPose(HeroPose.Idle);
+			}
+			textShown = 0; // the encounter text types out once the panel is up
+			if (panel >= PanelHeight && phaseTicks > IntroPanelAt)
+				BeginPlayerTurn(keepText: true);
 		}
 
 		private void BeginPlayerTurn(bool keepText = false)
@@ -986,7 +1017,7 @@ namespace MercyMode.Battle
 		{
 			if (music != null)
 				music.Volume *= 0.9f;
-			if (panel <= 0 && screenFade <= 0f && phaseTicks >= FlyTicks)
+			if (panel <= 0 && screenFade <= 0f && phaseTicks >= GlideTicks)
 				End();
 		}
 
@@ -1109,17 +1140,26 @@ namespace MercyMode.Battle
 			Main.instance.LoadNPC(npc.type);
 			Texture2D tex = TextureAssets.Npc[npc.type].Value;
 			Rectangle frame = npc.frame.Width > 0 && npc.frame.Height > 0 ? npc.frame : new Rectangle(0, 0, tex.Width, tex.Height / Math.Max(1, Main.npcFrameCount[npc.type]));
-			float drawScale = encounter.DrawScale(frame);
-			Vector2 pos = Vector2.Lerp(enemyWorldScreen, encounter.DrawCenter, FlyProgress()) + new Vector2(0, (float)Math.Sin(time / 20f) * 4f);
+			float drawScale = EnemyScaleNow(out _, out _);
+			float glide = FlyProgress();
+			float rotation = MathHelper.Lerp(enemyWorldRotation, encounter.DrawRotation(time), glide);
+			Color baseColor = encounter.DrawColor(npc);
+			// Afterimages left behind while gliding, fading out
+			foreach (var t in trail)
+			{
+				float a = 0.5f * (1f - t.Age / (float)TrailLife);
+				DrDraw.Sb.Draw(tex, t.EnemyPos, frame, baseColor * a, rotation, frame.Size() / 2f, t.EnemyScale, SpriteEffects.None, 0f);
+			}
+			Vector2 pos = EnemyPosNow + new Vector2(0, (float)Math.Sin(time / 20f) * 4f * glide);
 			if (enemyShake > 0)
 				pos.X += (enemyShake % 4 < 2 ? 1 : -1) * enemyShake / 2f;
 			float alpha = 1f;
 			bool selecting = phase == Phase.EnemySelect || phase == Phase.ActSelect;
 			Color color = encounter.DrawColor(npc) * alpha;
-			DrDraw.Sb.Draw(tex, pos, frame, color, encounter.DrawRotation(time), frame.Size() / 2f, drawScale, SpriteEffects.None, 0f);
+			DrDraw.Sb.Draw(tex, pos, frame, color, rotation, frame.Size() / 2f, drawScale, SpriteEffects.None, 0f);
 			enemySnap = new EnemySnapshot
 			{
-				Texture = tex, Frame = frame, Position = pos, Rotation = encounter.DrawRotation(time),
+				Texture = tex, Frame = frame, Position = pos, Rotation = rotation,
 				Scale = drawScale, Color = color, Valid = true,
 			};
 			if (selecting)
@@ -1190,8 +1230,7 @@ namespace MercyMode.Battle
 		private void DrawTPBar()
 		{
 			// obj_tensionbar slides in from x = -40 to 38
-			float slide = MathHelper.Clamp(panel / PanelHeight, 0f, 1f);
-			float x = -40 + 78 * slide, y = 40;
+			float x = tpBarX, y = 40;
 			const int barH = 196;
 			float fill(float tension) => MathHelper.Clamp(tension / MaxTension, 0f, 1f) * barH;
 			bool maxed = tpCurrent >= MaxTension;
