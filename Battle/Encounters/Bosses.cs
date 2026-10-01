@@ -316,22 +316,20 @@ namespace MercyMode.Battle.Encounters
 		public override bool DrawWithTerraria => true;
 		public override Vector2 CompositeSize => new(300f, 220f);
 
-		/// <summary>Head upright, a hand out to each side (frozen, they'd be wherever the fight left them).</summary>
+		/// <summary>
+		/// Head upright, hands where its AI parks them between attacks (AI style 12): head centre - 120 * ai[0] across,
+		/// 230 below the head's top. The arm bones are drawn toward fixed points by the head, so anywhere else they
+		/// come apart.
+		/// </summary>
 		public override void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking)
 		{
-			int side = 0;
 			foreach (NPC p in parts)
 			{
-				if (p.type == NPCID.SkeletronHead)
-				{
-					p.rotation = 0f;
-					continue;
-				}
+				p.rotation = 0f;
 				if (p.type != NPCID.SkeletronHand)
 					continue;
-				float dir = p.ai[0] != 0 ? Math.Sign(p.ai[0]) : (side++ == 0 ? -1 : 1);
-				p.Center = anchor.Center + new Vector2(dir * 150f, 70f);
-				p.rotation = 0f;
+				p.position.X = anchor.Center.X - 120f * p.ai[0] - p.width / 2f;
+				p.position.Y = anchor.position.Y + 230f;
 			}
 		}
 		public override string EncounterText => "* SKELETRON rises to guard the dungeon!";
@@ -340,8 +338,10 @@ namespace MercyMode.Battle.Encounters
 		{
 			if (Npc.active)
 				yield return Npc;
+			// Only this head's hands (ai[1] = the head), not another Skeletron's
 			foreach (NPC h in BossKit.OfTypes(NPCID.SkeletronHand))
-				yield return h;
+				if ((int)h.ai[1] == Npc.whoAmI)
+					yield return h;
 		}
 
 		public override string FlavorText()

@@ -233,8 +233,11 @@ Resolution 640x480. All sizes below in those pixels.
 - Single-sprite enemies: DrawScale = npc.scale x 1.5 (the hero's scale), capped to fit 220x200. Was hitbox height
   x 1.5 / frame height, which made most enemies (Eater of Souls...) too small since sprites exceed hitboxes.
 - Encounter.PoseForBattle poses composite parts for the draw (position, rotation, frame, spriteDirection; all
-  restored): Prime arms at fixed offsets (cannon/laser -/+170,-40; saw/vice -/+130,120), Skeletron hands +/-150,70
-  (side from ai[0]), heads upright. Deerclops: frame.Y is a cell of a 5x5 sheet (Main.DrawNPCDirect_Deerclops:
+  restored). Arms/hands use their AI's rest spots, since the bones are drawn from the part toward fixed points by
+  the head (Main.DrawNPCDirect: segments of 92 + 60 px aimed at head -200/-50 * ai[0], +130/+80) and come apart
+  anywhere else: Skeletron hands (aiStyle 12) at head.Center.X - 120 * ai[0], head.position.Y + 230; Prime saw/vice
+  (33/34) -200 * ai[0], +230; cannon/laser (35/36) -120 * ai[0], -100, rotated to aim left. Members only take arms
+  whose ai[1] is this head (a leftover second Prime's arms were being drawn too). Deerclops: frame.Y is a cell of a 5x5 sheet (Main.DrawNPCDirect_Deerclops:
   Frame(5,5,Y/5,Y%5)); FindFrame: 0 stand, 1 air, 2-11 walk (velocity-driven, so 0 while frozen), 12-17/18 roar
   attacks, 19-24 rubble attack. Battle: walk cycle in place, roar while attacking.
 - Deerclops rubble (projectile 962): texture is Frame(projFrames, 4) (a column per shape, 4 rows; Main.DrawProj),
