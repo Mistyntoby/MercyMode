@@ -315,6 +315,8 @@ namespace MercyMode.Battle.Encounters
 		public override string Name => "SKELETRON";
 		public override bool DrawWithTerraria => true;
 		public override Vector2 CompositeSize => new(300f, 220f);
+		// Higher than the usual spot: its arm bones hang well below the hands and head
+		public override Vector2 DrawCenter => new(500f, 150f);
 
 		/// <summary>
 		/// Head upright, hands raised beside it like during its spin (AI style 12 moves them to head centre

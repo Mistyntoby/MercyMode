@@ -381,6 +381,10 @@ namespace MercyMode.Battle
 		{
 			if (!root.active || root.life <= 0 || root.friendly || root.townNPC || NPCID.Sets.ActsLikeTownNPC[root.type])
 				return false;
+			// The Dungeon Guardian stays vanilla: the unstoppable skull that guards the Dungeon before Skeletron falls
+			// (as a battle it was either instant death or a two-turn spare past the barrier)
+			if (root.type == NPCID.DungeonGuardian)
+				return false;
 			// The Moon Lord rises for a second before its head and hands exist (core ai[0] = -1)
 			if (root.type == NPCID.MoonLordCore && root.ai[0] < 0f)
 				return false;
