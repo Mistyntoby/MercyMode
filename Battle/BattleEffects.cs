@@ -180,6 +180,71 @@ namespace MercyMode.Battle
 		}
 	}
 
+	/// <summary>A gold +X% popup shown when an ACT raises MERCY.</summary>
+	public sealed class MercyGainPopup : BattleEffect
+	{
+		private readonly string amount;
+		private Vector2 position;
+		private int age;
+
+		public MercyGainPopup(Vector2 center, float amount)
+		{
+			position = center;
+			this.amount = amount.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+		}
+
+		public override void Frame()
+		{
+			age++;
+			position.Y -= 1.25f;
+			if (age >= 36)
+				Done = true;
+		}
+
+		public override void Draw()
+		{
+			float alpha = 1f - MathHelper.Clamp((age - 18) / 18f, 0f, 1f);
+			DrSprite digits = DeltaruneAssets.Sprite("spr_numbersfontbig_gold");
+			float digitWidth = DrDraw.Measure(amount, DrDraw.BigFont);
+			if (digits != null && digits.Frames.Length >= 10)
+			{
+				digitWidth = 0f;
+				foreach (char ch in amount)
+					digitWidth += ch is >= '0' and <= '9' ? digits.Width : DrDraw.Measure(ch.ToString(), DrDraw.BigFont);
+			}
+			float plusWidth = DrDraw.Measure("+", DrDraw.BigFont);
+			float percentWidth = DrDraw.Measure("%", DrDraw.BigFont);
+			float x = position.X - (plusWidth + digitWidth + percentWidth) / 2f;
+			Color gold = MercyMode.MercyYellow * alpha;
+			DrDraw.Text("+", x, position.Y, gold);
+			x += plusWidth;
+
+			if (digits != null && digits.Frames.Length >= 10)
+			{
+				foreach (char ch in amount)
+				{
+					if (ch is >= '0' and <= '9')
+					{
+						DrDraw.Sb.Draw(digits.Frame(ch - '0'), new Vector2(x, position.Y), Color.White * alpha);
+						x += digits.Width;
+					}
+					else
+					{
+						DrDraw.Text(ch.ToString(), x, position.Y, gold);
+						x += DrDraw.Measure(ch.ToString(), DrDraw.BigFont);
+					}
+				}
+			}
+			else
+			{
+				DrDraw.Text(amount, x, position.Y, gold);
+				x += digitWidth;
+			}
+
+			DrDraw.Text("%", x, position.Y, gold);
+		}
+	}
+
 	/// <summary>obj_heartburst: three heart outlines stretch out and fade over 10 frames.</summary>
 	public class HeartBurst : BattleEffect
 	{
@@ -381,7 +446,6 @@ namespace MercyMode.Battle
 			for (int i = 0; i <= xs; i++)
 				for (int j = 0; j <= ys; j++)
 					bsin[i, j] = 4 + j * 3 - i;
-			DeltaruneAssets.Play("defeat", Terraria.ID.SoundID.NPCDeath1);
 		}
 
 		public override void Frame()

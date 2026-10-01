@@ -152,7 +152,9 @@ namespace MercyMode.Battle
 			ActUses[actName] = uses + 1;
 			float before = Mercy;
 			Mercy = before + amount / (1 << Math.Min(uses, 4));
-			return Mercy - before;
+			float gained = Mercy - before;
+			BattleSystem.Instance.ShowMercyGain(gained);
+			return gained;
 		}
 
 		/// <summary>The line Deltarune adds when an enemy becomes spareable.</summary>

@@ -97,7 +97,6 @@ namespace MercyMode.Battle
 		private int battleLife;
 		private int lastHeal = -1;
 		private int attackPending = -1;
-		private int musicDelay;
 		private float soulAlpha = 1f;
 
 		/// <summary>Heals the player during the battle. Returns how much HP was actually restored.</summary>
@@ -177,9 +176,7 @@ namespace MercyMode.Battle
 			{
 				music = DeltaruneAssets.BattleMusic.CreateInstance();
 				music.IsLooped = true;
-				music.Volume = MathHelper.Clamp(Main.musicVolume, 0f, 1f);
-				// The music comes in half a second after the battle-start sound
-				musicDelay = 30;
+				music.Volume = DeltaruneAssets.BattleMusicVolume;
 			}
 
 			SetText(encounter.EncounterText);
@@ -305,11 +302,7 @@ namespace MercyMode.Battle
 			time++;
 			phaseTicks++;
 			if (music != null && phase != Phase.Outro)
-			{
-				music.Volume = MathHelper.Clamp(Main.musicVolume, 0f, 1f);
-				if (musicDelay > 0 && --musicDelay == 0)
-					music.Play();
-			}
+				music.Volume = DeltaruneAssets.BattleMusicVolume;
 
 			// Hold the player in place, no falling or fall damage
 			Player.position = playerPosition;
@@ -446,6 +439,7 @@ namespace MercyMode.Battle
 				panelDir = 1;
 				tpBarSpeed = 13f;
 				SetHeroPose(HeroPose.Idle);
+				music?.Play();
 			}
 			textShown = 0; // the encounter text types out once the panel is up
 			if (panel >= PanelHeight && phaseTicks > IntroPanelAt)
@@ -1023,6 +1017,7 @@ namespace MercyMode.Battle
 
 		// ================================================================== drawing
 
+		private const float BackgroundBleed = 8f;
 		private const float FightBarX = 2;
 		private const float FightBarY = 365;
 		private static readonly Color PanelLine = MergeColor(MergeColor(new Color(128, 0, 128), Color.Black, 0.7f), new Color(64, 64, 64), 0.5f);
@@ -1081,13 +1076,14 @@ namespace MercyMode.Battle
 			try
 			{
 				float left = -ox / scale, top = -oy / scale, width = Main.screenWidth / scale, height = Main.screenHeight / scale;
-				DrawBackground(left, top, width, height);
+				DrawBackground(left - BackgroundBleed, top - BackgroundBleed,
+					width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
 				DrawEnemy();
 				DrawHero(sb, m);
 				DrawEffects();
 				DrawBox();
 				DrawTPBar();
-				DrawPanel(left, width);
+				DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f);
 			}
 			finally
 			{
@@ -1290,7 +1286,7 @@ namespace MercyMode.Battle
 		private void DrawPanel(float left, float width)
 		{
 			float top = ScreenHeight - panel;
-			DrDraw.Rect(left, top, width, panel + 1, Color.Black);
+			DrDraw.Rect(left, top, width, panel + BackgroundBleed + 1, Color.Black);
 			DrDraw.Rect(left, top - 2, width, 2, PanelLine);
 			DrDraw.Rect(left, top + 34, width, 2, PanelLine);
 			if (panel <= 0)

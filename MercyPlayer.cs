@@ -162,7 +162,7 @@ namespace MercyMode
 			int gain = Main.rand.Next(14, 23);
 			g.Mercy = Math.Min(100f, g.Mercy + gain);
 			CombatText.NewText(boss.Hitbox, MercyMode.MercyYellow, $"+{gain}% MERCY");
-			DeltaruneAssets.Play("act", SoundID.MenuTick, Player.Center);
+			DeltaruneAssets.Play("mercyadd", SoundID.MenuTick, Player.Center);
 
 			if (g.Mercy >= 100f)
 				MercyMode.Say($"* {boss.FullName} doesn't want to fight anymore.", MercyMode.MercyYellow);

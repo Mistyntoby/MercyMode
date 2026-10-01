@@ -451,6 +451,15 @@ namespace MercyMode.Battle
 
 		private void AddEffect(BattleEffect e) => effects.Add(e);
 
+		public void ShowMercyGain(float amount)
+		{
+			if (amount <= 0f || encounter == null)
+				return;
+
+			AddEffect(new MercyGainPopup(encounter.DrawCenter + new Vector2(0f, -55f), amount));
+			Sfx("mercyadd");
+		}
+
 		/// <summary>scr_dmgwriter_selfchar: (x, y + myheight - 24) on the hero.</summary>
 		private void HeroNumber(int amount, Color color, int message = -1)
 		{
