@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Terraria;
 using Terraria.DataStructures;
 using Terraria.ModLoader;
@@ -42,6 +43,10 @@ namespace MercyMode.Battle
 				BattleSystem.TryStart(npc, Main.player[projectile.owner], "hit by " + projectile.Name);
 		}
 
+		public override bool PreDraw(NPC npc, SpriteBatch spriteBatch, Vector2 screenPos, Color drawColor)
+			// The battle screen draws this one (gliding in and out of its world spot)
+			=> !BattleSystem.IsBattleSprite(npc);
+
 		public override void EditSpawnRate(Player player, ref int spawnRate, ref int maxSpawns)
 		{
 			if (BattleSystem.Active)
@@ -78,12 +83,30 @@ namespace MercyMode.Battle
 
 		public override bool CanUseItem(Item item) => !BattleSystem.Active;
 
+		public override void HideDrawLayers(PlayerDrawSet drawInfo)
+		{
+			// The battle screen draws the character (gliding in and out of this spot); hide the world copy until it lands
+			if (!BattleSystem.Active || BattleSystem.DrawingHero || drawInfo.drawPlayer.whoAmI != Main.myPlayer)
+				return;
+			foreach (PlayerDrawLayer layer in PlayerDrawLayerLoader.Layers)
+				layer.Hide();
+		}
+
 		public override bool CanBeHitByNPC(NPC npc, ref int cooldownSlot) => !BattleSystem.Active;
 
 		public override bool CanBeHitByProjectile(Projectile proj) => !BattleSystem.Active;
 
 		public override bool ImmuneTo(PlayerDeathReason damageSource, int cooldownCounter, bool dodgeable)
 			=> BattleSystem.Active && !BattleSystem.HurtingPlayer;
+
+		public override bool PreKill(double damage, int hitDirection, bool pvp, ref bool playSound, ref bool genDust, ref PlayerDeathReason damageSource)
+		{
+			// A lethal hit in a battle: the SOUL breaks on the battle screen first, then the battle kills the player
+			if (!BattleSystem.Active || Player.whoAmI != Main.myPlayer)
+				return true;
+			BattleSystem.Instance.RequestSoulDeath(damageSource, damage);
+			return false;
+		}
 
 		public override void ModifyDrawInfo(ref PlayerDrawSet drawInfo)
 		{
@@ -107,6 +130,28 @@ namespace MercyMode.Battle
 			drawInfo.colorMount = Color.White;
 			drawInfo.colorDisplayDollSkin = Color.White;
 			drawInfo.floatingTubeColor = Color.White;
+
+			// While gliding to or from the world, match the world's lighting at the player's spot
+			Color light = BattleSystem.HeroLight;
+			if (light != Color.White)
+			{
+				drawInfo.colorHair = BattleSystem.Tint(drawInfo.colorHair, light);
+				drawInfo.colorEyeWhites = BattleSystem.Tint(drawInfo.colorEyeWhites, light);
+				drawInfo.colorEyes = BattleSystem.Tint(drawInfo.colorEyes, light);
+				drawInfo.colorHead = BattleSystem.Tint(drawInfo.colorHead, light);
+				drawInfo.colorBodySkin = BattleSystem.Tint(drawInfo.colorBodySkin, light);
+				drawInfo.colorLegs = BattleSystem.Tint(drawInfo.colorLegs, light);
+				drawInfo.colorShirt = BattleSystem.Tint(drawInfo.colorShirt, light);
+				drawInfo.colorUnderShirt = BattleSystem.Tint(drawInfo.colorUnderShirt, light);
+				drawInfo.colorPants = BattleSystem.Tint(drawInfo.colorPants, light);
+				drawInfo.colorShoes = BattleSystem.Tint(drawInfo.colorShoes, light);
+				drawInfo.colorArmorHead = BattleSystem.Tint(drawInfo.colorArmorHead, light);
+				drawInfo.colorArmorBody = BattleSystem.Tint(drawInfo.colorArmorBody, light);
+				drawInfo.colorArmorLegs = BattleSystem.Tint(drawInfo.colorArmorLegs, light);
+				drawInfo.colorMount = BattleSystem.Tint(drawInfo.colorMount, light);
+				drawInfo.colorDisplayDollSkin = BattleSystem.Tint(drawInfo.colorDisplayDollSkin, light);
+				drawInfo.floatingTubeColor = BattleSystem.Tint(drawInfo.floatingTubeColor, light);
+			}
 
 			// Afterimages are drawn with a "shadow" amount; keep them see-through like Terraria does
 			if (drawInfo.shadow > 0f)

@@ -19,6 +19,14 @@ namespace MercyMode.Battle
 	{
 		/// <summary>True while the battle draws the player, so their colours ignore world lighting.</summary>
 		public static bool DrawingHero;
+		/// <summary>
+		/// Multiplied into the hero's colours while drawing. White on the battle screen; the world's light at the
+		/// player's spot while gliding in or out, so the battle sprite turns into exactly what the world shows.
+		/// </summary>
+		public static Color HeroLight = Color.White;
+
+		/// <summary>True for the NPC the battle screen draws; the world copy is hidden so it never shows twice.</summary>
+		public static bool IsBattleSprite(NPC npc) => Active && Instance.encounter?.DrawNpc == npc;
 
 		private enum HeroPose { Idle, AttackReady, Attack, ActReady, Act, ItemReady, Item, Defend, Victory }
 
@@ -38,6 +46,16 @@ namespace MercyMode.Battle
 		private const int SwingFrames = 12; // attackframes 6 at speed 0.5
 		/// <summary>...and once the swing is over the bottom UI glides up.</summary>
 		private const int IntroPanelAt = IntroSwingAt + SwingFrames * TicksPerFrame;
+
+		// ---- healing (Deltarune frames) ----
+		/// <summary>The potion is raised and used this many frames into the ITEM pose; the heal lands then.</summary>
+		private const int ItemUseFrame = 8;
+		/// <summary>How long the potion takes to rise to its overhead spot.</summary>
+		private const float ItemRiseFrames = 4f;
+		/// <summary>The ITEM pose returns to idle shortly after the use frame.</summary>
+		private const int ItemPoseFrames = ItemUseFrame + 8;
+		/// <summary>Heal Prayer (an ACT) heals near the top of the ACT hop.</summary>
+		private const int ActHealFrame = 4;
 
 		private HeroPose heroPose = HeroPose.Idle;
 		private float heroTimer; // Deltarune frames into the current pose
@@ -90,7 +108,7 @@ namespace MercyMode.Battle
 			// ACT returns to idle after actreturnframes (10 at 0.5 per frame = 20 frames)
 			if (heroPose == HeroPose.Act && heroTimer >= 20)
 				SetHeroPose(HeroPose.Idle);
-			if (heroPose == HeroPose.Item && heroTimer >= 24)
+			if (heroPose == HeroPose.Item && heroTimer >= ItemPoseFrames)
 				SetHeroPose(HeroPose.Idle);
 			if (heroPose == HeroPose.Attack && heroTimer >= SwingFrames + 6 && phase != Phase.FightResult)
 				SetHeroPose(HeroPose.Idle);
@@ -235,6 +253,8 @@ namespace MercyMode.Battle
 			if (p.dead)
 				return;
 
+			HeroLight = WorldLightTint(p.Center);
+
 			// Fading afterimages first (Terraria's own "shadow" draw makes them see-through)
 			foreach (var t in trail)
 				DrawPlayerPose(sb, m, p, t.HeroFeet, t.HeroScale, HeroPose.Idle, 0f, shadow: 0.35f + 0.6f * t.Age / TrailLife);
@@ -251,9 +271,28 @@ namespace MercyMode.Battle
 			if (hurtTimer >= 0)
 				hurtShift = -20 + Math.Min(2, hurtTimer / 2) * 10;
 
-			float outroFade = phase == Phase.Outro ? 1f - FlyProgress() : 0f;
-			DrawPlayerPose(sb, m, p, HeroFeetNow + new Vector2(hurtShift, bob), HeroScaleNow, pose, heroTimer, outroFade);
+			// Stays solid on the way back: the world lighting (HeroLight) takes over instead of fading out,
+			// and it lands exactly on the real character, which is hidden until the battle ends
+			DrawPlayerPose(sb, m, p, HeroFeetNow + new Vector2(hurtShift, bob), HeroScaleNow, pose, heroTimer, 0f);
+			HeroLight = Color.White;
 		}
+
+		/// <summary>
+		/// Battle-screen colours are full bright; the world's are lit. Blends toward the light at a world spot as the
+		/// glide approaches the world (start of the intro, end of the outro).
+		/// </summary>
+		private Color WorldLightTint(Vector2 worldPosition)
+		{
+			float blend = 1f - FlyProgress();
+			if (blend <= 0f)
+				return Color.White;
+			Color light = Lighting.GetColor(worldPosition.ToTileCoordinates());
+			return Color.Lerp(Color.White, light, blend);
+		}
+
+		/// <summary>Multiplies a colour's RGB by a tint, keeping its alpha.</summary>
+		public static Color Tint(Color c, Color tint) =>
+			new(c.R * tint.R / 255, c.G * tint.G / 255, c.B * tint.B / 255, c.A);
 
 		/// <summary>How far through a weapon swing a pose is (0 = start, 1 = end), or -1 for no weapon.</summary>
 		private static float SwingProgress(HeroPose pose, float timer) => pose switch
@@ -334,15 +373,15 @@ namespace MercyMode.Battle
 						break;
 					case HeroPose.ItemReady:
 					case HeroPose.Item:
-						if (usedItemType > 0 && (pose == HeroPose.ItemReady || timer <= 15) && shadow < 0.95f)
+						if (usedItemType > 0 && (pose == HeroPose.ItemReady || timer <= ItemUseFrame) && shadow < 0.95f)
 						{
-							// Arm raised, holding the item up; it's used up at 15 frames
+							// Arm raised, holding the item up; it's used up at ItemUseFrame
 							float armRot = MathHelper.Pi;
 							p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot);
 							manualItem = ContentSamples.ItemsByType[usedItemType];
 							manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot);
 							// Raise the potion briskly, then hold it overhead until the use pose ends.
-							float rise = 22f * (1f - (float)Math.Pow(1f - Math.Min(timer, 8f) / 8f, 2f));
+							float rise = 22f * (1f - (float)Math.Pow(1f - Math.Min(timer, ItemRiseFrames) / ItemRiseFrames, 2f));
 							manualThrust = pose == HeroPose.Item ? rise : 0f;
 						}
 						else
@@ -475,12 +514,12 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>scr_dmgwriter_selfchar: (x, y + myheight - 24) on the hero.</summary>
-		private void HeroNumber(int amount, Color color, int message = -1)
+		private void HeroNumber(int amount, Color color, int message = -1, int delay = 2)
 		{
 			Vector2 feet = HeroFeetNow;
 			float x = feet.X - (HeroFeet.X - HeroX);
 			float y = feet.Y - (HeroFeet.Y - HeroY) + HeroHeight - 24;
-			AddEffect(new DamageNumber(x, y, amount, color, message));
+			AddEffect(new DamageNumber(x, y, amount, color, message, delay));
 		}
 
 		/// <summary>The enemy's damage number: from its sprite, 8 frames after the hit.</summary>
@@ -493,6 +532,8 @@ namespace MercyMode.Battle
 		/// <summary>obj_healanim: green stars rise off the hero, then the healed amount (or MAX) in green.</summary>
 		private void PlayHealFx(int healed)
 		{
+			// Sound, sparkles and number all land on the same frame
+			Sfx("heal");
 			Vector2 feet = HeroFeetNow;
 			var area = new Rectangle((int)(feet.X - 34), (int)(feet.Y - 74), 68, 74);
 			for (int i = 0; i < 10; i++)
@@ -502,9 +543,9 @@ namespace MercyMode.Battle
 				AddEffect(new StarParticle(pos, vel, Vector2.Zero, 0.2f, -10f, new Color(0, 255, 0), 5));
 			}
 			if (healed > 0 && Player.statLife < Player.statLifeMax2)
-				HeroNumber(healed, new Color(0, 255, 0));
+				HeroNumber(healed, new Color(0, 255, 0), delay: 1);
 			else
-				HeroNumber(0, new Color(0, 255, 0), DamageNumber.MaxFrame);
+				HeroNumber(0, new Color(0, 255, 0), DamageNumber.MaxFrame, delay: 1);
 		}
 
 		/// <summary>Plays the heal sparkles after the item/act animation reaches its use frame.</summary>

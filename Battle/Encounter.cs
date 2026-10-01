@@ -192,8 +192,8 @@ namespace MercyMode.Battle
 			TPCost = MercyPlayer.HealPrayerCost,
 			Run = b =>
 			{
+				// The heal sound plays with the green number (BattleSystem.PlayHealFx)
 				int healed = b.HealPlayer(Math.Max(20, b.Player.statLifeMax2 / 4));
-				Deltarune.DeltaruneAssets.Play("heal", SoundID.Item4);
 				return new List<string> { $"* {b.Player.name} cast HEAL PRAYER!\n* Recovered {healed} HP." };
 			},
 		};
