@@ -84,8 +84,8 @@ namespace MercyMode.Battle.Encounters
 			if (chain.Count == 0)
 				return;
 			NPC head = chain[0];
-			// Only the wiggle moves: a gentle wave down the body, a little quicker while attacking
-			float t = time / 32f * (1f + attacking * 0.3f);
+			// Only the wiggle moves: a gentle wave down the body, the same while attacking
+			float t = time / 32f;
 			// Segments sit one width apart, as Terraria's worm AI keeps them (the sprite sheet's frame height can be
 			// several segments tall, which left gaps)
 			float SpriteLength(NPC n) => n.width * n.scale;
