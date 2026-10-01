@@ -20,6 +20,12 @@ namespace MercyMode.Battle
 		public static bool DrawingEnemy;
 		/// <summary>Multiplied into the enemy's colour while drawing (world light while gliding in or out).</summary>
 		public static Color EnemyLight = Color.White;
+		/// <summary>While picking a part to FIGHT, the part under the cursor (the others dim); -1 otherwise.</summary>
+		public static int FlashPart = -1;
+		/// <summary>Where each part of a breakable boss was last drawn on the battle screen (hit effects land there).</summary>
+		private readonly Dictionary<int, Vector2> partScreen = new();
+		/// <summary>The part the last melee hit struck, for the slash; -1 for the whole enemy.</summary>
+		private int slashPart = -1;
 
 		/// <summary>The world area the parts cover, using their sprite frames as well as their hitboxes.</summary>
 		private static Rectangle PartBounds(List<NPC> parts)
@@ -117,6 +123,11 @@ namespace MercyMode.Battle
 					if (parts[i] != anchorNpc)
 						parts[i].position += PartSway(i);
 				}
+				// Remember where each part lands on the battle screen, for hits on that part
+				foreach (NPC n in parts)
+					partScreen[n.whoAmI] = p + (n.Center - anchor) * s * breathe;
+				FlashPart = phase == Phase.EnemySelect && pendingChoice == Choice.Fight && focus == targetEnemy
+					&& encounter.TargetableParts && encounter.ChosenPart != null ? encounter.ChosenPart.whoAmI : -1;
 				for (int i = 0; i < parts.Count; i++)
 					Main.instance.DrawNPCDirect(sb, parts[i], parts[i].behindTiles, Main.screenPosition);
 			}
@@ -134,6 +145,7 @@ namespace MercyMode.Battle
 					parts[i].IsABestiaryIconDummy = savedDummy[i];
 				}
 				DrawingEnemy = false;
+				FlashPart = -1;
 				EnemyLight = Color.White;
 				sb.End();
 				sb.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, baseMatrix);
@@ -151,7 +163,7 @@ namespace MercyMode.Battle
 				Texture = tex, Frame = frame, Position = p + (main.Center - anchor) * s, Rotation = main.rotation,
 				Scale = s * main.scale, Color = Color.White, Valid = true,
 			};
-			DrawSlash(p + centring);
+			DrawSlash(slashPart >= 0 && partScreen.TryGetValue(slashPart, out Vector2 hitAt) ? hitAt : p + centring);
 		}
 	}
 }

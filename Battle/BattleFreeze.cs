@@ -56,7 +56,12 @@ namespace MercyMode.Battle
 		{
 			// On the battle screen: full-bright, or the world's light while gliding in or out
 			if (BattleSystem.DrawingEnemy)
+			{
 				drawColor = BattleSystem.Tint(Color.White, BattleSystem.EnemyLight);
+				// Picking a part: the others dim, so the one under the cursor stands out
+				if (BattleSystem.FlashPart >= 0 && npc.whoAmI != BattleSystem.FlashPart)
+					drawColor = BattleSystem.Tint(drawColor, new Color(110, 110, 120));
+			}
 		}
 
 		public override void EditSpawnRate(Player player, ref int spawnRate, ref int maxSpawns)

@@ -351,7 +351,27 @@ Resolution 640x480. All sizes below in those pixels.
 - Lab: `soul-blue/green/purple/yellow`, `desperation`, and `attacks-enemies/armies/bosses` (every attack of every family,
   army and boss: spawns something, ends, no crash). `LAB_SPEED` runs the game faster than real time (default 8).
 
+## Breakable bosses, stab, purple strings, yellow charge (2026-10-01)
+- Bosses with parts that have their own health (`Encounter.TargetableParts`): Skeletron (head, LEFT/RIGHT HAND by
+  hand ai[0]), the Twins (RETINAZER, SPAZMATISM; no core, both must go), Skeletron Prime (PRIME, CANNON, SAW, VICE,
+  LASER), Golem (GOLEM body, HEAD, fists; the body is GUARDED until the head breaks), Moon Lord (HEAD, hands, HEART
+  guarded until every eye is shut). FIGHT's enemy list shows one row per part with its own HP (3 rows visible,
+  scrolling); ACT/SPARE still target the boss. The picked part is `Encounter.ChosenPart`; the other parts dim on screen.
+  Breaking a part bursts it (shockwave, sparks, explosion) and the rest of a multi-hit FIGHT moves to the next part;
+  breaking the core (`CorePart`) removes the rest. Hit effects land where the part was drawn (`partScreen`).
+  Attacks follow: Skeletron's head does the hands' attacks once both are gone, a lone Twin only uses its own,
+  each Prime arm's attacks go with it. Wall of Flesh isn't split: its eyes share the mouth's health.
+- Shortsword / spear stab: the composite arm carries the blade (Quarter stretch wind-up, then ThreeQuarters/Full out,
+  hold, back; 2/2/3/5 Deltarune frames), the body leans 4 px in, and a white streak flicks off the point.
+- Purple SOUL strings stretch out from the SOUL as the turn starts (harp twang, Item26), quiver as a standing wave when
+  plucked or landed on, and pull back into it as the turn ends.
+- Yellow SOUL charge as in Deltarune's soul mode code: from z_hold 15 four spr_yheart_charge sparks spiral in from 35 px,
+  from 35 the SOUL pulses (two glow layers), the snd_chargeshot_charge hum loops from 20, fading in and rising in
+  pitch to 40; shots that hit play spr_yheart_shot_hit; max 3 shots including big ones.
+- Lab: `parts-skeletron`, `parts-twins`, `parts-golem`.
+
 ## Log
 - 2026-09-30: recon, decompile, numbers above. Implemented battle loop for Eye of Cthulhu, verified in lab (above).
 - 2026-10-01: enemy squads (up to 3 per battle), armies with squad morale, spares count toward events; headless lab.
 - 2026-10-01: SOUL modes (Deltarune yellow; Undertale blue/green/purple), new patterns and effects, boss desperation; lab sweeps of every attack.
+- 2026-10-01: breakable boss parts as FIGHT targets; shortsword stab; purple string and yellow charge animations.

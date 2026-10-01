@@ -100,7 +100,7 @@ namespace MercyMode.Deltarune
 			"spr_ponman_eyebullet", "spr_smallbullet", "spr_healsparkle", "spr_sparestar",
 			"bg_battleback1", "spr_battlemsg", "spr_heartoutline", "spr_heartoutline2", "spr_sparestar_anim", "spr_lightfairy",
 			"spr_heartbreak", "spr_heartshards", "spr_headkris",
-			"spr_yellowheart", "spr_yheart_shot", "spr_yheart_bigshot",
+			"spr_yellowheart", "spr_yheart_shot", "spr_yheart_bigshot", "spr_yheart_charge", "spr_yheart_shot_hit",
 		};
 
 		public static readonly string[] FontNames = { "fnt_mainbig", "fnt_main", "fnt_small" };
@@ -545,6 +545,23 @@ namespace MercyMode.Deltarune
 				return;
 			}
 			SoundEngine.PlaySound(fallback with { Volume = fallback.Volume * config.BattleSoundVolume * roleGain }, position);
+		}
+
+		/// <summary>
+		/// A looping instance of a role's Deltarune sound (silent to start), with the volume it should play at; null when
+		/// the real sound isn't loaded or the role is redirected. The caller sets Volume/Pitch and stops it.
+		/// </summary>
+		public static SoundEffectInstance CreateLoop(string role, out float volume)
+		{
+			volume = 0f;
+			MercyConfig config = ModContent.GetInstance<MercyConfig>();
+			if (config == null || SoundRedirectFor(role, config) != MercySoundRedirect.Deltarune || !sounds.TryGetValue(role, out var effect))
+				return null;
+			volume = MathHelper.Clamp(Main.soundVolume * config.BattleSoundVolume * soundVolumes.GetValueOrDefault(role, 1f) * RoleGain(role), 0f, 1f);
+			SoundEffectInstance loop = effect.CreateInstance();
+			loop.IsLooped = true;
+			loop.Volume = 0f;
+			return loop;
 		}
 
 		/// <summary>Only plays if the real sound loaded. For effects that vanilla Terraria has no good match for.</summary>

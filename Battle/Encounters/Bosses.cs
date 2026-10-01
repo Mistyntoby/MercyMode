@@ -353,6 +353,9 @@ namespace MercyMode.Battle.Encounters
 			}
 		}
 		public override string EncounterText => "* SKELETRON rises to guard the dungeon!";
+		public override bool TargetableParts => true;
+		// Hands sit at head - 120 * ai[0] across (see PoseForBattle): ai[0] = 1 is the left one
+		public override string PartName(NPC part) => part.type == NPCID.SkeletronHand ? (part.ai[0] > 0f ? "LEFT HAND" : "RIGHT HAND") : "SKELETRON";
 
 		public override IEnumerable<NPC> Members()
 		{
@@ -388,8 +391,12 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			bool hard = LifeRatio < 0.5f;
-			Bullet hand(Vector2 p, Vector2 d) => Shots.Npc(NPCID.SkeletronHand, p, Vector2.Zero, 0.9f, 1f, new Vector2(26, 26), rotate: false);
 			Bullet head(Vector2 p, Vector2 d) => Shots.Npc(NPCID.SkeletronHead, p, Vector2.Zero, 0.5f, 1.2f, new Vector2(34, 34), rotate: false).Spin(0.35f);
+			// With both hands broken, the head does the hands' work
+			bool hands = Members().Any(m => m.type == NPCID.SkeletronHand && m.life > 0);
+			Bullet hand(Vector2 p, Vector2 d) => hands
+				? Shots.Npc(NPCID.SkeletronHand, p, Vector2.Zero, 0.9f, 1f, new Vector2(26, 26), rotate: false)
+				: head(p, d);
 			Bullet bone(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Bone, p, v, 1f, 0.6f, new Vector2(10, 10), spin: 0.25f);
 			return Cycle(
 				() => new LaneDash(hand, hard ? 45 : 60) { AllowVertical = true, Speed = hard ? 8f : 7f },

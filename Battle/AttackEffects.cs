@@ -200,4 +200,46 @@ namespace MercyMode.Battle
 			return b;
 		}
 	}
+
+	/// <summary>Plays a Deltarune sprite's frames once at a spot (obj_animation), or a few sparks without the sprite.</summary>
+	public sealed class SpriteAnim : BattleEffect
+	{
+		public override bool WithBullets => true;
+		private readonly string sprite;
+		private readonly Vector2 pos;
+		private readonly float speed, scale;
+		private float frame;
+		private bool started;
+
+		/// <param name="speed">Frames per Deltarune frame (image_speed).</param>
+		public SpriteAnim(string sprite, Vector2 pos, float speed, float scale = 1f)
+		{
+			this.sprite = sprite;
+			this.pos = pos;
+			this.speed = speed;
+			this.scale = scale;
+		}
+
+		public override void Step(float dt)
+		{
+			var s = Deltarune.DeltaruneAssets.Sprite(sprite);
+			if (s == null)
+			{
+				if (!started && BattleSystem.Instance != null)
+					Sparks.Burst(BattleSystem.Instance, pos, 5, new Color(255, 255, 120), 2f);
+				Done = true;
+				return;
+			}
+			started = true;
+			frame += speed * dt;
+			if (frame >= s.Frames.Length)
+				Done = true;
+		}
+
+		public override void Draw()
+		{
+			if (Deltarune.DeltaruneAssets.Sprite(sprite) is Deltarune.DrSprite s && frame < s.Frames.Length)
+				DrDraw.Sb.Draw(s.Frame((int)frame), pos, null, Color.White, 0f, s.Origin, scale, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
+		}
+	}
 }

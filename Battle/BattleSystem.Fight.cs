@@ -473,7 +473,12 @@ namespace MercyMode.Battle
 
 			float timing = hit.Points / 150f;
 			int raw = Math.Max(1, (int)Math.Round(hit.Damage * fightWeapon.HitShare * timing * DamageScale));
-			NPC target = encounter.StrikeTarget();
+			// A breakable boss: the part picked in the enemy list (or the next one, if an earlier hit broke it)
+			NPC chosen = encounter.ChosenPart;
+			NPC core = encounter.TargetableParts ? encounter.CorePart : null;
+			NPC target = encounter.TargetableParts && Encounter.CanHit(chosen) ? chosen : encounter.StrikeTarget();
+			Vector2 spot = PartSpot(target);
+			slashPart = encounter.TargetableParts ? target.whoAmI : -1;
 			int dealt = target.SimpleStrikeNPC(raw, Player.direction, crit: hit.Crit, knockBack: 0f,
 				damageType: fightWeapon.Item?.DamageType ?? DamageClass.Melee);
 
@@ -481,14 +486,17 @@ namespace MercyMode.Battle
 			if (!hit.Ranged)
 				slashTimer = 0;
 			else
-				AddEffect(new ShotImpact(encounter.ScreenCenter + Main.rand.NextVector2Circular(14f, 14f)));
+				AddEffect(new ShotImpact(spot + Main.rand.NextVector2Circular(14f, 14f)));
 			enemyShake = 18;
 			if (hit.Crit)
 				Sfx("crit");
 			// Several hits stack their numbers upward
 			EnemyNumber(dealt > 0 ? dealt : 0, hit.Crit ? HeroCritColor : HeroDamageColor, dealt > 0 ? -1 : DamageNumber.MissFrame,
-				yOffset: -18f * hitsLanded);
+				yOffset: -18f * hitsLanded, at: spot);
 			hitsLanded++;
+
+			if (encounter.TargetableParts && (!target.active || target.life <= 0 || !encounter.Members().Contains(target)))
+				BreakPart(target, core, spot);
 
 			// A killing blow: the enemy breaks apart right away (obj_deathanim), from how it looked a moment ago
 			if (!encounter.Alive && enemyOverride == null)
@@ -507,6 +515,33 @@ namespace MercyMode.Battle
 				mp.TP = Math.Min(100f, mp.TP + (float)Math.Round(hit.Points / HitTensionDivisor) / fightWeapon.Bolts * TensionToTP);
 			}
 		}
+
+		/// <summary>
+		/// A part of a breakable boss was destroyed: it bursts, and the rest of a multi-hit attack moves to the next
+		/// part. Losing its core takes the rest of the boss with it.
+		/// </summary>
+		private void BreakPart(NPC part, NPC core, Vector2 spot)
+		{
+			AttackSfx.Explosion();
+			ShakeScreen(4);
+			AddEffect(new Shockwave(spot, Color.White, 46f));
+			Sparks.Burst(this, spot, 14, new Color(255, 230, 180), 3.2f, 0.06f);
+			if (core != null && part == core)
+			{
+				foreach (NPC m in encounter.Members().ToList())
+				{
+					if (m == core)
+						continue;
+					m.life = 0;
+					m.active = false;
+				}
+			}
+			encounter.ChosenPart = encounter.TargetParts().FirstOrDefault(Encounter.CanHit);
+		}
+
+		/// <summary>Where a part of the enemy is on the battle screen (as last drawn), or the enemy's spot.</summary>
+		private Vector2 PartSpot(NPC part) =>
+			part != null && encounter.TargetableParts && partScreen.TryGetValue(part.whoAmI, out Vector2 at) ? at : encounter.ScreenCenter;
 
 		private void UpdateFightResult()
 		{
@@ -560,7 +595,8 @@ namespace MercyMode.Battle
 				Sfx("attack");
 			heroRecoil = RecoilFrames;
 			Vector2 from = Muzzle();
-			Vector2 to = encounter.ScreenCenter + Main.rand.NextVector2Circular(14f, 14f);
+			NPC aim = Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : null;
+			Vector2 to = PartSpot(aim) + Main.rand.NextVector2Circular(14f, 14f);
 			AddEffect(new MuzzleFlash(from));
 			AddEffect(new ShotProjectile(projectile, from, to, 10f));
 		}
