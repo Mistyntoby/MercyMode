@@ -464,7 +464,6 @@ namespace MercyMode.Deltarune
 			"text" => 0.25f,
 			"attack" => 0.4f,
 			"menumove" or "select" => 0.75f,
-			"weaponpull" => 0.65f,
 			"spare" or "mercyadd" or "graze" => 0.8f,
 			_ => 1f,
 		};
