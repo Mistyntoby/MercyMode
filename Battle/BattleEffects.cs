@@ -52,6 +52,45 @@ namespace MercyMode.Battle
 		}
 	}
 
+	/// <summary>
+	/// A sprite recoloured but keeping its shading: each pixel's brightness times the new colour, so the red SOUL's
+	/// dark edge and highlights survive (a flat silhouette made it look thick).
+	/// </summary>
+	public static class Recolor
+	{
+		private static readonly Dictionary<(Texture2D, Color), Texture2D> cache = new();
+
+		public static Texture2D Of(Texture2D tex, Color color)
+		{
+			if (tex == null)
+				return null;
+			if (cache.TryGetValue((tex, color), out var done) && !done.IsDisposed)
+				return done;
+			var data = new Color[tex.Width * tex.Height];
+			tex.GetData(data);
+			for (int i = 0; i < data.Length; i++)
+			{
+				Color c = data[i];
+				if (c.A == 0)
+					continue;
+				// Premultiplied: brightness relative to the pixel's own alpha
+				float bright = Math.Max(c.R, Math.Max(c.G, c.B)) / 255f;
+				data[i] = new Color((byte)(color.R * bright), (byte)(color.G * bright), (byte)(color.B * bright), c.A);
+			}
+			var result = new Texture2D(Main.graphics.GraphicsDevice, tex.Width, tex.Height);
+			result.SetData(data);
+			cache[(tex, color)] = result;
+			return result;
+		}
+
+		public static void Clear()
+		{
+			foreach (var t in cache.Values)
+				t.Dispose();
+			cache.Clear();
+		}
+	}
+
 	/// <summary>How the enemy looked on its last drawn frame, so spare/death animations can play after it's gone.</summary>
 	public struct EnemySnapshot
 	{

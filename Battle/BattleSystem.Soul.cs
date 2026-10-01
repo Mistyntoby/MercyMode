@@ -378,10 +378,15 @@ namespace MercyMode.Battle
 				}
 				DrDraw.Sb.Draw(y.Frame(zHold >= YellowChargeTicks ? 2 : 0), soul, null, Color.White * alpha, 0f, y.Origin, 1f, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
 			}
+			else if (DeltaruneAssets.Sprite("soul_" + soulMode.ToString().ToLowerInvariant()) is DrSprite own)
+			{
+				// Deltarune's own SOUL in this colour, if the installed chapters have one
+				DrDraw.Sb.Draw(own.Frame(0), soul, null, (frame == 1 ? Color.Gray : Color.White) * alpha, 0f, own.Origin, 1f, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
+			}
 			else if (DeltaruneAssets.Sprite("spr_dodgeheart") is DrSprite s)
 			{
-				// The same heart, recoloured: a white silhouette tinted with the mode's colour
-				DrDraw.Sb.Draw(WhiteMask.Of(s.Frame(0)), soul, null, c * alpha, 0f, s.Origin, 1f, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
+				// The red SOUL recoloured, keeping its edge and shading
+				DrDraw.Sb.Draw(Recolor.Of(s.Frame(frame), soulMode.Color()), soul, null, Color.White * alpha, 0f, s.Origin, 1f, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
 			}
 			else
 			{
