@@ -1372,7 +1372,8 @@ namespace MercyMode.Battle
 		/// <summary>obj_basicattack: the slash over the enemy (2.5x for a perfect hit).</summary>
 		private void DrawSlash(Vector2 pos)
 		{
-			if (slashTimer < 0)
+			// Only on the enemy that was hit (every enemy in a group is drawn through here)
+			if (slashTimer < 0 || focus != targetEnemy)
 				return;
 			int f = Math.Min(4, slashTimer / 4); // image_speed 0.5: two frames per sprite frame
 			float s = bestPoints == 150 ? 2.5f : 2f;
