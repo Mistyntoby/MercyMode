@@ -1636,40 +1636,40 @@ namespace MercyMode.Battle
 				name = name.Substring(0, name.Length - 1);
 			float nameY = r.Y + 7 + DrDraw.LineHeight(DrDraw.BigFont) * (nameScale - scale) / 2f;
 			DrDraw.Text(name, r.X + 40, nameY, Color.White, DrDraw.BigFont, scale);
-			// HP bar raised to make room for the mana bar and its label underneath; the HP label (about 9 px tall)
-			// lines up with the bar instead of hanging below it, where it ran into the MP label
-			const int hpBarY = 14;
-			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + hpBarY - 1, Color.White))
-				DrDraw.Text("HP", r.X + 108, r.Y + hpBarY - 1, Color.White, DrDraw.SmallFont);
+			// Two rows, HP and MP: label, bar, then the numbers to the right of the bar in one shared size (as big as
+			// fits the end of the nameplate)
+			const int labelX = 112, barX = 130, barWidth = 28, numberX = barX + barWidth + 3, numberRoom = 208 - numberX;
+			const int hpBarY = 7, hpBarHeight = 8;
+			const int manaBarY = 21, manaBarHeight = 6;
+			// The small font at (nearly) its own pixel size reads better here than the big one shrunk down
+			const float maxNumberScale = 1f;
+			bool hasMana = Player.statManaMax2 > 0;
+
 			float ratio = MathHelper.Clamp(Player.statLife / (float)Player.statLifeMax2, 0f, 1f);
-			const int hpBarX = 130;
-			const int hpBarWidth = 74;
-			DrDraw.Rect(r.X + hpBarX, r.Y + hpBarY, hpBarWidth, 8, new Color(128, 0, 0));
-			DrDraw.Rect(r.X + hpBarX, r.Y + hpBarY, (float)Math.Ceiling(ratio * hpBarWidth), 8, KrisCyan);
-			// Mana, thin and blue under HP like Terraria's own bars (magic weapons spend it per hit)
-			if (Player.statManaMax2 > 0)
+			string hp = $"{Player.statLife}/{Player.statLifeMax2}";
+			string mp = $"{Player.statMana}/{Player.statManaMax2}";
+			float widest = Math.Max(DrDraw.Measure(hp, DrDraw.SmallFont), hasMana ? DrDraw.Measure(mp, DrDraw.SmallFont) : 0f);
+			float numberScale = Math.Min(maxNumberScale, numberRoom / Math.Max(1f, widest));
+			float numberHeight = DrDraw.LineHeight(DrDraw.SmallFont) * numberScale;
+
+			if (!DrDraw.Sprite("spr_hpname", 0, r.X + labelX, r.Y + hpBarY - 1, Color.White))
+				DrDraw.Text("HP", r.X + labelX - 4, r.Y + hpBarY - 3, Color.White, DrDraw.SmallFont);
+			DrDraw.Rect(r.X + barX, r.Y + hpBarY, barWidth, hpBarHeight, new Color(128, 0, 0));
+			DrDraw.Rect(r.X + barX, r.Y + hpBarY, (float)Math.Ceiling(ratio * barWidth), hpBarHeight, KrisCyan);
+			Color hpColor = ratio <= 0.25f ? new Color(255, 255, 0) : Color.White;
+			DrDraw.Text(hp, r.X + numberX, r.Y + hpBarY + hpBarHeight / 2f - numberHeight / 2f, hpColor, DrDraw.SmallFont, numberScale);
+
+			// Mana (magic weapons spend it per hit), blue like Terraria's
+			if (hasMana)
 			{
 				float mana = MathHelper.Clamp(Player.statMana / (float)Player.statManaMax2, 0f, 1f);
-				const int manaBarY = hpBarY + 10;
-				DrDraw.Text("MP", r.X + 111, r.Y + manaBarY - 2, ManaBlue, DrDraw.SmallFont, 0.6f);
-				// A shorter bar with the numbers after it, shrunk to fit the end of the nameplate
-				const int manaBarWidth = 42;
-				DrDraw.Rect(r.X + hpBarX, r.Y + manaBarY, manaBarWidth, 5, new Color(20, 28, 90));
-				DrDraw.Rect(r.X + hpBarX, r.Y + manaBarY, (float)Math.Ceiling(mana * manaBarWidth), 5, ManaBlue);
-				string mp = $"{Player.statMana}/{Player.statManaMax2}";
-				float mpRoom = hpBarWidth - manaBarWidth - 3;
-				float mpScale = Math.Min(0.6f, mpRoom / Math.Max(1f, DrDraw.Measure(mp, DrDraw.SmallFont)));
-				DrDraw.Text(mp, r.X + hpBarX + manaBarWidth + 3, r.Y + manaBarY - 2, ManaBlue, DrDraw.SmallFont, mpScale);
+				const float mpLabelScale = 0.6f;
+				float mpLabelHeight = DrDraw.LineHeight(DrDraw.SmallFont) * mpLabelScale;
+				DrDraw.Text("MP", r.X + labelX + 1, r.Y + manaBarY + manaBarHeight / 2f - mpLabelHeight / 2f, ManaBlue, DrDraw.SmallFont, mpLabelScale);
+				DrDraw.Rect(r.X + barX, r.Y + manaBarY, barWidth, manaBarHeight, new Color(20, 28, 90));
+				DrDraw.Rect(r.X + barX, r.Y + manaBarY, (float)Math.Ceiling(mana * barWidth), manaBarHeight, ManaBlue);
+				DrDraw.Text(mp, r.X + numberX, r.Y + manaBarY + manaBarHeight / 2f - numberHeight / 2f, ManaBlue, DrDraw.SmallFont, numberScale);
 			}
-			string hp = $"{Player.statLife}/{Player.statLifeMax2}";
-			Color hpColor = ratio <= 0.25f ? new Color(255, 255, 0) : Color.White;
-			// Small enough to sit fully above the bar, clear of the HP label
-			const float hpNumberScale = 0.42f;
-			float hpTextWidth = DrDraw.Measure(hp, DrDraw.BigFont) * hpNumberScale;
-			float hpTextY = r.Y + hpBarY - 1f - DrDraw.LineHeight(DrDraw.BigFont) * hpNumberScale;
-			DrDraw.Text(hp, r.X + hpBarX + (hpBarWidth - hpTextWidth) / 2f, hpTextY,
-				hpColor, DrDraw.BigFont, hpNumberScale);
-
 		}
 
 		private void DrawHeartCursor(float x, float y)
