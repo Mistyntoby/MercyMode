@@ -59,14 +59,13 @@ namespace MercyMode.Battle
 
 		private HeroPose heroPose = HeroPose.Idle;
 		private float heroTimer; // Deltarune frames into the current pose
-		private int hurtTimer = -1; // hurttimer, frames
+		private float hurtTimer = -1; // hurttimer, frames
 		private Vector2 heroWorldScreen; // the player's feet in the world, in battle-screen coordinates
 		private float heroWorldScale;
 		private Vector2 enemyWorldScreen;
 		private float enemyWorldScale;
-		private int shake; // obj_shake: 4 px, flips each frame, decays by 1
-		private int shakeSign = 1;
-		private int pendingHealFx = -1;
+		private float shake; // obj_shake: 4 px, flips each frame, decays by 1 per frame
+		private float pendingHealFx = -1; // frames until the heal lands
 		private int pendingHealAmount;
 		private readonly List<BattleEffect> effects = new();
 		private EnemySnapshot enemySnap;
@@ -80,7 +79,7 @@ namespace MercyMode.Battle
 			public float HeroScale;
 			public Vector2 EnemyPos;
 			public float EnemyScale;
-			public int Age;
+			public float Age; // frames
 		}
 		private readonly List<TrailPoint> trail = new();
 		private const int TrailLife = 8; // frames
@@ -91,19 +90,24 @@ namespace MercyMode.Battle
 			heroTimer = 0;
 		}
 
-		/// <summary>Deltarune-frame updates for the hero and the effects.</summary>
+		/// <summary>
+		/// Every tick: the hero, the effects and the afterimages, stepped by <see cref="FrameStep"/> (half a Deltarune
+		/// frame) so they keep Deltarune's timing but move at Terraria's 60 fps.
+		/// </summary>
 		private void UpdateHeroFrame()
 		{
-			heroTimer += 1f;
-			if (hurtTimer >= 0 && ++hurtTimer > 15)
-				hurtTimer = -1;
-			if (shake > 0)
+			const float dt = FrameStep;
+			heroTimer += dt;
+			if (hurtTimer >= 0)
 			{
-				shake--;
-				shakeSign = -shakeSign;
+				hurtTimer += dt;
+				if (hurtTimer > 15)
+					hurtTimer = -1;
 			}
-			enemyAttackEnergy = Math.Max(0f, enemyAttackEnergy - 0.055f);
-			enemyAttackDirection = Vector2.Lerp(enemyAttackDirection, Vector2.Zero, 0.12f);
+			if (shake > 0)
+				shake = Math.Max(0f, shake - dt);
+			enemyAttackEnergy = Math.Max(0f, enemyAttackEnergy - 0.055f * dt);
+			enemyAttackDirection = Vector2.Lerp(enemyAttackDirection, Vector2.Zero, EasePerTick(0.12f));
 
 			// ACT returns to idle after actreturnframes (10 at 0.5 per frame = 20 frames)
 			if (heroPose == HeroPose.Act && heroTimer >= 20)
@@ -117,13 +121,14 @@ namespace MercyMode.Battle
 			for (int i = trail.Count - 1; i >= 0; i--)
 			{
 				var t = trail[i];
-				t.Age++;
+				t.Age += dt;
 				if (t.Age > TrailLife)
 					trail.RemoveAt(i);
 				else
 					trail[i] = t;
 			}
-			if (Gliding)
+			// A new afterimage every Deltarune frame; they fade every tick
+			if (Gliding && time % TicksPerFrame == 0)
 			{
 				trail.Add(new TrailPoint
 				{
@@ -135,12 +140,12 @@ namespace MercyMode.Battle
 			}
 
 			foreach (var e in effects)
-				e.Frame();
+				e.Step(dt);
 			effects.RemoveAll(e => e.Done);
 			for (int i = boxAfterimages.Count - 1; i >= 0; i--)
 			{
 				BoxAfterimage image = boxAfterimages[i];
-				image.Age++;
+				image.Age += dt;
 				if (image.Age > 18)
 					boxAfterimages.RemoveAt(i);
 				else
@@ -148,13 +153,20 @@ namespace MercyMode.Battle
 			}
 			if (enemyOverride != null)
 			{
-				enemyOverride.Frame();
+				enemyOverride.Step(dt);
 				if (enemyOverride.Done)
 					enemyOverride = null;
 			}
 
-			if (pendingHealFx > 0 && --pendingHealFx == 0)
-				PlayHealFx(pendingHealAmount);
+			if (pendingHealFx > 0)
+			{
+				pendingHealFx -= dt;
+				if (pendingHealFx <= 0)
+				{
+					pendingHealFx = -1;
+					PlayHealFx(pendingHealAmount);
+				}
+			}
 		}
 
 		/// <summary>The pose shown right now: menus show the "ready" pose for the chosen command.</summary>
@@ -269,7 +281,7 @@ namespace MercyMode.Battle
 				bob = -(float)Math.Abs(Math.Sin(Math.Min(1f, heroTimer / 27f) * Math.PI * 2)) * 8f;
 			// Hurt: drawn at x - 20 + hurtindex * 10 (hurtindex = hurttimer / 2, max 2) for 15 frames
 			if (hurtTimer >= 0)
-				hurtShift = -20 + Math.Min(2, hurtTimer / 2) * 10;
+				hurtShift = -20 + Math.Min(2f, hurtTimer / 2f) * 10; // GameMaker's hurttimer / 2 isn't rounded: it slides
 
 			// Stays solid on the way back: the world lighting (HeroLight) takes over instead of fading out,
 			// and it lands exactly on the real character, which is hidden until the battle ends
@@ -498,14 +510,24 @@ namespace MercyMode.Battle
 				e.Draw();
 		}
 
-		private Matrix ShakeMatrix => shake > 0 ? Matrix.CreateTranslation(shakeSign * shake, shakeSign * shake, 0) : Matrix.Identity;
+		/// <summary>obj_shake flips side every Deltarune frame; between frames it swings through the middle.</summary>
+		private Matrix ShakeMatrix
+		{
+			get
+			{
+				if (shake <= 0)
+					return Matrix.Identity;
+				float offset = shake * (float)Math.Cos(time * MathHelper.Pi / TicksPerFrame);
+				return Matrix.CreateTranslation(offset, offset, 0);
+			}
+		}
 
 		// ---- effects ----
 
 		private void AddEffect(BattleEffect e) => effects.Add(e);
 
 		/// <summary>Shakes the battle screen (obj_shake), for slams and explosions in attack patterns.</summary>
-		public void ShakeScreen(int amount) => shake = Math.Max(shake, amount);
+		public void ShakeScreen(float amount) => shake = Math.Max(shake, amount);
 
 		public void ShowMercyGain(float amount)
 		{

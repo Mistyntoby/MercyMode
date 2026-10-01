@@ -8,13 +8,13 @@ using MercyMode.Deltarune;
 namespace MercyMode.Battle
 {
 	/// <summary>
-	/// A short animation on the battle screen. <see cref="Frame"/> runs once per Deltarune frame (every other
-	/// tick) so the motion matches the original's per-frame numbers.
+	/// A short animation on the battle screen. <see cref="Step"/> runs every tick with <c>dt</c> in Deltarune frames
+	/// (0.5 at 60 fps): the motion follows the original's per-frame numbers, drawn at Terraria's frame rate.
 	/// </summary>
 	public abstract class BattleEffect
 	{
 		public bool Done;
-		public abstract void Frame();
+		public abstract void Step(float dt);
 		public abstract void Draw();
 	}
 
@@ -87,9 +87,11 @@ namespace MercyMode.Battle
 		private float stretch = 0.2f;
 		private bool stretchGo = true;
 		private float kill;
-		private int killTimer;
+		private float killTimer;
 		private bool killActive;
-		private int delay, delayTimer;
+		private readonly int delay;
+		private float delayTimer;
+		private bool launched;
 
 		/// <param name="x">Left of the writer: text is right-aligned at x + 30, like Deltarune's.</param>
 		public DamageNumber(float x, float y, int number, Color color, int message = -1, int delay = 2)
@@ -102,22 +104,23 @@ namespace MercyMode.Battle
 			this.delay = delay;
 		}
 
-		public override void Frame()
+		public override void Step(float dt)
 		{
-			delayTimer++;
-			if (delayTimer == delay)
+			delayTimer += dt;
+			if (!launched && delayTimer >= delay)
 			{
+				launched = true;
 				vspeed = -5 - Main.rand.NextFloat(2f);
 				hspeed = 10;
 				vstart = vspeed;
 			}
-			if (delayTimer < delay)
+			if (!launched)
 				return;
 
-			if (hspeed > 0) hspeed -= 1;
+			if (hspeed > 0) hspeed -= dt;
 			if (Math.Abs(hspeed) < 1) hspeed = 0;
 			if (bounces < 2)
-				vspeed += 1;
+				vspeed += dt;
 			if (y > ystart && bounces < 2 && !killActive)
 			{
 				y = ystart;
@@ -130,29 +133,29 @@ namespace MercyMode.Battle
 				y = ystart;
 			}
 			if (stretchGo)
-				stretch += 0.4f;
+				stretch += 0.4f * dt;
 			if (stretch >= 1.2f)
 			{
 				stretch = 1f;
 				stretchGo = false;
 			}
-			killTimer++;
+			killTimer += dt;
 			if (killTimer > 35)
 				killActive = true;
 			if (killActive)
 			{
-				kill += 0.08f;
-				y -= 4;
+				kill += 0.08f * dt;
+				y -= 4 * dt;
 			}
 			if (kill > 1)
 				Done = true;
-			x += hspeed;
-			y += vspeed;
+			x += hspeed * dt;
+			y += vspeed * dt;
 		}
 
 		public override void Draw()
 		{
-			if (delayTimer < delay)
+			if (!launched)
 				return;
 			var scale = new Vector2(2 - stretch, stretch + kill);
 			Color c = color * (1 - kill);
@@ -191,9 +194,10 @@ namespace MercyMode.Battle
 		private float stretch = 0.2f;
 		private bool stretchGo = true;
 		private float kill;
-		private int killTimer;
+		private float killTimer;
 		private bool killActive;
-		private int delayTimer;
+		private float delayTimer;
+		private bool launched;
 
 		public MercyGainPopup(Vector2 center, float amount)
 		{
@@ -202,24 +206,25 @@ namespace MercyMode.Battle
 			this.amount = Math.Round(amount).ToString(System.Globalization.CultureInfo.InvariantCulture);
 		}
 
-		public override void Frame()
+		public override void Step(float dt)
 		{
-			delayTimer++;
-			if (delayTimer == 2)
+			delayTimer += dt;
+			if (!launched && delayTimer >= 2f)
 			{
+				launched = true;
 				vspeed = -5f - Main.rand.NextFloat(2f);
 				hspeed = 10f;
 				vstart = vspeed;
 			}
-			if (delayTimer < 2)
+			if (!launched)
 				return;
 
 			if (hspeed > 0f)
-				hspeed -= 1f;
+				hspeed -= dt;
 			if (Math.Abs(hspeed) < 1f)
 				hspeed = 0f;
 			if (bounces < 2)
-				vspeed += 1f;
+				vspeed += dt;
 			if (y > ystart && bounces < 2 && !killActive)
 			{
 				y = ystart;
@@ -232,29 +237,29 @@ namespace MercyMode.Battle
 				y = ystart;
 			}
 			if (stretchGo)
-				stretch += 0.4f;
+				stretch += 0.4f * dt;
 			if (stretch >= 1.2f)
 			{
 				stretch = 1f;
 				stretchGo = false;
 			}
-			killTimer++;
+			killTimer += dt;
 			if (killTimer > 35)
 				killActive = true;
 			if (killActive)
 			{
-				kill += 0.08f;
-				y -= 4f;
+				kill += 0.08f * dt;
+				y -= 4f * dt;
 			}
 			if (kill > 1f)
 				Done = true;
-			x += hspeed;
-			y += vspeed;
+			x += hspeed * dt;
+			y += vspeed * dt;
 		}
 
 		public override void Draw()
 		{
-			if (delayTimer < 2)
+			if (!launched)
 				return;
 			Vector2 scale = new(2f - stretch, stretch + kill);
 			float alpha = 1f - kill;
@@ -285,7 +290,7 @@ namespace MercyMode.Battle
 	public class HeartBurst : BattleEffect
 	{
 		private readonly Vector2 center;
-		private int burst;
+		private float burst;
 
 		/// <param name="heartTopLeft">The heart's x/y (top-left); the burst is centred 9 px in.</param>
 		public HeartBurst(Vector2 heartTopLeft)
@@ -293,9 +298,10 @@ namespace MercyMode.Battle
 			center = heartTopLeft + new Vector2(9, 9);
 		}
 
-		public override void Frame()
+		public override void Step(float dt)
 		{
-			if (++burst > 10)
+			burst += dt;
+			if (burst > 10)
 				Done = true;
 		}
 
@@ -324,7 +330,7 @@ namespace MercyMode.Battle
 		private float alpha = 2f;
 		private float angle;
 		private float frame;
-		private int t;
+		private float t;
 		private readonly int fadeFrom;
 
 		public StarParticle(Vector2 pos, Vector2 vel, Vector2 accel, float friction, float spin, Color color, int fadeFrom)
@@ -339,18 +345,19 @@ namespace MercyMode.Battle
 			angle = Main.rand.NextFloat(360f);
 		}
 
-		public override void Frame()
+		public override void Step(float dt)
 		{
-			t++;
-			vel += accel;
-			if (friction > 0 && vel != Vector2.Zero)
-				vel = vel.Length() <= friction ? Vector2.Zero : vel - Vector2.Normalize(vel) * friction;
-			pos += vel;
-			frame += 0.25f;
+			t += dt;
+			vel += accel * dt;
+			float f = friction * dt;
+			if (f > 0 && vel != Vector2.Zero)
+				vel = vel.Length() <= f ? Vector2.Zero : vel - Vector2.Normalize(vel) * f;
+			pos += vel * dt;
+			frame += 0.25f * dt;
 			if (t >= fadeFrom)
 			{
-				angle += spin;
-				alpha -= 0.1f;
+				angle += spin * dt;
+				alpha -= 0.1f * dt;
 			}
 			if (alpha <= 0)
 				Done = true;
@@ -376,11 +383,11 @@ namespace MercyMode.Battle
 			hspeed = 2 + Main.rand.NextFloat(4f);
 		}
 
-		public override void Frame()
+		public override void Step(float dt)
 		{
-			hspeed += 0.25f;
-			pos.X += hspeed;
-			frame += 0.25f;
+			hspeed += 0.25f * dt;
+			pos.X += hspeed * dt;
+			frame += 0.25f * dt;
 			if (frame >= 5 || pos.X > BattleConstants.ScreenWidth + 20)
 				Done = true;
 		}
@@ -400,7 +407,7 @@ namespace MercyMode.Battle
 	{
 		private readonly EnemySnapshot snap;
 		private readonly List<StarParticle> stars = new();
-		private int t, afterimage, tone, neotone;
+		private float t, afterimage, tone, neotone;
 
 		public SpareAnimation(EnemySnapshot snap)
 		{
@@ -408,11 +415,14 @@ namespace MercyMode.Battle
 			DeltaruneAssets.Play("spare", Terraria.ID.SoundID.Item4);
 		}
 
-		public override void Frame()
+		public override void Step(float dt)
 		{
 			if (t >= 6 && t <= 26)
-				afterimage++;
-			if (t >= 1 && t <= 5)
+				afterimage += dt;
+			// Two stars per Deltarune frame between frames 1 and 5: spawn when t reaches a whole frame
+			float next = t + dt;
+			bool newFrame = (int)next != (int)t;
+			if (newFrame && next >= 1 && next < 6)
 			{
 				Rectangle area = Area();
 				for (int i = 0; i < 2; i++)
@@ -423,13 +433,17 @@ namespace MercyMode.Battle
 				}
 			}
 			foreach (var s in stars)
-				s.Frame();
+				s.Step(dt);
 			stars.RemoveAll(s => s.Done);
 			if (t >= 5 && t < 10)
-				tone++;
-			if (t >= 9 && ++neotone >= 30)
-				Done = true;
-			t++;
+				tone += dt;
+			if (t >= 9)
+			{
+				neotone += dt;
+				if (neotone >= 30)
+					Done = true;
+			}
+			t += dt;
 		}
 
 		private Rectangle Area()
@@ -466,8 +480,8 @@ namespace MercyMode.Battle
 		private readonly EnemySnapshot snap;
 		private readonly int bsize, xs, ys;
 		private readonly float[,] bx, bspeed, bsin;
-		private int redup;
-		private int t;
+		private float redup;
+		private float t;
 
 		public DeathAnimation(EnemySnapshot snap)
 		{
@@ -484,18 +498,17 @@ namespace MercyMode.Battle
 					bsin[i, j] = 4 + j * 3 - i;
 		}
 
-		public override void Frame()
+		public override void Step(float dt)
 		{
-			t++;
-			if (redup < 10)
-				redup++;
+			t += dt;
+			redup = Math.Min(10f, redup + dt);
 			for (int i = 0; i <= xs; i++)
 				for (int j = 0; j <= ys; j++)
 				{
 					if (bsin[i, j] <= 0)
-						bspeed[i, j] += 1;
-					bx[i, j] += bspeed[i, j];
-					bsin[i, j] -= 1;
+						bspeed[i, j] += dt;
+					bx[i, j] += bspeed[i, j] * dt;
+					bsin[i, j] -= dt;
 				}
 			if (bspeed[0, ys] >= 12)
 				Done = true;
