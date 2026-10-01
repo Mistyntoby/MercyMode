@@ -210,11 +210,17 @@ namespace MercyMode.Battle
 			}
 			set
 			{
+				float before = Mercy;
 				mercy = MathHelper.Clamp(value, 0f, 100f);
 				if (Npc.active)
 					Npc.GetGlobalNPC<MercyGlobalNPC>().Mercy = mercy;
+				// Multiplayer: the server adds it up for the whole party
+				Net.BattleNet.SendAddMercy(Npc, mercy - before);
 			}
 		}
+
+		/// <summary>MERCY as the server has it (multiplayer), without sending it back.</summary>
+		public void SetMercyQuiet(float value) => mercy = MathHelper.Clamp(value, 0f, 100f);
 
 		/// <summary>
 		/// Bosses' ACTs give this share of their listed MERCY, so sparing a boss takes about as many turns as beating it

@@ -25,7 +25,7 @@ namespace MercyMode.Battle
 	/// </summary>
 	public partial class BattleSystem : ModSystem
 	{
-		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death }
+		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting }
 		private enum Choice { Fight, Act, Item, Spare, Defend }
 
 		public static BattleSystem Instance => ModContent.GetInstance<BattleSystem>();
@@ -139,7 +139,7 @@ namespace MercyMode.Battle
 
 		public static bool CanStart(NPC npc, Player player, bool ignoreGrace = false)
 		{
-			if (Active || !MercyMode.IsSingleplayer || player.whoAmI != Main.myPlayer || player.dead)
+			if (Active || !(MercyMode.IsSingleplayer || Net.BattleNet.Online) || player.whoAmI != Main.myPlayer || player.dead)
 				return false;
 			var config = ModContent.GetInstance<MercyConfig>();
 			if (config != null && !config.TurnBasedBattles)
@@ -152,15 +152,38 @@ namespace MercyMode.Battle
 		public static void TryStart(NPC npc, Player player, string reason = "")
 		{
 			bool command = reason == "command";
-			if (CanStart(npc, player, command))
-				Instance.Start(EncounterRegistry.ResolveRoot(npc), reason);
+			if (!CanStart(npc, player, command))
+				return;
+			NPC root = EncounterRegistry.ResolveRoot(npc);
+			// Multiplayer: the server sets the battle up (and pulls nearby players in), then tells us to start
+			if (Net.BattleNet.Online)
+			{
+				Net.BattleNet.RequestBattle(root, Instance.GatherEnemies(root));
+				return;
+			}
+			Instance.Start(root, reason);
 		}
 
-		private void Start(NPC root, string reason)
+		/// <summary>Multiplayer: the server put this player in a battle with these enemies. False if it can't start.</summary>
+		internal bool StartNet(List<(NPC Npc, float Mercy)> roots)
+		{
+			if (Player.dead || ModContent.GetInstance<MercyConfig>()?.TurnBasedBattles == false)
+				return false;
+			Start(roots[0].Npc, "multiplayer", roots.Select(r => r.Npc).ToList());
+			foreach (BattleEnemy e in enemies)
+			{
+				var r = roots.FirstOrDefault(x => x.Npc == e.E.Npc);
+				if (r.Npc != null)
+					e.E.SetMercyQuiet(r.Mercy);
+			}
+			return true;
+		}
+
+		private void Start(NPC root, string reason, List<NPC> given = null)
 		{
 			boss = root;
 			// The enemy, plus nearby ones (a squad, during an event) for regular fights; the first is the target
-			SetUpEnemies(root);
+			SetUpEnemies(root, given);
 			time = 0;
 			battleOver = false;
 			defending = false;
@@ -211,11 +234,15 @@ namespace MercyMode.Battle
 					p.Kill();
 
 			npcVelocities.Clear();
-			foreach (NPC n in Main.ActiveNPCs)
-				npcVelocities[n.whoAmI] = (n.type, n.velocity);
 			projVelocities.Clear();
-			foreach (Projectile p in Main.ActiveProjectiles)
-				projVelocities[p.whoAmI] = (p.type, p.velocity);
+			// In multiplayer the server holds (and later releases) the battle's enemies; nothing else stops
+			if (!Net.BattleNet.Online)
+			{
+				foreach (NPC n in Main.ActiveNPCs)
+					npcVelocities[n.whoAmI] = (n.type, n.velocity);
+				foreach (Projectile p in Main.ActiveProjectiles)
+					projVelocities[p.whoAmI] = (p.type, p.velocity);
+			}
 			playerPosition = Player.position;
 			battleLife = Player.statLife;
 			CreatePlayerHeadPortrait();
@@ -259,6 +286,7 @@ namespace MercyMode.Battle
 			}
 			npcVelocities.Clear();
 			projVelocities.Clear();
+			Net.BattleNet.LeaveBattle();
 
 			music?.Stop();
 			music?.Dispose();
@@ -407,8 +435,15 @@ namespace MercyMode.Battle
 			}
 			// Enemies gone without us ending the battle (despawned, killed some other way)
 			foreach (BattleEnemy en in enemies)
+			{
 				if (!en.Out && !en.E.Alive && !(en == targetEnemy && phase is Phase.FightBar or Phase.FightResult))
+				{
 					en.Out = true;
+					// Multiplayer: another party member finished it off
+					if (Net.BattleNet.Online && en.Override == null)
+						WithEnemy(en, PlayEnemyDeath);
+				}
+			}
 			if (LivingEnemies.Count == 0 && phase != Phase.Outro && phase != Phase.Message && phase != Phase.FightBar && phase != Phase.FightResult && phase != Phase.Death)
 			{
 				battleOver = true;
@@ -472,6 +507,7 @@ namespace MercyMode.Battle
 				case Phase.EnemyOutro: UpdateEnemyOutro(); break;
 				case Phase.Outro: UpdateOutro(); break;
 				case Phase.Death: UpdateSoulDeath(); break;
+				case Phase.Waiting: UpdateWaiting(); break;
 			}
 		}
 
@@ -605,6 +641,7 @@ namespace MercyMode.Battle
 		private void BeginPlayerTurn(bool keepText = false)
 		{
 			defending = false;
+			enemyTurnGranted = false;
 			faceAction = FaceNone;
 			if (heroPose == HeroPose.Defend)
 				SetHeroPose(HeroPose.Idle);
@@ -907,7 +944,11 @@ namespace MercyMode.Battle
 				BattleEnemy who = targetEnemy;
 				who.Out = true;
 				PlayEnemySpared();
-				encounter.Spare();
+				// Multiplayer: the server spares it for real (the loot drops there) and tells the party
+				if (Net.BattleNet.Online)
+					Net.BattleNet.SendSpare(encounter.Npc);
+				else
+					encounter.Spare();
 				if (LivingEnemies.Count == 0)
 				{
 					battleOver = true;
@@ -959,8 +1000,10 @@ namespace MercyMode.Battle
 
 		private void StartEnemyTurn()
 		{
-			if (battleOver)
+			// Nobody left (another party member finished the last one while this player read a message)
+			if (battleOver || LivingEnemies.Count == 0)
 			{
+				battleOver = true;
 				StartOutro();
 				return;
 			}
@@ -970,6 +1013,15 @@ namespace MercyMode.Battle
 				desperate.E.DesperationAnnounced = true;
 				ShakeScreen(3);
 				ShowMessages(new[] { $"* {desperate.E.Name} is fighting with everything it has left!" }, StartEnemyTurn);
+				return;
+			}
+			// Multiplayer: the enemies attack once the whole party has picked an action
+			if (Net.BattleNet.Online && !enemyTurnGranted && Net.BattleNet.Allies.Any())
+			{
+				Net.BattleNet.SendReady(faceAction);
+				SetPhase(Phase.Waiting);
+				text = WaitingText();
+				textShown = text.Length;
 				return;
 			}
 			Bullets.Clear();
@@ -1278,7 +1330,7 @@ namespace MercyMode.Battle
 			get
 			{
 				int top = (int)(ScreenHeight - panel - partyLift);
-				return new Rectangle(214, top, 212, 36);
+				return new Rectangle(PartyBoxX(Net.BattleNet.MyPartyIndex), top, 212, 36);
 			}
 		}
 
@@ -1355,6 +1407,7 @@ namespace MercyMode.Battle
 				DrawBackground(left - BackgroundBleed, top - BackgroundBleed,
 					width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
 				DrawEnemy(sb, m);
+				DrawAllies(sb, m);
 				DrawHero(sb, m);
 				DrawEffects();
 				if (arenaBlend > 0f)
@@ -1653,6 +1706,7 @@ namespace MercyMode.Battle
 
 			// The purple separator goes under the party box so the raised nameplate covers it.
 			DrDraw.Rect(left, top - 2, width, 2, PanelLine);
+			DrawAllyBoxes(top);
 			DrawPartyBox();
 
 			float textY = top + 48; // 376 when the panel is fully up
@@ -1661,6 +1715,7 @@ namespace MercyMode.Battle
 				case Phase.Intro:
 				case Phase.Menu:
 				case Phase.Message:
+				case Phase.Waiting:
 					DrDraw.Text(text.Substring(0, Math.Min(text.Length, (int)textShown)), 30, textY, Color.White);
 					break;
 				case Phase.WeaponSelect:

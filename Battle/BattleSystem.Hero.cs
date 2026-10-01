@@ -361,7 +361,7 @@ namespace MercyMode.Battle
 		/// the hand; items that Terraria doesn't draw while used (shortswords, spears...) and potions are drawn at
 		/// the hand position of a posed arm.
 		/// </summary>
-		private void DrawPlayerPose(SpriteBatch sb, Matrix m, Player p, Vector2 feet, float scale, HeroPose pose, float timer, float shadow)
+		private void DrawPlayerPose(SpriteBatch sb, Matrix m, Player p, Vector2 feet, float scale, HeroPose pose, float timer, float shadow, bool ally = false)
 		{
 			// Save everything we touch
 			Rectangle oldBody = p.bodyFrame, oldLeg = p.legFrame;
@@ -481,7 +481,7 @@ namespace MercyMode.Battle
 						break;
 				}
 			}
-			if (hurtTimer >= 0 && shadow == 0f && pose != HeroPose.Defend)
+			if (!ally && hurtTimer >= 0 && shadow == 0f && pose != HeroPose.Defend)
 				bodyFrame = legFrame = 5;
 
 			p.bodyFrame.Y = bodyFrame * p.bodyFrame.Height;

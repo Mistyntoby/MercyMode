@@ -373,8 +373,36 @@ Resolution 640x480. All sizes below in those pixels.
   `PoseWorm` lays them out as a slithering S leading left. Before, only the head sprite showed. Lab `worm-chains`.
 - Lab: `parts-skeletron`, `parts-twins`, `parts-golem`.
 
+## Multiplayer party battles (2026-10-01, untested with real clients)
+- `Battle/Net/BattleNet.cs` (server bookkeeping + packets, `MercyMode.HandlePacket`) and `Battle/BattleSystem.Net.cs`
+  (battle-screen side). Each client runs its own battle screen; the server only tracks what everyone must agree on.
+- Starting: touching/hitting an enemy on a client sends `RequestBattle` (roots from `GatherEnemies`). The server makes a
+  battle, pulls in up to 2 more players within 60 tiles of the starter who aren't fighting (party of 3, like
+  Deltarune), freezes ONLY that battle's NPCs (roots + `Encounter.Members()`, velocity saved/restored) and tells
+  everyone which NPCs are frozen, then sends `JoinBattle` (roots + server MERCY) and `Party`. Walking into a frozen enemy
+  later sends `RequestJoin` (joins if the party has room). A client that can't start (dead, battles off, already
+  fighting) answers `Left`.
+- Turns: after a player picks an action, `StartEnemyTurn` sends `Ready` (with the face icon) and waits in
+  `Phase.Waiting` ("* Waiting for X..."). The server sends `BeginEnemyTurn` when the whole party is ready, or after
+  60 s so one AFK player can't stall the rest. Everyone dodges their own bullets in their own box (bullets aren't synced).
+- Synced: enemy HP (FIGHT's `SimpleStrikeNPC` already syncs), MERCY (`Encounter.Mercy` setter sends the delta, server
+  adds and broadcasts the total), SPARE (server runs `Encounter.Spare()` so loot/downed flags/event progress happen
+  there; every party member gets `playerInteraction` so boss bags drop for a party that only ACTed), breaking a boss
+  core (`KillMembers`), FIGHT damage numbers (`PartyHit`). An enemy killed by someone else plays its death animation.
+- Not frozen in multiplayer: other NPCs, projectiles, time. Players in a battle are immune to the world as in
+  singleplayer; the server stops spawns near them. Outside-battle ACT/SPARE hotkeys are still singleplayer-only.
+- Drawing: party boxes sit side by side (one centred, three across the panel); allies stand at (70,146) and (70,292)
+  in Idle pose with a name/HP box showing the command icon they picked or "...".
+- `/mmbattle end` in multiplayer just leaves the battle; the other `/mmbattle` test commands stay singleplayer.
+- Lab `mp-server` drives the server side directly with fake players (party pick-up and limits, freezing only the
+  battle's NPCs, barrier, leave, timeout, MERCY cap, spare, KillMembers scope, unfreeze/velocity restore). The client
+  side (packets over a real connection, drawing allies) has NOT been run: needs a host + at least one more client.
+- Known gaps: enemy HP isn't scaled for party size; enemy pose tweaks are local and can snap on NPC sync; joining
+  only happens by touch (a frozen enemy can't be hit in the world).
+
 ## Log
 - 2026-09-30: recon, decompile, numbers above. Implemented battle loop for Eye of Cthulhu, verified in lab (above).
 - 2026-10-01: enemy squads (up to 3 per battle), armies with squad morale, spares count toward events; headless lab.
 - 2026-10-01: SOUL modes (Deltarune yellow; Undertale blue/green/purple), new patterns and effects, boss desperation; lab sweeps of every attack.
 - 2026-10-01: breakable boss parts as FIGHT targets; shortsword stab; purple string and yellow charge animations.
+- 2026-10-01: multiplayer party battles (server bookkeeping lab-tested; clients untested).

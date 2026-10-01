@@ -70,7 +70,8 @@ namespace MercyMode
 
 		public static void Spare(NPC root)
 		{
-			Deltarune.DeltaruneAssets.Play("spare", SoundID.Item4, root.Center);
+			if (!Main.dedServ)
+				Deltarune.DeltaruneAssets.Play("spare", SoundID.Item4, root.Center);
 			CombatText.NewText(root.Hitbox, MercyMode.MercyYellow, "SPARED", dramatic: true);
 			MercyMode.Say($"* {root.FullName} was spared!", MercyMode.MercyYellow);
 

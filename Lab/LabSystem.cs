@@ -15,6 +15,7 @@ using Terraria.ID;
 using Terraria.ModLoader;
 using MercyMode.Battle;
 using MercyMode.Battle.Encounters;
+using MercyMode.Battle.Net;
 using Phase = MercyMode.Battle.BattleSystem.Phase;
 
 namespace MercyMode.Lab
@@ -188,6 +189,7 @@ namespace MercyMode.Lab
 				("boss-spare", BossSpare),
 				("no-world-hits", NoWorldHits),
 				("multi-hit-spills-over", MultiHitSpillsOver),
+				("mp-server", MultiplayerServer),
 			};
 			string want = Wanted.Trim().ToLowerInvariant();
 			foreach (var s in all)
@@ -630,6 +632,116 @@ namespace MercyMode.Lab
 		}
 
 		/// <summary>A swing or shot from before the battle (or still in the world) never hurts the enemy during it.</summary>
+		/// <summary>
+		/// The multiplayer server's bookkeeping, run directly (the lab has no game clients): who gets pulled into a
+		/// battle, which NPCs freeze, the ready barrier and its timeout, shared MERCY, spares and leaving.
+		/// </summary>
+		private IEnumerable MultiplayerServer()
+		{
+			BattleNet.Reset();
+			BattleNet.LabCapture = true;
+			BattleNet.LabSent.Clear();
+			var fakes = new[] { 1, 2, 3, 4 };
+			try
+			{
+				// Players 1, 2 and 4 stand nearby, 3 far away
+				foreach (int i in fakes)
+				{
+					var f = new Player { name = "Ally" + i, whoAmI = i };
+					Main.player[i] = f;
+					f.active = true;
+					f.statLifeMax = f.statLifeMax2 = f.statLife = 100;
+					f.position = P.position + new Vector2(i == 3 ? 4000f : 40f * i, 0f);
+				}
+				NPC Spawn(int x) => Main.npc[NPC.NewNPC(P.GetSource_FromThis(), (int)P.Center.X + x, (int)P.Center.Y - 40, NPCID.Zombie)];
+				NPC z1 = Spawn(200), z2 = Spawn(-200), z3 = Spawn(260);
+				z1.velocity = new Vector2(3f, 0f);
+				z2.velocity = new Vector2(-2f, 1f);
+
+				int id = BattleNet.ServerStartBattle(0, new List<NPC> { z1, z3 });
+				var party = BattleNet.LabPlayers(id);
+				Log($"  battle {id}: party {string.Join(",", party)}; sent {string.Join(" ", BattleNet.LabSent)}");
+				Check(id > 0, "no battle was made");
+				Check(party.SequenceEqual(new[] { 0, 1, 2 }), $"party {string.Join(",", party)}, expected 0,1,2 (3 is far, 4 is past the limit)");
+				Check(BattleNet.IsFrozen(z1) && BattleNet.IsFrozen(z3), "the battle's enemies aren't frozen");
+				Check(!BattleNet.IsFrozen(z2), "an enemy outside the battle froze");
+				Check(z1.velocity == Vector2.Zero, "a frozen enemy kept moving");
+				Check(new[] { 0, 1, 2 }.All(i => BattleNet.LabSent.Contains($"JoinBattle>{i}")), "not every party member was told to join");
+				Check(BattleNet.LabSent.Contains("Frozen>all"), "clients weren't told what froze");
+				Check(BattleNet.InBattle(1) && !BattleNet.InBattle(3), "InBattle is wrong");
+
+				// A second battle can't take the same enemies, and a full party takes no one else
+				Check(BattleNet.ServerStartBattle(4, new List<NPC> { z1 }) == -1, "a second battle took a frozen enemy");
+				BattleNet.ServerJoin(4, z1);
+				Check(!BattleNet.InBattle(4), "a fourth player joined a full party");
+
+				// The enemies attack only once all three have picked
+				BattleNet.LabSent.Clear();
+				BattleNet.ServerReady(0, id, 1);
+				BattleNet.ServerReady(1, id, 6);
+				Check(!BattleNet.LabSent.Any(m => m.StartsWith("BeginEnemyTurn")), "the enemy turn started before everyone was ready");
+				BattleNet.ServerReady(2, id, 10);
+				Check(BattleNet.LabSent.Count(m => m.StartsWith("BeginEnemyTurn")) == 3, "the enemy turn didn't go out to all three");
+
+				// MERCY adds up across the party, capped at 100
+				BattleNet.ServerAddMercy(z1, 40f);
+				BattleNet.ServerAddMercy(z1, 40f);
+				Check(Math.Abs(z1.GetGlobalNPC<MercyGlobalNPC>().Mercy - 80f) < 0.01f, $"MERCY {z1.GetGlobalNPC<MercyGlobalNPC>().Mercy}, expected 80");
+				BattleNet.ServerAddMercy(z1, 40f);
+				Check(z1.GetGlobalNPC<MercyGlobalNPC>().Mercy == 100f, "MERCY went past 100");
+
+				// Someone leaves: the rest no longer wait for them
+				BattleNet.ServerLeave(2, id);
+				BattleNet.LabSent.Clear();
+				BattleNet.ServerReady(0, id, 1);
+				BattleNet.ServerReady(1, id, 1);
+				Check(BattleNet.LabSent.Count(m => m.StartsWith("BeginEnemyTurn")) == 2, "the enemy turn waited for a player who left");
+
+				// One AFK player: the turn starts anyway after the timeout
+				BattleNet.LabSent.Clear();
+				BattleNet.ServerReady(0, id, 1);
+				for (int t = 0; t <= BattleNet.ReadyTimeoutTicks + 1; t++)
+					BattleNet.ServerUpdate();
+				Check(BattleNet.LabSent.Count(m => m.StartsWith("BeginEnemyTurn")) == 2, "the wait never timed out");
+
+				// A spare goes through the server: the enemy leaves, the others hear about it (not the one who spared)
+				BattleNet.LabSent.Clear();
+				BattleNet.ServerSpare(0, z1);
+				Check(!z1.active, "the spared enemy is still there");
+				Check(BattleNet.LabSent.Contains("Spared>1") && !BattleNet.LabSent.Contains("Spared>0"), $"spare sent {string.Join(" ", BattleNet.LabSent)}");
+
+				// Only a battle's own enemies can be killed through it
+				BattleNet.ServerKill(0, new List<NPC> { z2 });
+				Check(z2.active, "KillMembers killed an enemy outside the battle");
+				BattleNet.ServerKill(0, new List<NPC> { z3 });
+				Check(!z3.active, "KillMembers didn't kill a battle member");
+
+				// Everyone leaves: the battle closes and its enemies are let go
+				BattleNet.LabSent.Clear();
+				BattleNet.ServerLeave(0, id);
+				BattleNet.ServerDisconnect(1);
+				Check(BattleNet.LabBattleCount == 0, "the battle stayed open with nobody in it");
+				Check(BattleNet.LabSent.Contains("Unfrozen>all"), "clients weren't told the battle ended");
+
+				// A frozen enemy gets its velocity back when the battle ends
+				int id2 = BattleNet.ServerStartBattle(3, new List<NPC> { z2 });
+				Check(BattleNet.LabPlayers(id2).SequenceEqual(new[] { 3 }), "the far player's battle pulled in others");
+				Check(z2.velocity == Vector2.Zero && BattleNet.IsFrozen(z2), "z2 didn't freeze");
+				BattleNet.ServerLeave(3, id2);
+				Check(z2.velocity == new Vector2(-2f, 1f), $"z2's velocity came back as {z2.velocity}");
+				Check(!BattleNet.IsFrozen(z2), "z2 stayed frozen");
+				Log("  server bookkeeping ok");
+			}
+			finally
+			{
+				foreach (int i in fakes)
+					Main.player[i].active = false;
+				BattleNet.LabCapture = false;
+				BattleNet.Reset();
+			}
+			yield break;
+		}
+
 		private IEnumerable NoWorldHits()
 		{
 			// Mid-swing and with an arrow already flying when the battle starts

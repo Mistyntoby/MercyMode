@@ -132,10 +132,10 @@ namespace MercyMode.Battle
 			_ => new[] { ((Vector2)default, (Vector2)default) },
 		};
 
-		private void SetUpEnemies(NPC root)
+		private void SetUpEnemies(NPC root, List<NPC> given = null)
 		{
 			enemies.Clear();
-			List<NPC> npcs = GatherEnemies(root);
+			List<NPC> npcs = given ?? GatherEnemies(root);
 			var spots = Formation(npcs.Count);
 			for (int i = 0; i < npcs.Count; i++)
 			{

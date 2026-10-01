@@ -121,7 +121,7 @@ namespace MercyMode
 				return true;
 			if (!warnedMultiplayer)
 			{
-				MercyMode.Say("* Mercy Mode only works in singleplayer for now.", MercyMode.Gray);
+				MercyMode.Say("* ACT, SPARE and Heal Prayer outside battles only work in singleplayer for now (battles work in multiplayer).", MercyMode.Gray);
 				warnedMultiplayer = true;
 			}
 			return false;
