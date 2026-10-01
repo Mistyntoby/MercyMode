@@ -180,7 +180,7 @@ Resolution 640x480. All sizes below in those pixels.
   Patterns built on Box fill it. The outro holds until the arena has closed (clamping the SOUL in), then does the
   normal spin. `Slashes`: bursts of sharp beams (Beam.Make sharp: full width at once, thins out, only hurts for
   the first half), the first through the SOUL, staggered 9 ticks, FIGHT slash sound + shake. Used by EoC/Skeletron/
-  Deerclops in phase 2, WoF always, generic bosses in Hardmode or under half HP. Turn 190 frames.
+  Deerclops in phase 2, WoF always, generic bosses in Hardmode or under half HP. Turn 300 frames (~10 s).
 - Built in the cloud against tModLoader's release DLLs (0 warnings, 0 errors); beam collision unit-tested.
   NOT yet verified in game: needs the lab loop above.
 
