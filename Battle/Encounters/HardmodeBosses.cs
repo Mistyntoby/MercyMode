@@ -168,6 +168,7 @@ namespace MercyMode.Battle.Encounters
 		public override bool ForceOpaque => true;
 		// Its head just right of the bullet box at the hero's scale, the body coming out of the screen's right edge
 		public override bool LeadWithDrawNpc => true;
+		public override float LeadScale => 1.2f;
 		public override Vector2 DrawCenter => new(440f, 170f);
 		public override bool SwayParts => false;
 		public override IEnumerable<NPC> DrawParts() => BossKit.WormChain(DrawNpc, 9);

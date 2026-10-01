@@ -75,7 +75,7 @@ namespace MercyMode.Battle
 			float glide = FlyProgress();
 			// Fits the encounter's area on the battle screen, no bigger than the hero's scale
 			Vector2 area = encounter.CompositeArea;
-			float fit = encounter.LeadWithDrawNpc ? BattleCharacterScale
+			float fit = encounter.LeadWithDrawNpc ? encounter.LeadScale
 				: Math.Min(BattleCharacterScale, Math.Min(area.X / Math.Max(1, bounds.Width), area.Y / Math.Max(1, bounds.Height)));
 			float s = MathHelper.Lerp(WorldPixelScale(), fit, glide);
 
