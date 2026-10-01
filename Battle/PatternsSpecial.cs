@@ -145,6 +145,35 @@ namespace MercyMode.Battle
 			battle.Spawn(Bone(new Vector2(x, top + height / 2f), new Vector2(fromRight ? -Speed : Speed, 0f), height, Color));
 		}
 
+		/// <summary>
+		/// Deltarune's bone sprite, if it was found, stretched to a height without stretching its ends: the top and
+		/// bottom caps are drawn as they are and the shaft in between is stretched (a sideways sprite is turned upright).
+		/// </summary>
+		private static bool DrawBoneSprite(float x, float top, float height, Color color)
+		{
+			if (Deltarune.DeltaruneAssets.Sprite("bone") is not Deltarune.DrSprite s)
+				return false;
+			var tex = s.Frame(0);
+			bool sideways = tex.Width > tex.Height;
+			int length = sideways ? tex.Width : tex.Height, thickness = sideways ? tex.Height : tex.Width;
+			int cap = Math.Max(1, Math.Min(length / 3, thickness));
+			float scale = Math.Min(1f, 10f / Math.Max(1, thickness)) * 2f; // about 10-20 px wide like the drawn bone
+			float capH = cap * scale;
+			float shaft = Math.Max(0f, height - capH * 2f);
+			Rectangle Part(int from, int len) => sideways ? new Rectangle(from, 0, len, tex.Height) : new Rectangle(0, from, tex.Width, len);
+			void Draw(Rectangle src, float y, float h)
+			{
+				float rot = sideways ? MathHelper.PiOver2 : 0f;
+				var scaleV = sideways ? new Vector2(h / src.Width, scale) : new Vector2(scale, h / src.Height);
+				var origin = sideways ? new Vector2(0f, src.Height / 2f) : new Vector2(src.Width / 2f, 0f);
+				DrDraw.Sb.Draw(tex, new Vector2(x, y), src, color, rot, origin, scaleV, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
+			}
+			Draw(Part(0, cap), top, capH);
+			Draw(Part(cap, length - cap * 2), top + capH, shaft);
+			Draw(Part(length - cap, cap), top + capH + shaft, capH);
+			return true;
+		}
+
 		/// <summary>A vertical bone of a given height centred on a point.</summary>
 		public static Bullet Bone(Vector2 centre, Vector2 vel, float height, Color color) => new()
 		{
@@ -156,6 +185,8 @@ namespace MercyMode.Battle
 			OnDraw = b =>
 			{
 				float top = b.Position.Y - b.HitSize.Y / 2f, x = b.Position.X;
+				if (DrawBoneSprite(x, top, b.HitSize.Y, color))
+					return;
 				DrDraw.Rect(x - 3f, top + 3f, 6f, b.HitSize.Y - 6f, color);
 				DrDraw.Rect(x - 6f, top, 5f, 5f, color);
 				DrDraw.Rect(x + 1f, top, 5f, 5f, color);
