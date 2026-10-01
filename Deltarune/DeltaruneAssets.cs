@@ -74,6 +74,11 @@ namespace MercyMode.Deltarune
 			["item"] = new[] { "snd_item" },
 			["boost"] = new[] { "snd_boost" },
 			["mercyadd"] = new[] { "snd_mercyadd" },
+			// attack patterns
+			["bulletappear"] = new[] { "snd_spearappear" },
+			["bulletfire"] = new[] { "snd_spearrise" },
+			["impact"] = new[] { "snd_impact", "snd_screenshake" },
+			["explosion"] = new[] { "snd_badexplosion", "snd_explosion", "snd_bomb" },
 			// game over: the SOUL cracks, then shatters
 			["soulcrack"] = new[] { "snd_break1" },
 			["soulshatter"] = new[] { "snd_break2" },
@@ -452,7 +457,8 @@ namespace MercyMode.Deltarune
 		private static MercySoundRedirect SoundRedirectFor(string role, MercyConfig config) => role switch
 		{
 			"menumove" or "select" or "cantselect" or "error" or "text" => config.MenuSoundRedirect,
-			"hurt" or "damage" or "slash" or "crit" or "attack" => config.BattleSoundRedirect,
+			"hurt" or "damage" or "slash" or "crit" or "attack"
+				or "bulletappear" or "bulletfire" or "impact" or "explosion" => config.BattleSoundRedirect,
 			"act" or "heal" or "spare" or "item" or "boost" => config.ActionSoundRedirect,
 			"weaponpull" => config.BattleStartSoundRedirect,
 			"mercyadd" => config.MercyGainSoundRedirect,

@@ -43,6 +43,8 @@ namespace MercyMode.Battle
 
 		/// <summary>False for warnings and effects that can't hurt or be grazed.</summary>
 		public bool Harmful = true;
+		/// <summary>Disappears when it hits the SOUL (false for beams, which keep firing).</summary>
+		public bool DestroyOnHit = true;
 		/// <summary>Ticks before the bullet appears and starts moving (for chains like worm segments).</summary>
 		public int StartDelay;
 		public bool Waiting => StartDelay > 0;
@@ -57,9 +59,14 @@ namespace MercyMode.Battle
 		public Action<Bullet> OnUpdate;
 		/// <summary>Custom drawing instead of the sprite.</summary>
 		public Action<Bullet> OnDraw;
+		/// <summary>Custom collision (beams and other shapes that aren't a box around Position).</summary>
+		public Func<Bullet, Rectangle, bool> HitTest;
 
 		public Rectangle Hitbox => new(
 			(int)(Position.X - HitSize.X / 2f), (int)(Position.Y - HitSize.Y / 2f), (int)HitSize.X, (int)HitSize.Y);
+
+		/// <summary>Whether this bullet overlaps an area (the SOUL's hitbox, or its graze box).</summary>
+		public bool Touches(Rectangle area) => HitTest != null ? HitTest(this, area) : Hitbox.Intersects(area);
 
 		public void Update()
 		{

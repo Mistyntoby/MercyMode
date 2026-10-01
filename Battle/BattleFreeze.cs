@@ -86,7 +86,8 @@ namespace MercyMode.Battle
 		public override void HideDrawLayers(PlayerDrawSet drawInfo)
 		{
 			// The battle screen draws the character (gliding in and out of this spot); hide the world copy until it lands
-			if (!BattleSystem.Active || BattleSystem.DrawingHero || drawInfo.drawPlayer.whoAmI != Main.myPlayer)
+			// headOnlyRender: the nameplate portrait and map icons draw through here too; keep those
+			if (!BattleSystem.Active || BattleSystem.DrawingHero || drawInfo.headOnlyRender || drawInfo.drawPlayer.whoAmI != Main.myPlayer)
 				return;
 			foreach (PlayerDrawLayer layer in PlayerDrawLayerLoader.Layers)
 				layer.Hide();

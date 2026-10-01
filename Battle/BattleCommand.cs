@@ -11,7 +11,7 @@ namespace MercyMode.Battle
 	{
 		public override CommandType Type => CommandType.Chat;
 		public override string Command => "mmbattle";
-		public override string Usage => "/mmbattle [npc <id|name> | spawn [dx dy] | spawnnpc <id|name> | end | clear | heal | mercy <n> | kit | night | tp <0-100> | bosshp <n>]";
+		public override string Usage => "/mmbattle [npc <id|name> | spawn [dx dy] | spawnnpc <id|name> | end | clear | heal | hp <n> | mercy <n> | kit | night | tp <0-100> | bosshp <n> | turn <n>]";
 		public override string Description => "Start Mercy Mode battles for testing (no arguments: Eye of Cthulhu)";
 
 		public override void Action(CommandCaller caller, string input, string[] args)
@@ -37,7 +37,21 @@ namespace MercyMode.Battle
 					return;
 				case "heal":
 					player.statLife = player.statLifeMax2;
+					if (BattleSystem.Active)
+						BattleSystem.Instance.SetBattleLife(player.statLife);
 					caller.Reply("* HP restored.", MercyMode.TextWhite);
+					return;
+				case "hp" when args.Length == 2 && int.TryParse(args[1], out int life):
+					// e.g. "/mmbattle hp 1" then take a hit to see the SOUL break
+					player.statLife = Math.Clamp(life, 1, player.statLifeMax2);
+					if (BattleSystem.Active)
+						BattleSystem.Instance.SetBattleLife(player.statLife);
+					caller.Reply($"* HP set to {player.statLife}.", MercyMode.TextWhite);
+					return;
+				case "turn" when args.Length == 2 && int.TryParse(args[1], out int turn) && BattleSystem.Active:
+					// Attacks are picked by turn number, so this chooses the next enemy attack
+					BattleSystem.Instance.Encounter.Turn = Math.Max(0, turn);
+					caller.Reply($"* The next enemy turn uses attack {turn}.", MercyMode.TextWhite);
 					return;
 				case "night":
 					Main.dayTime = false;

@@ -92,7 +92,9 @@ namespace MercyMode.Battle.Encounters
 
 		public override EnemyAttack NextAttack(BattleSystem battle) => Cycle(
 			() => new Bouncers((p, v) => Shots.Ball(p, v, Gel, 0.7f, 1.2f), Hard ? 20 : 28).Lasting(TurnTicks),
-			() => new LaneDash((p, d) => Self(p, d, 34f, 1f), Hard ? 50 : 65) { FromTopOnly = true, Speed = 7f, LaneWidth = 36f }.Lasting(TurnTicks),
+			// It hops up and lands on you, splashing gel along the floor
+			() => new Slam((p, d) => Self(p, d, 34f, 1f), (p, v) => Shots.Ball(p, v, Gel, 0.6f), Hard ? 60 : 75)
+				{ Width = 40f, Shards = 1, Debris = 2 }.Lasting(TurnTicks),
 			() => new ClosingRing((p, v) => Shots.Ball(p, v, Gel, 0.6f), Hard ? 55 : 75) { Count = 12, Speed = 1f }.Lasting(TurnTicks));
 	}
 
@@ -132,7 +134,8 @@ namespace MercyMode.Battle.Encounters
 
 		public override EnemyAttack NextAttack(BattleSystem battle) => Cycle(
 			() => new Swoopers((p, v) => Self(p, v, 24f, 0.8f), Hard ? 18 : 26) { Speed = Hard ? 2.6f : 2.1f }.Lasting(TurnTicks),
-			() => new AimedBursts((p, v) => Shots.Ball(p, v, Shots.Red, 0.7f), Hard ? 30 : 42) { Count = Hard ? 4 : 3 }.Lasting(TurnTicks));
+			() => new AimedBursts((p, v) => Shots.Ball(p, v, Shots.Red, 0.7f), Hard ? 30 : 42) { Count = Hard ? 4 : 3 }.Lasting(TurnTicks),
+			() => new Converge((p, v) => Self(p, v, 18f, 0.7f), Hard ? 70 : 90) { Count = Hard ? 6 : 5, Speed = 3.6f, Radius = 70f }.Lasting(TurnTicks));
 	}
 
 	public class CasterEnemy : EnemyEncounter
@@ -151,7 +154,10 @@ namespace MercyMode.Battle.Encounters
 
 		public override EnemyAttack NextAttack(BattleSystem battle) => Cycle(
 			() => new Homing((p, v) => Shots.Ball(p, v, Shots.Purple, 0.8f), Hard ? 22 : 32) { Speed = 1.7f }.Lasting(TurnTicks),
-			() => new ClosingRing((p, v) => Shots.Ball(p, v, Shots.Purple, 0.7f), Hard ? 50 : 70) { Count = 14 }.Lasting(TurnTicks));
+			() => new ClosingRing((p, v) => Shots.Ball(p, v, Shots.Purple, 0.7f), Hard ? 50 : 70) { Count = 14 }.Lasting(TurnTicks),
+			// Magic orbs gather around you, then strike
+			() => new Converge((p, v) => Shots.Ball(p, v, Shots.Purple, 0.7f), Hard ? 60 : 80) { Count = Hard ? 8 : 6, Speed = 3.6f }.Lasting(TurnTicks),
+			() => new Beam(Hard ? 70 : 90) { Width = 12f, Color = Shots.Purple, FireSound = SoundID.Item8 }.Lasting(TurnTicks));
 	}
 
 	public class WormEnemy : EnemyEncounter
@@ -180,7 +186,9 @@ namespace MercyMode.Battle.Encounters
 
 		public override EnemyAttack NextAttack(BattleSystem battle) => Cycle(
 			() => new Snake(Head, (p, v) => Shots.Ball(p, v, Shots.Brown, 0.8f, 1.2f), Hard ? 70 : 95) { Segments = 7 }.Lasting(TurnTicks),
-			() => new Rain((p, v) => Shots.Ball(p, v, Shots.Brown, 0.6f), Hard ? 10 : 14) { Wobble = 0.2f }.Lasting(TurnTicks));
+			() => new Rain((p, v) => Shots.Ball(p, v, Shots.Brown, 0.6f), Hard ? 10 : 14) { Wobble = 0.2f }.Lasting(TurnTicks),
+			// Dirt falls from the ceiling in rows; follow the gap
+			() => new GapRows((p, v) => Shots.Ball(p, v, Shots.Brown, 0.6f), Hard ? 34 : 42) { Speed = 1.5f, GapSize = 50f }.Lasting(TurnTicks));
 	}
 
 	public class GenericEnemy : EnemyEncounter
@@ -200,6 +208,8 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle) => Cycle(
 			() => new AimedBursts((p, v) => Shots.Ball(p, v, Shots.Red, 0.7f), Hard ? 32 : 45) { Count = 3 }.Lasting(TurnTicks),
 			() => new Rain((p, v) => Shots.Ball(p, v, Color.White, 0.6f), Hard ? 9 : 13).Lasting(TurnTicks),
-			() => new SideShots((p, v) => Shots.Ball(p, v, Shots.Red, 0.7f), Hard ? 12 : 18) { Side = 0 }.Lasting(TurnTicks));
+			() => new SideShots((p, v) => Shots.Ball(p, v, Shots.Red, 0.7f), Hard ? 12 : 18) { Side = 0 }.Lasting(TurnTicks),
+			() => new Fireworks((p, v) => Shots.Ball(p, v, Color.White, 0.8f, 1.6f), (p, v) => Shots.Ball(p, v, Shots.Red, 0.6f), Hard ? 50 : 65)
+				{ Count = Hard ? 8 : 6 }.Lasting(TurnTicks));
 	}
 }
