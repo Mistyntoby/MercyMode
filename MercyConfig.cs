@@ -59,12 +59,12 @@ namespace MercyMode
 
 		[Range(0f, 1.5f)]
 		[Increment(0.05f)]
-		[DefaultValue(0.65f)]
+		[DefaultValue(0.45f)]
 		public float BattleSoundVolume;
 
 		[Range(0f, 1.5f)]
 		[Increment(0.05f)]
-		[DefaultValue(0.45f)]
+		[DefaultValue(0.25f)]
 		public float BattleMusicVolume;
 
 		[DefaultValue(MercySoundRedirect.Deltarune)]
