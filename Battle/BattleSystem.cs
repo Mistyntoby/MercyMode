@@ -421,12 +421,13 @@ namespace MercyMode.Battle
 			}
 			// Damp the panel toward its target instead of stepping 30 pixels per frame.
 			float panelTarget = panelDir > 0 ? PanelHeight : panelDir < 0 ? 0f : panel;
-			panel = MathHelper.Lerp(panel, panelTarget, 0.5f);
+			float panelEase = panelDir < 0 ? 0.68f : 0.5f;
+			panel = MathHelper.Lerp(panel, panelTarget, panelEase);
 			if (Math.Abs(panelTarget - panel) < 0.75f)
 				panel = panelTarget;
 			panel = MathHelper.Clamp(panel, 0f, PanelHeight);
 			float liftTarget = phase is Phase.Menu or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect ? 32f : 0f;
-			partyLift = MathHelper.Lerp(partyLift, liftTarget, 0.5f);
+			partyLift = MathHelper.Lerp(partyLift, liftTarget, liftTarget == 0f ? 0.68f : 0.5f);
 			if (Math.Abs(liftTarget - partyLift) < 0.5f)
 				partyLift = liftTarget;
 			selectedBarPhase += 2f;
@@ -1254,10 +1255,14 @@ namespace MercyMode.Battle
 				: new Rectangle(0, 0, tex.Width, frameHeight);
 			if (phase == Phase.EnemyTurn && enemyAttackEnergy > 0.18f && frameCount > 1)
 			{
-				int baseFrame = Math.Clamp(npc.frame.Y / Math.Max(1, frameHeight), 0, frameCount - 1);
-				int attackFrame = (baseFrame + 1 + (int)(time / 8) % (frameCount - 1)) % frameCount;
-				frame.Y = attackFrame * frameHeight;
-				frame.Height = frameHeight;
+				// The vanilla Eye's extra frames are eye-opening states, not attack poses.
+				if (npc.type != NPCID.EyeofCthulhu)
+				{
+					int baseFrame = Math.Clamp(npc.frame.Y / Math.Max(1, frameHeight), 0, frameCount - 1);
+					int attackFrame = (baseFrame + 1 + (int)(time / 8) % (frameCount - 1)) % frameCount;
+					frame.Y = attackFrame * frameHeight;
+					frame.Height = frameHeight;
+				}
 			}
 			float drawScale = EnemyScaleNow(out _, out _);
 			float glide = FlyProgress();
@@ -1427,12 +1432,16 @@ namespace MercyMode.Battle
 		{
 			float top = ScreenHeight - panel;
 			DrDraw.Rect(left, top, width, panel + BackgroundBleed + 1, Color.Black);
-			DrDraw.Rect(left, top - 2, width, 2, PanelLine);
 			DrDraw.Rect(left, top + 34, width, 2, PanelLine);
 			if (panel <= 0)
+			{
+				DrDraw.Rect(left, top - 2, width, 2, PanelLine);
 				return;
+			}
 
 			DrawPartyBox();
+			// Draw this background separator after the moving nameplate so its purple edge stays continuous.
+			DrDraw.Rect(left, top - 2, width, 2, PanelLine);
 
 			float textY = top + 48; // 376 when the panel is fully up
 			switch (phase)
@@ -1479,11 +1488,11 @@ namespace MercyMode.Battle
 					float wave = (float)Math.Sin(angle / 60f);
 					float alpha = Math.Max(0f, (float)Math.Sin(angle / 60f)) * selectionAlpha;
 					DrDraw.Rect(r.X, buttonsY - 8f, 2f, 36f, KrisCyan * alpha);
-					DrDraw.Rect(r.Right - 1f, buttonsY - 8f, 2f, 36f, KrisCyan * alpha);
+					DrDraw.Rect(r.Right - 2f, buttonsY - 8f, 2f, 36f, KrisCyan * alpha);
 					if (Math.Cos(angle / 60f) < 0f)
 					{
 						float leftX = r.X + 30f - wave * 30f;
-						float rightX = r.Right - 31f + wave * 30f;
+						float rightX = r.Right - 32f + wave * 30f;
 						DrDraw.Rect(leftX, buttonsY - 5f, 2f, 33f, KrisCyan * alpha);
 						DrDraw.Rect(rightX, buttonsY - 5f, 2f, 33f, KrisCyan * alpha);
 					}
@@ -1515,8 +1524,8 @@ namespace MercyMode.Battle
 			// so its lower edge covers the button row only as the box drops into the bullet phase.
 			DrDraw.Rect(r.X, r.Y - 3f, r.Width, 1f, KrisCyan * selectionAlpha);
 			DrDraw.Rect(r.X, r.Y - 2f, 1f, r.Height + 3f, KrisCyan * selectionAlpha);
-			DrDraw.Rect(r.Right - 1f, r.Y - 2f, 1f, r.Height + 3f, KrisCyan * selectionAlpha);
-			DrDraw.Rect(r.X + 1f, r.Y - 1f, r.Width - 2f, 34f, Color.Black);
+			DrDraw.Rect(r.Right - 2f, r.Y - 2f, 1f, r.Height + 3f, KrisCyan * selectionAlpha);
+			DrDraw.Rect(r.X + 2f, r.Y - 1f, r.Width - 4f, 34f, Color.Black);
 
 			// The player's own head, enlarged and shifted left to leave clear space before the name.
 			if (playerHeadPortrait?.IsReady == true)
