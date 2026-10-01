@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.GameContent;
 using Terraria.ID;
 using Terraria.ModLoader;
 
@@ -169,16 +170,25 @@ namespace MercyMode.Battle
 		{
 			if (int.TryParse(text, out int id))
 				return id > 0 && id < NPCLoader.NPCCount ? id : 0;
-			string want = text.Replace(" ", "").ToLowerInvariant();
+			string want = text.Replace(" ", "").Replace("'", "").ToLowerInvariant();
+			// Internal names, spaces ignored: "moon lord core" -> MoonLordCore
+			for (int t = 1; t < NPCID.Count; t++)
+				if (NPCID.Search.GetName(t).ToLowerInvariant() == want)
+					return t;
+			// Display names; several parts can share one ("Moon Lord"), so prefer the one a battle is about
+			int first = 0;
 			for (int t = 1; t < NPCLoader.NPCCount; t++)
 			{
-				string name = Lang.GetNPCNameValue(t).Replace(" ", "").ToLowerInvariant();
-				if (name == want)
+				string name = Lang.GetNPCNameValue(t).Replace(" ", "").Replace("'", "").ToLowerInvariant();
+				if (name != want)
+					continue;
+				bool isBoss = ContentSamples.NpcsByNetId.TryGetValue(t, out NPC sample) && sample.boss;
+				if (EncounterRegistry.HasCustom(t) || isBoss)
 					return t;
+				if (first == 0)
+					first = t;
 			}
-			if (NPCID.Search.TryGetId(text, out int byInternal))
-				return byInternal;
-			return 0;
+			return first;
 		}
 	}
 }

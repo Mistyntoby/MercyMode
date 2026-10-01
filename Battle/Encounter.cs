@@ -115,6 +115,16 @@ namespace MercyMode.Battle
 		/// <summary>The NPC drawn on the battle screen.</summary>
 		public virtual NPC DrawNpc => Npc.active ? Npc : Members().FirstOrDefault(m => m.active);
 
+		/// <summary>
+		/// Draw with Terraria's own NPC renderer, all of <see cref="DrawParts"/> together: for bosses made of several
+		/// NPCs or drawn by special code (wings, legs, arms), which a single sprite sheet would leave out.
+		/// </summary>
+		public virtual bool DrawWithTerraria => false;
+		/// <summary>The NPCs drawn together when <see cref="DrawWithTerraria"/> is on.</summary>
+		public virtual IEnumerable<NPC> DrawParts() => Members();
+		/// <summary>Draw fully opaque even if the battle froze it mid fade-in (the Empress).</summary>
+		public virtual bool ForceOpaque => false;
+
 		/// <summary>Ends the fight peacefully: removes every other part, then drops the loot from one.</summary>
 		public virtual void Spare()
 		{

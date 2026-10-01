@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
@@ -26,7 +27,13 @@ namespace MercyMode.Battle
 		public static Color HeroLight = Color.White;
 
 		/// <summary>True for the NPC the battle screen draws; the world copy is hidden so it never shows twice.</summary>
-		public static bool IsBattleSprite(NPC npc) => Active && Instance.encounter?.DrawNpc == npc;
+		public static bool IsBattleSprite(NPC npc)
+		{
+			if (!Active || Instance.encounter == null)
+				return false;
+			Encounter e = Instance.encounter;
+			return e.DrawNpc == npc || e.DrawWithTerraria && (e.Npc == npc || e.DrawParts().Contains(npc));
+		}
 
 		private enum HeroPose { Idle, AttackReady, Attack, ActReady, Act, ItemReady, Item, Defend, Victory }
 

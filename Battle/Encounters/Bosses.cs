@@ -313,6 +313,7 @@ namespace MercyMode.Battle.Encounters
 	public class Skeletron : Encounter
 	{
 		public override string Name => "SKELETRON";
+		public override bool DrawWithTerraria => true;
 		public override string EncounterText => "* SKELETRON rises to guard the dungeon!";
 
 		public override IEnumerable<NPC> Members()
@@ -379,6 +380,7 @@ namespace MercyMode.Battle.Encounters
 	public class Deerclops : Encounter
 	{
 		public override string Name => "DEERCLOPS";
+		public override bool DrawWithTerraria => true;
 		public override string EncounterText => "* DEERCLOPS lumbers out of the snow!";
 
 		public override string FlavorText()
