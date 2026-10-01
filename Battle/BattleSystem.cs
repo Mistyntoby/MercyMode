@@ -91,6 +91,17 @@ namespace MercyMode.Battle
 		private readonly Dictionary<int, (int type, Vector2 velocity)> npcVelocities = new();
 		private readonly Dictionary<int, (int type, Vector2 velocity)> projVelocities = new();
 		private Vector2 playerPosition;
+		/// <summary>Only the battle changes HP: no natural regen, potions' regen or debuffs while it's open.</summary>
+		private int battleLife;
+
+		/// <summary>Heals the player during the battle. Returns how much HP was actually restored.</summary>
+		public int HealPlayer(int amount)
+		{
+			int before = Player.statLife;
+			Player.Heal(amount);
+			battleLife = Player.statLife;
+			return Player.statLife - before;
+		}
 
 		private class Popup
 		{
@@ -114,13 +125,13 @@ namespace MercyMode.Battle
 			return root.active && root.boss && BossBattle.HasBattle(root);
 		}
 
-		public static void TryStart(NPC npc, Player player)
+		public static void TryStart(NPC npc, Player player, string reason = "")
 		{
 			if (CanStart(npc, player))
-				Instance.Start(MercyMode.Root(npc));
+				Instance.Start(MercyMode.Root(npc), reason);
 		}
 
-		private void Start(NPC root)
+		private void Start(NPC root, string reason)
 		{
 			boss = root;
 			encounter = BossBattle.Create(root);
@@ -146,6 +157,7 @@ namespace MercyMode.Battle
 			foreach (Projectile p in Main.ActiveProjectiles)
 				projVelocities[p.whoAmI] = (p.type, p.velocity);
 			playerPosition = Player.position;
+			battleLife = Player.statLife;
 
 			DeltaruneAssets.Play("battleenter", SoundID.Roar);
 			if (DeltaruneAssets.BattleMusic != null)
@@ -158,7 +170,7 @@ namespace MercyMode.Battle
 
 			SetText(encounter.EncounterText);
 			SetPhase(Phase.Intro);
-			Mod.Logger.Info($"Battle started with {boss.FullName} ({boss.life}/{boss.lifeMax} HP)");
+			Mod.Logger.Info($"Battle started with {boss.FullName} ({boss.life}/{boss.lifeMax} HP) by {reason}");
 		}
 
 		private void End()
@@ -267,6 +279,8 @@ namespace MercyMode.Battle
 			Player.position = playerPosition;
 			Player.velocity = Vector2.Zero;
 			Player.fallStart = (int)(Player.position.Y / 16f);
+			Player.statLife = Math.Min(battleLife, Player.statLifeMax2);
+			Player.lifeRegenCount = 0;
 
 			if (time % TicksPerFrame == 0)
 				UpdateHudFrame();
@@ -531,7 +545,14 @@ namespace MercyMode.Battle
 				SetPhase(Phase.Menu);
 				return;
 			}
-			if (MoveInGrid(items.Count))
+			// Terraria item names are long, so ITEM is one column instead of Deltarune's two
+			int before = listIndex;
+			if (Pressed(Keys.Down) && listIndex + 1 < items.Count)
+				listIndex++;
+			if (Pressed(Keys.Up) && listIndex > 0)
+				listIndex--;
+			listIndex = Math.Clamp(listIndex, 0, items.Count - 1);
+			if (listIndex != before)
 				Sfx("menumove");
 			if (Cancel)
 			{
@@ -554,9 +575,7 @@ namespace MercyMode.Battle
 				break;
 			}
 
-			int before = Player.statLife;
-			Player.Heal(heal);
-			int healed = Player.statLife - before;
+			int healed = HealPlayer(heal);
 			Sfx("heal");
 			AddPopup(healed > 0 ? null : "MAX", healed, PartyBox.Center.ToVector2() + new Vector2(0, -20), new Color(0, 255, 0));
 
@@ -819,6 +838,7 @@ namespace MercyMode.Battle
 			// Terraria's own hit invincibility would hide the SOUL's; the battle handles it
 			Player.immune = false;
 			Player.immuneTime = 0;
+			battleLife = Player.statLife;
 
 			inv = InvincibleTicks;
 			Sfx("hurt");
@@ -911,15 +931,18 @@ namespace MercyMode.Battle
 			if (phase == Phase.None)
 				return;
 
-			// Hide the normal HUD; keep the logic layers and the pause menu
+			// Hide the normal HUD; keep the logic layers, the pause menu and chat (battle keys are ignored while
+			// chat is open, so it has to stay visible)
 			foreach (var l in layers)
 			{
-				if (l.Name.Contains("Logic") || l.Name.Contains("Ingame Options") || l.Name.Contains("Cursor"))
+				if (l.Name.Contains("Logic") || l.Name.Contains("Ingame Options") || l.Name.Contains("Cursor") || l.Name.Contains("Player Chat"))
 					continue;
 				l.Active = false;
 			}
 
-			int index = layers.FindIndex(l => l.Name.Contains("Ingame Options"));
+			int index = layers.FindIndex(l => l.Name.Contains("Player Chat"));
+			if (index < 0)
+				index = layers.FindIndex(l => l.Name.Contains("Ingame Options"));
 			if (index < 0)
 				index = layers.Count;
 			layers.Insert(index, new LegacyGameInterfaceLayer("MercyMode: Battle", () =>
@@ -960,7 +983,7 @@ namespace MercyMode.Battle
 		private void DrawBackground(float left, float top, float width, float height)
 		{
 			// The world stays visible behind a dark veil, with Deltarune's scrolling battle grid on top
-			DrDraw.Rect(left, top, width, height, Color.Black * (0.75f * screenFade));
+			DrDraw.Rect(left, top, width, height, Color.Black * (0.9f * screenFade));
 			Color grid = new Color(80, 32, 120) * (0.35f * screenFade);
 			const int cell = 50;
 			float scroll = time * 0.5f % cell;
@@ -1143,7 +1166,7 @@ namespace MercyMode.Battle
 					break;
 				case Phase.ItemSelect:
 					var items = HealingItems();
-					DrawGrid(textY, items.Select(i => ($"{i.name} x{i.count}", false)).ToList());
+					DrawItemList(textY, items.Select(i => $"{i.name} x{i.count}").ToList());
 					if (listIndex < items.Count)
 						DrDraw.Text($"Heals\n{items[listIndex].heal} HP", 500, textY, new Color(128, 128, 128), DrDraw.BigFont);
 					break;
@@ -1167,15 +1190,15 @@ namespace MercyMode.Battle
 				DrDraw.Rect(r.X + 2, r.Y, r.Width - 4, r.Height + 32, Color.Black);
 			}
 
-			DrDraw.Text(Player.name.ToUpperInvariant(), r.X + 12, r.Y + 6, Color.White, DrDraw.SmallFont);
-			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 109, r.Y + 11, Color.White))
-				DrDraw.Text("HP", r.X + 106, r.Y + 6, Color.White, DrDraw.SmallFont);
+			DrDraw.Text(Player.name.ToUpperInvariant(), r.X + 12, r.Y + 10, Color.White, DrDraw.SmallFont);
+			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 109, r.Y + 20, Color.White))
+				DrDraw.Text("HP", r.X + 106, r.Y + 15, Color.White, DrDraw.SmallFont);
 			float ratio = MathHelper.Clamp(Player.statLife / (float)Player.statLifeMax2, 0f, 1f);
-			DrDraw.Rect(r.X + 128, r.Y + 11, 76, 9, new Color(128, 0, 0));
-			DrDraw.Rect(r.X + 128, r.Y + 11, (float)Math.Ceiling(ratio * 76), 9, KrisCyan);
+			DrDraw.Rect(r.X + 128, r.Y + 20, 76, 9, new Color(128, 0, 0));
+			DrDraw.Rect(r.X + 128, r.Y + 20, (float)Math.Ceiling(ratio * 76), 9, KrisCyan);
 			string hp = $"{Player.statLife}/{Player.statLifeMax2}";
 			Color hpColor = ratio <= 0.25f ? new Color(255, 255, 0) : Color.White;
-			DrDraw.Text(hp, r.X + 205 - DrDraw.Measure(hp, DrDraw.SmallFont), r.Y - 8, hpColor, DrDraw.SmallFont);
+			DrDraw.Text(hp, r.X + 205 - DrDraw.Measure(hp, DrDraw.SmallFont), r.Y + 2, hpColor, DrDraw.SmallFont);
 
 			if (!raised)
 				return;
@@ -1235,6 +1258,24 @@ namespace MercyMode.Battle
 				if (i == listIndex)
 					DrawHeartCursor(x - 25, ey + 10);
 			}
+		}
+
+		private void DrawItemList(float y, List<string> names)
+		{
+			const int rows = 3;
+			int first = Math.Clamp(listIndex - rows + 1, 0, Math.Max(0, names.Count - rows));
+			for (int i = first; i < Math.Min(names.Count, first + rows); i++)
+			{
+				float ey = y + (i - first) * 30;
+				DrDraw.Text(names[i], 80, ey, Color.White);
+				if (i == listIndex)
+					DrawHeartCursor(55, ey + 10);
+			}
+			// Scroll arrows when there are more items than rows
+			if (first > 0)
+				DrDraw.Text("^", 470, y - 4, Color.White, DrDraw.SmallFont);
+			if (first + rows < names.Count)
+				DrDraw.Text("v", 470, y + 70, Color.White, DrDraw.SmallFont);
 		}
 
 		private void DrawActInfo(float y)

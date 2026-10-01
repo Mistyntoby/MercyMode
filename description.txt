@@ -1,11 +1,20 @@
 Spare bosses instead of killing them. A Deltarune-inspired fan mod.
 
-ACT (F) to raise a boss's MERCY. Hitting the boss makes it lose trust.
+Turn-based battles (Eye of Cthulhu for now): touch or hit the boss and the world freezes into a Deltarune-style battle.
+- FIGHT: press Z as the bolt crosses the line. The closer, the harder you hit.
+- ACT: boss-specific actions that raise MERCY. Heal Prayer costs 32% TP.
+- ITEM: drink healing potions from your inventory.
+- SPARE: works once MERCY reaches 100%. You still get the loot.
+- DEFEND: take 2/3 damage this turn and gain 16% TP.
+On the enemy turn, dodge with the arrow keys (hold X to move slower). Bullets hit your real health; grazing them gives TP.
+Arrow keys move, Z confirms, X goes back. The battle can be turned off in the config.
+
+Outside battles: ACT (F) to raise a boss's MERCY. Hitting the boss makes it lose trust.
 SPARE (G) once MERCY hits 100% to end the fight peacefully (you still get the loot).
 Graze enemy attacks to build TP, then spend 32% TP on Heal Prayer (V).
 
 Keys can be rebound in Settings > Controls. Singleplayer only for now.
 
-If you own Deltarune on Steam, Mercy Mode reads the real SOUL sprite and sound effects from your own install at startup. Nothing from Deltarune is included in this mod. Type /drassets in chat to see what loaded.
+If you own Deltarune on Steam, Mercy Mode reads the real SOUL, battle sprites, fonts, sound effects and battle music from your own install at startup. Nothing from Deltarune is included in this mod. Type /drassets in chat to see what loaded.
 
 The data.win reader is based on UndertaleModTool (GPL-3.0).

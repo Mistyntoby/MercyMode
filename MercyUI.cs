@@ -23,7 +23,8 @@ namespace MercyMode
 		public override void ModifyInterfaceLayers(List<GameInterfaceLayer> layers)
 		{
 			int resourceIndex = layers.FindIndex(l => l.Name == "Vanilla: Resource Bars");
-			if (resourceIndex < 0)
+			// The battle screen draws its own SOUL and TP bar
+			if (resourceIndex < 0 || Battle.BattleSystem.Active)
 				return;
 
 			layers.Insert(resourceIndex + 1, new LegacyGameInterfaceLayer(

@@ -62,5 +62,41 @@ Resolution 640x480. All sizes below in those pixels.
 - NPC update: `AI()` then `position += velocity` -> PreAI=false alone doesn't stop movement, zero velocity too.
 - `dotnet build` in the mod folder compiles even while tML runs (only packaging fails with TML003).
 
+## Lab / test loop
+- Lab save dir `C:\Users\Nico\tml-lab` (Mods, Players/nick copy, Worlds/MercyLab small world, seed `mercylab`).
+  Pristine world snapshot: `um backup restore mercylab-world --to C:/Users/Nico/tml-lab/Worlds --yes`.
+- Launch: `dotnet tModLoader.dll -tmlsavedirectory "C:\Users\Nico\tml-lab" -skipselect "nick:MercyLab"` from the tML folder.
+  Build with `dotnet build -c Release` in the mod folder (game must be closed), then copy
+  `Documents/My Games/Terraria/tModLoader/Mods/MercyMode.tmod` into the lab's Mods.
+- `tml-lab/drive.sh` has helpers: `wait_phase`, `drive`, `shot`, `last` (reads `Battle phase ...` debug lines in client.log).
+- `/mmbattle [spawn [dx dy] | kit | night | tp <0-100> | bosshp <n>]` for repeatable tests.
+- Driving gotchas: two taps of the same key back to back merge into one press (put `hold 0x87 60` between);
+  chat must be closed for battle keys to work.
+
+## Verified in game (2026-09-30, tML 2026.7.3.0, assets from chapter 5)
+- Start by touch ("by touch" in log, after the hitbox fix) and by hit ("by hit by Wooden Arrow", boss 2796/2800).
+- FIGHT: miss after 34 frames; timed presses scored 110 and 120 points (TP +4.4 / +4.8 matches round(points/10)*0.4).
+- ACT: Check/Stare/EyeDrops/Dawn raise MERCY 30/35/25, repeats halve; Heal Prayer uses 32% TP.
+- ITEM: potions consumed, heal + "HP was maxed out" text. SPARE at 100% -> loot, "has been defeated", achievement.
+- Defeat via FIGHT -> YOU WON, gore + loot. Death in battle -> battle closes, boss AI resumes.
+- Grazing gives TP and shortens the turn; DEFEND +16% TP. HP frozen outside battle damage/heals.
+- Rude Buster plays: game-audio capture cross-correlates with mus/battle.ogg at 0.77 (noise floor 0.01).
+
+## Bugs found while testing (fixed)
+- `GlobalNPC.CanHitPlayer` runs for every hostile NPC every tick *before* the hitbox check -> battle started the
+  moment the Eye spawned. Now also requires `npc.Hitbox.Intersects(player.Hitbox)`.
+- Natural life regen kept healing during battles -> battle owns `statLife` (only bullets / ITEM / Heal Prayer change it).
+- Hidden chat layer: pressing Enter opened invisible chat and froze battle input -> chat layer stays visible.
+- MercyUI's world TP gauge and SOUL drew over the battle -> skipped while a battle is active.
+- Long Terraria item names overlapped in the 2-column ITEM grid -> single scrolling column.
+- Toolkit (universal-modder, uncommitted): `um win shot` failed because ffmpeg master segfaults after writing the
+  frame (accept a fresh file, add `-update 1`); `um win record` captured audio from the wrong `dotnet` PID
+  (now prefers the process with a window).
+
+## Open / next
+- FIGHT damage is weapon damage x points/20 (Deltarune's AT formula). With a copper shortsword that's ~22 per hit
+  vs 2800 HP; `FightDamageMultiplier` config exists. Decide on a default before adding more bosses.
+- More bosses: add a `BossBattle` subclass + `BossBattle.Create/HasBattle` entries.
+
 ## Log
-- 2026-09-30: recon, decompile, numbers above. Next: implement battle loop for Eye of Cthulhu.
+- 2026-09-30: recon, decompile, numbers above. Implemented battle loop for Eye of Cthulhu, verified in lab (above).

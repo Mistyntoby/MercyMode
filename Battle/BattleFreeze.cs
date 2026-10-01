@@ -23,21 +23,22 @@ namespace MercyMode.Battle
 		{
 			if (BattleSystem.Active)
 				return false;
-			if (BattleSystem.CanStart(npc, target))
+			// Terraria asks this for every hostile NPC every tick, before checking that the hitboxes touch
+			if (npc.Hitbox.Intersects(target.Hitbox) && BattleSystem.CanStart(npc, target))
 			{
-				BattleSystem.TryStart(npc, target);
+				BattleSystem.TryStart(npc, target, "touch");
 				return false;
 			}
 			return true;
 		}
 
 		public override void OnHitByItem(NPC npc, Player player, Item item, NPC.HitInfo hit, int damageDone)
-			=> BattleSystem.TryStart(npc, player);
+			=> BattleSystem.TryStart(npc, player, "hit by " + item.Name);
 
 		public override void OnHitByProjectile(NPC npc, Projectile projectile, NPC.HitInfo hit, int damageDone)
 		{
 			if (projectile.owner >= 0 && projectile.owner < Main.maxPlayers)
-				BattleSystem.TryStart(npc, Main.player[projectile.owner]);
+				BattleSystem.TryStart(npc, Main.player[projectile.owner], "hit by " + projectile.Name);
 		}
 
 		public override void EditSpawnRate(Player player, ref int spawnRate, ref int maxSpawns)

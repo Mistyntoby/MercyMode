@@ -75,12 +75,9 @@ namespace MercyMode.Battle.Bosses
 					TPCost = MercyPlayer.HealPrayerCost,
 					Run = b =>
 					{
-						Player p = b.Player;
-						int amount = Math.Max(20, p.statLifeMax2 / 4);
-						int before = p.statLife;
-						p.Heal(amount);
+						int healed = b.HealPlayer(Math.Max(20, b.Player.statLifeMax2 / 4));
 						Deltarune.DeltaruneAssets.Play("heal", SoundID.Item4);
-						return new List<string> { $"* {who} cast HEAL PRAYER!\n* Recovered {p.statLife - before} HP." };
+						return new List<string> { $"* {who} cast HEAL PRAYER!\n* Recovered {healed} HP." };
 					},
 				},
 			};
