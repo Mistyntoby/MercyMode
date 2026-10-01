@@ -84,7 +84,9 @@ namespace MercyMode.Battle
 			Vector2 centring = encounter.LeadWithDrawNpc ? Vector2.Zero : (bounds.Center.ToVector2() - anchor) * s * glide;
 			float attackMotion = phase == Phase.EnemyTurn ? MathHelper.Clamp(enemyAttackEnergy, 0f, 1f) : 0f;
 			float bob = encounter.SwayParts ? (float)Math.Sin(time / 20f) * 4f * glide : 0f;
-			Vector2 p = EnemyPosNow - centring + new Vector2(0, bob) - enemyAttackDirection * (attackMotion * 3f);
+			// Worms (no idle sway) don't lean into their attacks either
+			Vector2 lean = encounter.SwayParts ? enemyAttackDirection * (attackMotion * 3f) : Vector2.Zero;
+			Vector2 p = EnemyPosNow - centring + new Vector2(0, bob) - lean;
 			if (enemyShake > 0)
 				p.X += (enemyShake % 4 < 2 ? 1 : -1) * enemyShake / 2f;
 
