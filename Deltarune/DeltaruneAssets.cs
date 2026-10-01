@@ -445,7 +445,8 @@ namespace MercyMode.Deltarune
 		{
 			"menumove" or "select" or "cantselect" or "error" => config.MenuSoundRedirect,
 			"hurt" or "damage" or "slash" or "crit" => config.BattleSoundRedirect,
-			"act" or "heal" or "spare" or "item" or "boost" or "weaponpull" => config.ActionSoundRedirect,
+			"act" or "heal" or "spare" or "item" or "boost" => config.ActionSoundRedirect,
+			"weaponpull" => config.BattleStartSoundRedirect,
 			"mercyadd" => config.MercyGainSoundRedirect,
 			"graze" => config.GrazeSoundRedirect,
 			"battleenter" => config.BattleStartSoundRedirect,

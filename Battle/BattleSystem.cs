@@ -171,7 +171,6 @@ namespace MercyMode.Battle
 			playerPosition = Player.position;
 			battleLife = Player.statLife;
 
-			DeltaruneAssets.Play("battleenter", SoundID.Roar);
 			if (DeltaruneAssets.BattleMusic != null)
 			{
 				music = DeltaruneAssets.BattleMusic.CreateInstance();
