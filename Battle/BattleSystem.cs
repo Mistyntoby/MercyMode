@@ -1442,31 +1442,38 @@ namespace MercyMode.Battle
 			bool raised = partyLift > 1f;
 			if (raised)
 			{
-				// The active character's cyan frame pulses, with light bars sweeping inward from both sides.
-				float pulse = 0.58f + 0.32f * (0.5f + 0.5f * (float)Math.Sin(selectedBarPhase / 9f));
+				// Deltarune's thin cyan nameplate frame with short, dim edge glints.
+				float pulse = 0.72f + 0.18f * (0.5f + 0.5f * (float)Math.Sin(selectedBarPhase / 12f));
 				DrDraw.Rect(r.X, r.Y - 2, r.Width, 2, KrisCyan * pulse);
-				DrDraw.Rect(r.X, r.Y, 2, r.Height + 32, KrisCyan * 0.8f);
-				DrDraw.Rect(r.Right - 2, r.Y, 2, r.Height + 32, KrisCyan * 0.8f);
-				DrDraw.Rect(r.X + 2, r.Y, r.Width - 4, r.Height + 32, Color.Black);
-				for (int i = 0; i < 12; i++)
+				DrDraw.Rect(r.X, r.Y, 1, r.Height + 32, KrisCyan * 0.8f);
+				DrDraw.Rect(r.Right - 1, r.Y, 1, r.Height + 32, KrisCyan * 0.8f);
+				DrDraw.Rect(r.X + 1, r.Y, r.Width - 2, r.Height + 32, Color.Black);
+				for (int i = 0; i < 3; i++)
 				{
-					float travel = (selectedBarPhase * 1.6f + i * 18f) % (r.Width / 2f);
-					float alpha = 0.25f + 0.65f * (0.5f + 0.5f * (float)Math.Sin(selectedBarPhase / 5f + i * 0.9f));
-					DrDraw.Rect(r.X + travel, r.Y, 2, r.Height + 32, KrisCyan * alpha);
-					DrDraw.Rect(r.Right - travel - 2, r.Y, 2, r.Height + 32, KrisCyan * alpha);
+					float progress = (selectedBarPhase / 26f + i / 3f) % 1f;
+					float travel = progress * 8f;
+					float alpha = 0.34f * (1f - progress);
+					float y = r.Y + 4 + i * 13f;
+					DrDraw.Rect(r.X + 1 + travel, y, 1, 5, KrisCyan * alpha);
+					DrDraw.Rect(r.Right - 2 - travel, y, 1, 5, KrisCyan * alpha);
 				}
 			}
 
-			DrDraw.Text(Player.name.ToUpperInvariant(), r.X + 12, r.Y + 10, Color.White, DrDraw.SmallFont);
-			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 109, r.Y + 20, Color.White))
-				DrDraw.Text("HP", r.X + 106, r.Y + 15, Color.White, DrDraw.SmallFont);
+			// Kris's portrait and name anchor the left side, as in the original battle HUD.
+			if (!DrDraw.Sprite("spr_headkris", 0, r.X + 8, r.Y + 18, Color.White))
+				DrDraw.HeartShapeAt(r.X + 12, r.Y + 8, 16, new Color(64, 220, 255));
+			DrDraw.Text(Player.name.ToUpperInvariant(), r.X + 32, r.Y + 10, Color.White, DrDraw.SmallFont);
+			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + 20, Color.White))
+				DrDraw.Text("HP", r.X + 108, r.Y + 15, Color.White, DrDraw.SmallFont);
 			float ratio = MathHelper.Clamp(Player.statLife / (float)Player.statLifeMax2, 0f, 1f);
 			bool choosing = phase == Phase.Menu || phase == Phase.EnemySelect || phase == Phase.ActSelect || phase == Phase.ItemSelect;
-			DrDraw.Rect(r.X + 128, r.Y + 20, 76, 9, new Color(128, 0, 0));
-			DrDraw.Rect(r.X + 128, r.Y + 20, (float)Math.Ceiling(ratio * 76), 9, KrisCyan);
+			const int hpBarX = 130;
+			const int hpBarWidth = 74;
+			DrDraw.Rect(r.X + hpBarX, r.Y + 14, hpBarWidth, 8, new Color(128, 0, 0));
+			DrDraw.Rect(r.X + hpBarX, r.Y + 14, (float)Math.Ceiling(ratio * hpBarWidth), 8, KrisCyan);
 			string hp = $"{Player.statLife}/{Player.statLifeMax2}";
 			Color hpColor = ratio <= 0.25f ? new Color(255, 255, 0) : Color.White;
-			DrDraw.Text(hp, r.X + 205 - DrDraw.Measure(hp, DrDraw.SmallFont), r.Y + 2, hpColor, DrDraw.SmallFont);
+			DrDraw.Text(hp, r.X + 205 - DrDraw.Measure(hp, DrDraw.SmallFont), r.Y - 1, hpColor, DrDraw.SmallFont);
 
 			if (!choosing && partyLift < 1f)
 				return;
