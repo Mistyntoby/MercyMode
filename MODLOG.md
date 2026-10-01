@@ -155,6 +155,9 @@ Resolution 640x480. All sizes below in those pixels.
 - Every custom boss got 5-6 attacks (generic boss 9) with harder phase-2 variants; enemy families got 1-2 more.
 - Test: `/mmbattle turn <n>` picks the next attack, `/mmbattle hp <n>` (then take a hit) for the SOUL death.
   `/mmbattle heal` now also works mid-battle.
+- Ambience (owls, birds, frogs, wind, rain, waterfalls) is all SoundType.Ambient, scaled by Main.ambientVolume
+  (ActiveSound.Update and Main's ambient cues). `AmbienceMute` sets it to 0 from Start to End; an On_Main.SaveSettings
+  detour writes the real value, since Terraria saves settings from ~10 places (exit, options menu...).
 - Built in the cloud against tModLoader's release DLLs (0 warnings, 0 errors); beam collision unit-tested.
   NOT yet verified in game: needs the lab loop above.
 

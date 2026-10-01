@@ -210,6 +210,9 @@ namespace MercyMode.Battle
 				music.Volume = 0f;
 			}
 
+			// No owls or wind over the battle; Terraria's ambience comes back when it ends
+			AmbienceMute.Mute();
+
 			SetText(encounter.EncounterText);
 			SetPhase(Phase.Intro);
 			Mod.Logger.Info($"Battle started with {boss.FullName} as {encounter.GetType().Name} ({encounter.Life}/{encounter.LifeMax} HP) by {reason}");
@@ -238,6 +241,7 @@ namespace MercyMode.Battle
 			music?.Stop();
 			music?.Dispose();
 			music = null;
+			AmbienceMute.Restore();
 			ReleasePlayerHeadPortrait();
 			Bullets.Clear();
 			phase = Phase.None;
