@@ -2,18 +2,21 @@
 #
 #   .\tools\lab\lab.ps1 test [scenarios]   build, then play scripted battles headless on a throwaway server (default: all)
 #   .\tools\lab\lab.ps1 client             build, copy the mod into the lab and open the game on the lab world
-#   .\tools\lab\lab.ps1 server             build, then run a normal dedicated server on a lab world (multiplayer later)
+#   .\tools\lab\lab.ps1 server             build, then run a normal dedicated server on a lab world (port $Port)
+#   .\tools\lab\lab.ps1 join [-Instance 2]  open a game client to join it (Multiplayer > Join via IP > 127.0.0.1, port 7778);
+#                                         each -Instance has its own save folder, so two can run side by side
 #
 # The headless test uses its own folder ($HeadlessDir), never your saves or the client lab. It needs no window and
 # tests the battle rules, not how things look; use "client" for that.
 param(
-	[ValidateSet("test", "client", "server")] [string]$Mode = "test",
+	[ValidateSet("test", "client", "server", "join")] [string]$Mode = "test",
 	[string]$Scenarios = "all",
 	[string]$TmlDir = "C:\Program Files (x86)\Steam\steamapps\common\tModLoader",
 	[string]$LabDir = "$env:USERPROFILE\tml-lab",
 	[string]$HeadlessDir = "$env:USERPROFILE\tml-lab-headless",
 	[int]$Port = 7778,
-	[int]$Speed = 8
+	[int]$Speed = 8,
+	[int]$Instance = 1
 )
 $ErrorActionPreference = "Stop"
 $source = Resolve-Path "$PSScriptRoot\..\.."
@@ -36,6 +39,12 @@ switch ($Mode) {
 	"client" {
 		Install-Mod $LabDir
 		dotnet tModLoader.dll -tmlsavedirectory $LabDir -skipselect "nick:MercyLab"
+	}
+	"join" {
+		$dir = if ($Instance -le 1) { $LabDir } else { "$LabDir-$Instance" }
+		Install-Mod $dir
+		# -nosteam: a second copy of the game can run next to the first
+		dotnet tModLoader.dll -tmlsavedirectory $dir -nosteam
 	}
 	"server" {
 		Install-Mod $HeadlessDir

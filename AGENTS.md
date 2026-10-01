@@ -4,7 +4,7 @@
 
 MercyMode is a single-player tModLoader mod for Terraria that turns boss and (optionally) regular-enemy encounters into Deltarune-inspired turn-based battles. Outside battle, players can build MERCY with ACT, spare a boss at 100%, build TP by grazing, and spend TP on Heal Prayer. Battles pause the Terraria world, offer FIGHT / ACT / ITEM / SPARE / DEFEND turns, and use a dodge-bullet phase where bullets can damage the player's real health. Bosses still drop loot when spared.
 
-If the player owns Deltarune, the mod can read sprites, fonts, sounds, and music from that local installation at startup. No Deltarune assets are shipped with this mod. Without those assets, the mod uses fallbacks. Multiplayer is not supported.
+If the player owns Deltarune, the mod can read sprites, fonts, sounds, and music from that local installation at startup. No Deltarune assets are shipped with this mod. Without those assets, the mod uses fallbacks. Multiplayer battles exist (party of up to 3, see MODLOG "Multiplayer party battles") but have only been tested on the server side in the headless lab.
 
 ## 2. Tech stack and exact commands
 
@@ -58,6 +58,7 @@ dotnet tModLoader.dll -tmlsavedirectory "C:\Users\Nico\tml-lab" -skipselect "nic
   - `BattleSystem.Enemies.cs` — enemy squads: gathering, formation, targeting, combined enemy turns, squad morale.
   - `Encounters/Armies.cs` — event armies (goblins, pirates, moons, Martians...).
   - `BattleCommand.cs` — `/mmbattle` developer/test commands.
+  - `Net/BattleNet.cs`, `BattleSystem.Net.cs` — multiplayer party battles (packets, server bookkeeping, waiting, allies).
 - `Deltarune/` — local Deltarune asset discovery/loading, `/drassets`, and GameMaker `data.win` reader.
   - `DeltaruneAssets.cs` — discovers a local install and loads sprites, fonts, sounds, and music with fallbacks.
   - `DataWin.cs` — binary asset reader; its file header records the UndertaleModTool/GPL-3.0 basis.
@@ -73,7 +74,7 @@ dotnet tModLoader.dll -tmlsavedirectory "C:\Users\Nico\tml-lab" -skipselect "nic
 - Re-implement observed Deltarune mechanics and numeric values from decompilation rather than copying GameMaker code. Convert the original 30-FPS timing to Terraria's 60 ticks per second. The values and rationale are in `MODLOG.md`.
 - Freeze NPCs and projectiles with `GlobalNPC.PreAI` / `GlobalProjectile.PreAI`, also zeroing velocity because Terraria still applies velocity after AI; lock player controls while a battle runs.
 - Start with Eye of Cthulhu and verify the complete loop in a separate lab world before adding more encounters. Custom and generic encounters were added only after the initial loop was verified.
-- Restrict gameplay to single-player for now rather than imply multiplayer correctness.
+- Multiplayer: each client runs its own battle screen; the server only owns the party, frozen NPCs, the ready barrier, MERCY, spares and part kills (`Battle/Net/BattleNet.cs`). Only the battle's NPCs freeze in multiplayer.
 - Keep Deltarune assets external and user-provided; do not package them in the mod.
 - In automatic asset selection, prefer the newest actual chapter and try the launcher `data.win` last because the launcher file only has chapter-select assets.
 - Keep the lab save folder separate from the user's ordinary saves to reduce testing risk.
@@ -100,7 +101,7 @@ This plan is not present in the actual current source: `Deltarune/DeltaruneAsset
 ## 7. Known bugs, errors, or TODOs
 
 - FIGHT balance (2026-10-01): a perfect turn deals about 8 seconds of the weapon's Terraria DPS (`TurnSeconds` in `Battle/BattleSystem.Fight.cs`); `MercyConfig.FightDamageMultiplier` (default `1.0`) scales it. `MODLOG.md` lists estimated turns-to-kill; needs in-game playtesting.
-- Multiplayer is explicitly unsupported; battle starts are gated to single-player.
+- Multiplayer battles are untested with real clients; outside-battle ACT/SPARE/Heal Prayer hotkeys are still single-player only.
 - The MERCY popup and the planned sound-redirection/volume controls from the final transcript are not implemented in the current source.
 - No automated tests are present; rely on the isolated in-game test loop and release build.
 - `MercyMode.txt` is the full local transcript and is ignored; do not stage or commit it.
@@ -113,4 +114,4 @@ This plan is not present in the actual current source: `Deltarune/DeltaruneAsset
 2. Review the planned wider battle panel, shake behavior, kill sounds, sound redirection, and volume calibration; implement only after comparing the current code with the decompile and testing each change.
 3. Decide and document a sensible default for `FightDamageMultiplier`; test FIGHT balance against early-game weapons and boss health.
 4. Run the Release build and repeat the isolated in-game regression loop after each change, including spare/loot, defeat, player death, enemy battles, and asset fallbacks.
-5. Expand multiplayer support only as a separate effort with explicit networking/synchronization tests; the current implementation is single-player only.
+5. Test multiplayer battles with a host and a second client (`tools/lab/lab.ps1 server` + clients, or Host & Play); fix what breaks; consider scaling enemy HP with party size.

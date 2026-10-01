@@ -91,7 +91,10 @@ namespace MercyMode.Battle
 					caller.Reply($"* Enemy HP set to {hp}.", MercyMode.TextWhite);
 					return;
 				case "end":
-					if (BattleSystem.Active)
+					// Multiplayer: just leave (the enemies belong to the server and the rest of the party)
+					if (BattleSystem.Active && Net.BattleNet.Online)
+						BattleSystem.Instance.Leave();
+					else if (BattleSystem.Active)
 						foreach (Encounter e in BattleSystem.Instance.Encounters.ToList())
 							foreach (NPC m in e.Members())
 								m.active = false;

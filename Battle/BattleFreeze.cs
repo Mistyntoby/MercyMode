@@ -9,21 +9,34 @@ namespace MercyMode.Battle
 	/// <summary>Starts battles on contact or hit, and holds every NPC still while one is open.</summary>
 	public class BattleFreezeNPC : GlobalNPC
 	{
+		/// <summary>
+		/// Held still: in singleplayer everything is while a battle is open; in multiplayer only the enemies of a battle
+		/// (the rest of the world keeps going for everyone else).
+		/// </summary>
+		public static bool Frozen(NPC npc) => MercyMode.IsSingleplayer ? BattleSystem.Active : Net.BattleNet.IsFrozen(npc);
+
 		public override bool PreAI(NPC npc)
 		{
-			if (!BattleSystem.Active)
+			if (!Frozen(npc))
 				return true;
 			// AI is skipped, but Terraria still adds velocity to position afterwards
 			npc.velocity = Vector2.Zero;
 			return false;
 		}
 
-		public override bool CheckActive(NPC npc) => !BattleSystem.Active;
+		public override bool CheckActive(NPC npc) => !Frozen(npc);
 
 		public override bool CanHitPlayer(NPC npc, Player target, ref int cooldownSlot)
 		{
-			if (BattleSystem.Active)
+			if (BattleSystem.Active || Net.BattleNet.Online && Net.BattleNet.RequestPending)
 				return false;
+			// Multiplayer: walking into another party's battle joins it (up to three players)
+			if (Net.BattleNet.IsFrozen(npc))
+			{
+				if (npc.Hitbox.Intersects(target.Hitbox) && BattleSystem.CanStart(npc, target, ignoreGrace: true))
+					BattleSystem.TryStart(npc, target, "joined");
+				return false;
+			}
 			// Terraria asks this for every hostile NPC every tick, before checking that the hitboxes touch
 			if (npc.Hitbox.Intersects(target.Hitbox) && BattleSystem.CanStart(npc, target))
 			{
@@ -34,9 +47,9 @@ namespace MercyMode.Battle
 		}
 
 		// During a battle only FIGHT hurts enemies (SimpleStrikeNPC skips these): no leftover swing or shot in the world
-		public override bool? CanBeHitByItem(NPC npc, Player player, Item item) => BattleSystem.Active ? false : null;
+		public override bool? CanBeHitByItem(NPC npc, Player player, Item item) => Frozen(npc) || BattleSystem.Active ? false : null;
 
-		public override bool? CanBeHitByProjectile(NPC npc, Projectile projectile) => BattleSystem.Active ? false : null;
+		public override bool? CanBeHitByProjectile(NPC npc, Projectile projectile) => Frozen(npc) || BattleSystem.Active ? false : null;
 
 		public override void OnHitByItem(NPC npc, Player player, Item item, NPC.HitInfo hit, int damageDone)
 			=> BattleSystem.TryStart(npc, player, "hit by " + item.Name);
@@ -66,7 +79,8 @@ namespace MercyMode.Battle
 
 		public override void EditSpawnRate(Player player, ref int spawnRate, ref int maxSpawns)
 		{
-			if (BattleSystem.Active)
+			// Multiplayer: the server spawns enemies, so it checks who's in a battle
+			if (MercyMode.IsSingleplayer ? BattleSystem.Active : Net.BattleNet.InBattle(player.whoAmI))
 				maxSpawns = 0;
 		}
 	}
@@ -75,7 +89,8 @@ namespace MercyMode.Battle
 	{
 		public override bool PreAI(Projectile projectile)
 		{
-			if (!BattleSystem.Active)
+			// Multiplayer: projectiles belong to their owners and the server; the world keeps going
+			if (!BattleSystem.Active || !MercyMode.IsSingleplayer)
 				return true;
 			projectile.velocity = Vector2.Zero;
 			projectile.timeLeft++; // don't expire while frozen

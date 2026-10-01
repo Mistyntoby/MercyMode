@@ -520,6 +520,7 @@ namespace MercyMode.Battle
 			EnemyNumber(dealt > 0 ? dealt : 0, hit.Crit ? HeroCritColor : HeroDamageColor, dealt > 0 ? -1 : DamageNumber.MissFrame,
 				yOffset: -18f * hitsLanded, at: spot);
 			hitsLanded++;
+			Net.BattleNet.SendPartyHit(target, dealt, hit.Crit);
 
 			if (encounter.TargetableParts && (!target.active || target.life <= 0 || !encounter.Members().Contains(target)))
 				BreakPart(target, core, spot);
@@ -554,13 +555,15 @@ namespace MercyMode.Battle
 			Sparks.Burst(this, spot, 14, new Color(255, 230, 180), 3.2f, 0.06f);
 			if (core != null && part == core)
 			{
-				foreach (NPC m in encounter.Members().ToList())
+				var rest = encounter.Members().Where(m => m != core).ToList();
+				foreach (NPC m in rest)
 				{
-					if (m == core)
-						continue;
 					m.life = 0;
 					m.active = false;
 				}
+				// Multiplayer: the server removes them for everyone
+				if (Net.BattleNet.Online)
+					Net.BattleNet.SendKillMembers(rest);
 			}
 			encounter.ChosenPart = encounter.TargetParts().FirstOrDefault(Encounter.CanHit);
 		}
