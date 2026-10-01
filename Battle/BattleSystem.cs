@@ -1439,9 +1439,9 @@ namespace MercyMode.Battle
 				return;
 			}
 
-			DrawPartyBox();
-			// Draw this background separator after the moving nameplate so its purple edge stays continuous.
+			// The purple separator goes under the party box so the raised nameplate covers it.
 			DrDraw.Rect(left, top - 2, width, 2, PanelLine);
+			DrawPartyBox();
 
 			float textY = top + 48; // 376 when the panel is fully up
 			switch (phase)
@@ -1480,8 +1480,7 @@ namespace MercyMode.Battle
 
 			if (selectionAlpha > 0.01f)
 			{
-				// scr_selectionmatrix: cyan divider sits below the nameplate, above the button row.
-				DrDraw.Rect(r.X, buttonsY - 1f, r.Width, 3f, KrisCyan * selectionAlpha);
+				// scr_selectionmatrix: sine-eased cyan columns around the button row.
 				for (int i = 0; i < 12; i++)
 				{
 					float angle = selectedBarPhase + i * 10f * MathHelper.Pi;
@@ -1493,8 +1492,8 @@ namespace MercyMode.Battle
 					{
 						float leftX = r.X + 30f - wave * 30f;
 						float rightX = r.Right - 32f + wave * 30f;
-						DrDraw.Rect(leftX, buttonsY - 1f, 2f, 29f, KrisCyan * alpha);
-						DrDraw.Rect(rightX, buttonsY - 1f, 2f, 29f, KrisCyan * alpha);
+						DrDraw.Rect(leftX, buttonsY - 3f, 2f, 31f, KrisCyan * alpha);
+						DrDraw.Rect(rightX, buttonsY - 3f, 2f, 31f, KrisCyan * alpha);
 					}
 				}
 			}
@@ -1520,12 +1519,15 @@ namespace MercyMode.Battle
 				}
 			}
 
-			// The original outer frame tracks the nameplate; black fill is exactly 34 px tall,
-			// so its lower edge covers the button row only as the box drops into the bullet phase.
-			DrDraw.Rect(r.X, r.Y - 3f, r.Width, 3f, KrisCyan * selectionAlpha);
-			DrDraw.Rect(r.X, r.Y - 2f, 1f, r.Height, KrisCyan * selectionAlpha);
-			DrDraw.Rect(r.Right - 1f, r.Y - 2f, 1f, r.Height, KrisCyan * selectionAlpha);
-			DrDraw.Rect(r.X + 1f, r.Y, r.Width - 2f, 34f, Color.Black);
+			// The outer frame tracks the nameplate. Every edge uses the same 2 px as the button-row columns,
+			// and the divider is the nameplate's bottom edge, so it covers the button row as the box drops.
+			const float edge = 2f;
+			Color frame = KrisCyan * selectionAlpha;
+			DrDraw.Rect(r.X, r.Y, r.Width, 34f, Color.Black);
+			DrDraw.Rect(r.X, r.Y - edge, r.Width, edge, frame);
+			DrDraw.Rect(r.X, r.Y - edge, edge, 34f + edge, frame);
+			DrDraw.Rect(r.Right - edge, r.Y - edge, edge, 34f + edge, frame);
+			DrDraw.Rect(r.X, r.Y + 34f - edge, r.Width, edge, frame);
 
 			// The player's own head, enlarged and shifted left to leave clear space before the name.
 			if (playerHeadPortrait?.IsReady == true)
