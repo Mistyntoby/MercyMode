@@ -1651,8 +1651,14 @@ namespace MercyMode.Battle
 				float mana = MathHelper.Clamp(Player.statMana / (float)Player.statManaMax2, 0f, 1f);
 				const int manaBarY = hpBarY + 10;
 				DrDraw.Text("MP", r.X + 111, r.Y + manaBarY - 2, ManaBlue, DrDraw.SmallFont, 0.6f);
-				DrDraw.Rect(r.X + hpBarX, r.Y + manaBarY, hpBarWidth, 5, new Color(20, 28, 90));
-				DrDraw.Rect(r.X + hpBarX, r.Y + manaBarY, (float)Math.Ceiling(mana * hpBarWidth), 5, ManaBlue);
+				// A shorter bar with the numbers after it, shrunk to fit the end of the nameplate
+				const int manaBarWidth = 42;
+				DrDraw.Rect(r.X + hpBarX, r.Y + manaBarY, manaBarWidth, 5, new Color(20, 28, 90));
+				DrDraw.Rect(r.X + hpBarX, r.Y + manaBarY, (float)Math.Ceiling(mana * manaBarWidth), 5, ManaBlue);
+				string mp = $"{Player.statMana}/{Player.statManaMax2}";
+				float mpRoom = hpBarWidth - manaBarWidth - 3;
+				float mpScale = Math.Min(0.6f, mpRoom / Math.Max(1f, DrDraw.Measure(mp, DrDraw.SmallFont)));
+				DrDraw.Text(mp, r.X + hpBarX + manaBarWidth + 3, r.Y + manaBarY - 2, ManaBlue, DrDraw.SmallFont, mpScale);
 			}
 			string hp = $"{Player.statLife}/{Player.statLifeMax2}";
 			Color hpColor = ratio <= 0.25f ? new Color(255, 255, 0) : Color.White;
