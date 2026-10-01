@@ -445,6 +445,8 @@ namespace MercyMode.Battle.Encounters
 		// Fitted between the TP bar and the right edge, above the bottom panel
 		public override Vector2 CompositeArea => new(380f, 310f);
 		public override Vector2 DrawCenter => new(440f, 160f);
+		// Frozen mid-rise, its parts can still be faded
+		public override bool ForceOpaque => true;
 		// Closed eyes are out of the fight but still part of the body
 		public override IEnumerable<NPC> DrawParts() => BossKit.OfTypes(Parts);
 		public override string EncounterText => "* The MOON LORD has awoken.";

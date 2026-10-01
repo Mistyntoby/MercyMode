@@ -220,6 +220,12 @@ Resolution 640x480. All sizes below in those pixels.
   so Encounter.CompositeSize sets a minimum world size per boss (Moon Lord 1400x1150 into a 380x310 area at
   (440,160); Prime/Empress 560x420; Golem 440x380; Skeletron 420x300; Twins 300x200; Deerclops 230x290; Queen
   Slime 220x200). The overhead MERCY bar (MercyGlobalNPC.PostDraw) is skipped while DrawingEnemy.
+- Moon Lord core: ai[0] = -1 for its first 60 ticks (rising), then it spawns the hands (800 px apart, 100 up) and
+  head (400 up). Battles wait for ai[0] >= 0 (Eligible); `/mmbattle npc` retries for up to 5 s instead of starting
+  at 20 ticks. Head and hands have npc.hide (the normal pass skips them; Main.CacheNPCDraws draws them with the
+  core) but DrawNPCDirect draws them fine.
+- Composite idle animation: s * (1 + 0.015 sin(t/45)) breathing, and each non-anchor part offset by sin/cos sway of
+  1.8% of the boss's size, applied to the NPCs' positions for the draw (restored after) so connectors follow.
 - Widescreen / rounded-down scale: the bottom panel's black now reaches the window bottom (DrawPanel(bottom)).
 - `/mmbattle npc` matches internal names (spaces ignored: "moon lord core") and, when display names collide
   ("Moon Lord" is the head, hands and core), prefers the boss / custom-encounter type.
