@@ -28,6 +28,10 @@ namespace MercyMode
 		[DefaultValue(true)]
 		public bool BattlesWithEnemies;
 
+		/// <summary>Regular enemies start battles during invasions, moon events, eclipses, the Old One's Army and the pillars.</summary>
+		[DefaultValue(false)]
+		public bool BattlesDuringEvents;
+
 		[Range(0.1f, 10f)]
 		[Increment(0.1f)]
 		[DefaultValue(1f)]

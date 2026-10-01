@@ -261,6 +261,99 @@ namespace MercyMode.Battle
 	}
 
 	/// <summary>
+	/// Rays from a pivot that turn around it: one sweeping ray (the Moon Lord's deathray) or several evenly spaced
+	/// (the Empress of Light's Sun Dance). The rays flicker in place as a warning, then fire and rotate.
+	/// </summary>
+	public class SweepBeam : RepeatingAttack
+	{
+		/// <summary>Where the rays come from; null = the middle of the box.</summary>
+		public Vector2? Pivot;
+		public int Arms = 1;
+		/// <summary>Radians per tick (sign picks the direction; alternates each volley).</summary>
+		public float AngularSpeed = 0.012f;
+		public int Warn = 50;
+		public int Active = 110;
+		public float Width = 20f;
+		public float Length = 900f;
+		public Color Color = new(120, 255, 255);
+		public float Damage = 1.2f;
+		/// <summary>Start the first ray pointing at the SOUL (otherwise a random angle).</summary>
+		public bool AimFirst = true;
+		/// <summary>Each ray gets the next colour of the rainbow (the Empress).</summary>
+		public bool Rainbow;
+		public Terraria.Audio.SoundStyle FireSound = SoundID.Zombie104;
+
+		public SweepBeam(int every = 200)
+		{
+			Every = every;
+			StopBeforeEnd = 40;
+		}
+
+		protected override void Spawn(BattleSystem battle, int index)
+		{
+			Rectangle box = battle.Box;
+			Vector2 pivot = Pivot ?? box.Center.ToVector2();
+			float start = AimFirst ? (battle.SoulCenter - pivot).ToRotation() : Main.rand.NextFloat(MathHelper.TwoPi);
+			float speed = index % 2 == 0 ? AngularSpeed : -AngularSpeed;
+			int warn = Warn, active = Active, arms = Arms;
+			float width = Width, length = Length, damage = Damage;
+			Terraria.Audio.SoundStyle fire = FireSound;
+			AttackSfx.Appear();
+			for (int i = 0; i < arms; i++)
+			{
+				float a0 = start + MathHelper.TwoPi * i / arms;
+				Color color = Rainbow ? Main.hslToRgb((float)i / arms, 1f, 0.65f) : Color;
+				bool leader = i == 0;
+				float angle = a0;
+				battle.Spawn(new Bullet
+				{
+					Position = pivot,
+					Harmful = false,
+					Lifetime = warn + active,
+					DamageMult = damage,
+					GrazePoints = 2f,
+					DestroyOnHit = false,
+					OffscreenMargin = 2000f,
+					OnUpdate = x =>
+					{
+						if (x.Age == warn)
+						{
+							x.Harmful = true;
+							if (leader)
+							{
+								AttackSfx.Vanilla(fire, 0.8f);
+								battle.ShakeScreen(3);
+							}
+						}
+						if (x.Age >= warn)
+							angle = a0 + speed * (x.Age - warn);
+						// Fades out over its last few ticks; harmless once it's mostly gone
+						if (x.Age > warn + active - 8)
+							x.Harmful = false;
+					},
+					HitTest = (x, r) => x.Harmful && Beam.SegmentNear(pivot, pivot + angle.ToRotationVector2() * length, r, width / 2f),
+					OnDraw = x =>
+					{
+						Vector2 end = pivot + angle.ToRotationVector2() * length;
+						if (x.Age < warn)
+						{
+							float alpha = (x.Age / 3) % 2 == 0 ? 0.8f : 0.4f;
+							DrDraw.Line(pivot, end, 1f + 2f * x.Age / warn, color * alpha);
+							return;
+						}
+						float t = x.Age - warn;
+						float grow = Math.Min(1f, t / 6f) * Math.Min(1f, (active - t) / 8f);
+						float w = width * grow * (1f + (float)Math.Sin(x.Age * 1.3f) * 0.07f);
+						DrDraw.Line(pivot, end, w + 8f, color * 0.3f);
+						DrDraw.Line(pivot, end, w, color);
+						DrDraw.Line(pivot, end, w * 0.4f, Color.White);
+					},
+				});
+			}
+		}
+	}
+
+	/// <summary>
 	/// Something big flashes a column over the SOUL, drops, and hits the floor of the box: the screen shakes and
 	/// shockwave bullets slide out along the floor both ways (and some debris pops up).
 	/// </summary>
