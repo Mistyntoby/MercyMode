@@ -381,7 +381,7 @@ namespace MercyMode.Battle
 			p.compositeBackArm = default;
 			int bodyFrame = 0, legFrame = 0;
 
-			Item weapon = WeaponForDisplay();
+			Item weapon = ally ? AllyWeapon(p) : WeaponForDisplay();
 			float swing = SwingProgress(pose, timer);
 			Item manualItem = null; // drawn by us at the hand
 			float manualRotation = 0f;
@@ -460,7 +460,7 @@ namespace MercyMode.Battle
 						break;
 					case HeroPose.ItemReady:
 					case HeroPose.Item:
-						if (usedItemType > 0 && (pose == HeroPose.ItemReady || timer <= ItemUseFrame) && shadow < 0.95f)
+						if (!ally && usedItemType > 0 && (pose == HeroPose.ItemReady || timer <= ItemUseFrame) && shadow < 0.95f)
 						{
 							// Arm raised, holding the item up; it's used up at ItemUseFrame
 							float armRot = MathHelper.Pi;

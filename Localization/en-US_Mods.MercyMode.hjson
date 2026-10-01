@@ -2,6 +2,7 @@ Keybinds: {
 	Act.DisplayName: ACT
 	Spare.DisplayName: SPARE
 	HealPrayer.DisplayName: Heal Prayer (32% TP)
+	JoinBattle.DisplayName: Join Battle
 }
 
 Configs: {
@@ -76,6 +77,129 @@ Configs: {
 		BattleStartSoundRedirect: {
 			Label: Battle start sound redirect
 			Tooltip: Choose Deltarune sounds, a Terraria sound, or Silent for the battle-entry sound.
+		}
+
+		PartyColor: {
+			Label: Party Color
+			Tooltip: Your colour in multiplayer battles: your battle UI, and your box and SOUL on the others' screens. Automatic picks by the order players joined the server.
+		}
+
+		EventBattles: {
+			Label: Event Battles
+			Tooltip: ""
+		}
+
+		BossBattleMusic: {
+			Label: Boss Battle Music
+			Tooltip: ""
+		}
+
+		BossMusicBoost: {
+			Label: Boss Music Boost
+			Tooltip: ""
+		}
+	}
+
+	PartyColorChoice: {
+		Tooltip: ""
+
+		Automatic: {
+			Label: Automatic
+			Tooltip: ""
+		}
+
+		Cyan: {
+			Label: Cyan
+			Tooltip: ""
+		}
+
+		Magenta: {
+			Label: Magenta
+			Tooltip: ""
+		}
+
+		Green: {
+			Label: Green
+			Tooltip: ""
+		}
+
+		Yellow: {
+			Label: Yellow
+			Tooltip: ""
+		}
+
+		Orange: {
+			Label: Orange
+			Tooltip: ""
+		}
+
+		Blue: {
+			Label: Blue
+			Tooltip: ""
+		}
+
+		White: {
+			Label: White
+			Tooltip: ""
+		}
+	}
+
+	MercySoundRedirect: {
+		Tooltip: ""
+
+		Deltarune: {
+			Label: Deltarune
+			Tooltip: ""
+		}
+
+		MenuTick: {
+			Label: Menu Tick
+			Tooltip: ""
+		}
+
+		MenuOpen: {
+			Label: Menu Open
+			Tooltip: ""
+		}
+
+		MenuClose: {
+			Label: Menu Close
+			Tooltip: ""
+		}
+
+		PlayerHit: {
+			Label: Player Hit
+			Tooltip: ""
+		}
+
+		NpcHit: {
+			Label: Npc Hit
+			Tooltip: ""
+		}
+
+		NpcDeath: {
+			Label: Npc Death
+			Tooltip: ""
+		}
+
+		Roar: {
+			Label: Roar
+			Tooltip: ""
+		}
+
+		Item1: {
+			Label: Item1
+			Tooltip: ""
+		}
+
+		Item4: {
+			Label: Item4
+			Tooltip: ""
+		}
+
+		Silent: {
+			Label: Silent
+			Tooltip: ""
 		}
 	}
 }

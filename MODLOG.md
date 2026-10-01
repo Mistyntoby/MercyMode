@@ -374,31 +374,38 @@ Resolution 640x480. All sizes below in those pixels.
 - Lab: `parts-skeletron`, `parts-twins`, `parts-golem`.
 
 ## Multiplayer party battles (2026-10-01, untested with real clients)
-- `Battle/Net/BattleNet.cs` (server bookkeeping + packets, `MercyMode.HandlePacket`) and `Battle/BattleSystem.Net.cs`
-  (battle-screen side). Each client runs its own battle screen; the server only tracks what everyone must agree on.
-- Starting: touching/hitting an enemy on a client sends `RequestBattle` (roots from `GatherEnemies`). The server makes a
-  battle, pulls in up to 2 more players within 60 tiles of the starter who aren't fighting (party of 3, like
-  Deltarune), freezes ONLY that battle's NPCs (roots + `Encounter.Members()`, velocity saved/restored) and tells
-  everyone which NPCs are frozen, then sends `JoinBattle` (roots + server MERCY) and `Party`. Walking into a frozen enemy
-  later sends `RequestJoin` (joins if the party has room). A client that can't start (dead, battles off, already
-  fighting) answers `Left`.
-- Turns: after a player picks an action, `StartEnemyTurn` sends `Ready` (with the face icon) and waits in
-  `Phase.Waiting` ("* Waiting for X..."). The server sends `BeginEnemyTurn` when the whole party is ready, or after
-  60 s so one AFK player can't stall the rest. Everyone dodges their own bullets in their own box (bullets aren't synced).
-- Synced: enemy HP (FIGHT's `SimpleStrikeNPC` already syncs), MERCY (`Encounter.Mercy` setter sends the delta, server
-  adds and broadcasts the total), SPARE (server runs `Encounter.Spare()` so loot/downed flags/event progress happen
-  there; every party member gets `playerInteraction` so boss bags drop for a party that only ACTed), breaking a boss
-  core (`KillMembers`), FIGHT damage numbers (`PartyHit`). An enemy killed by someone else plays its death animation.
-- Not frozen in multiplayer: other NPCs, projectiles, time. Players in a battle are immune to the world as in
-  singleplayer; the server stops spawns near them. Outside-battle ACT/SPARE hotkeys are still singleplayer-only.
-- Drawing: party boxes sit side by side (one centred, three across the panel); allies stand at (70,146) and (70,292)
-  in Idle pose with a name/HP box showing the command icon they picked or "...".
-- `/mmbattle end` in multiplayer just leaves the battle; the other `/mmbattle` test commands stay singleplayer.
-- Lab `mp-server` drives the server side directly with fake players (party pick-up and limits, freezing only the
-  battle's NPCs, barrier, leave, timeout, MERCY cap, spare, KillMembers scope, unfreeze/velocity restore). The client
-  side (packets over a real connection, drawing allies) has NOT been run: needs a host + at least one more client.
-- Known gaps: enemy HP isn't scaled for party size; enemy pose tweaks are local and can snap on NPC sync; joining
-  only happens by touch (a frozen enemy can't be hit in the world).
+- `Battle/Net/BattleNet.cs` (packets + server round), `Battle/Net/NetSystems.cs` (colours, join prompt, outside view),
+  `Battle/BattleSystem.Net.cs` (battle-screen side). Each client runs its own battle screen; the server runs the round.
+- Starting: touching/hitting an enemy sends `RequestBattle`. The server pulls in up to 2 more players within 50 tiles of
+  the starter OR of the enemies (party of 3), freezes ONLY that battle's NPCs (roots + `Members()`, velocity restored
+  after), and sends `JoinBattle` + `Party`. Touching a frozen enemy does nothing (no contact damage).
+- Joining later: near a battle with room, outsiders see "Press J to join the battle!" (keybind "Join Battle"). They
+  open the battle screen as watchers (`Pending`), see everything, and jump in at the next bullet box.
+- Round: (1) Choosing: each player's menu pick is stored (`Commit`), not run; "* Waiting for X to choose...". (2)
+  Acting: the server sends `TurnOf` to each player in party order; that client runs its action (FIGHT bar, ACT text,
+  ITEM, SPARE, DEFEND) and its text lines go to the others' text boxes (`PartyText`); `ActionDone` passes the turn.
+  (3) Enemy turn: `BeginEnemyTurn` with a shared seed and round; `Main.rand` is swapped for the seeded one while the
+  attack is built and spawns, and every enemy's `Turn` is set to the round, so every screen gets the same attack.
+  SOUL positions go out every 2 ticks (`SoulPos`) and are drawn in each player's colour. Timeouts: 60 s to choose
+  (the rest go ahead), 45 s per action.
+- Limits of the shared box: bullets aimed at "the SOUL" aim at YOUR soul on your screen, and anything a hit/graze
+  changes (bullets destroyed on hit, effects) is local, so screens drift apart within an attack. Hits only count on
+  your own screen. True lockstep would need every input round-tripped and would lag.
+- Colours (`PartyColors`): config `PartyColor` (Automatic = by join slot: cyan, magenta, green, yellow, orange, blue,
+  white). Replaces Kris cyan in your own UI (`KrisCyan` is now a property); others' boxes, HP bars and SOULs use their
+  colour. Synced with `ModPlayer.SyncPlayer/SendClientChanges`.
+- Synced: enemy HP (`SimpleStrikeNPC`), MERCY (delta to server, total broadcast), SPARE (server runs
+  `Encounter.Spare()`, party gets `playerInteraction` for bags), core-part kills, FIGHT numbers (`PartyHit`; allies'
+  attack pose).
+- Outside view: `BattleState` goes to every client. Outsiders see fighters swing at the enemy when a hit lands (only
+  their local copy of the remote player animates; nothing is hit), harmless dust "bullets" from the enemies at the
+  fighters during the bullet box, and "IN BATTLE" over fighters. Frozen enemies can't be hit; fighters are immune.
+- In multiplayer only the battle's NPCs freeze; projectiles and time keep going. Outside-battle ACT/SPARE hotkeys are
+  still singleplayer-only. `/mmbattle end` leaves the battle.
+- Lab `mp-server`: party pick-up (near starter or enemy) and the 3 cap, freezing, choose barrier, turn order and that
+  only the acting player can pass it, watcher queued then promoted at the bullet box, acting player leaving, both
+  timeouts, MERCY cap, spare + bag credit, KillMembers scope, unfreeze. The client side has NOT been run.
+- Known gaps: enemy HP isn't scaled for party size; enemy pose tweaks are local and can snap on NPC sync.
 
 ## Log
 - 2026-09-30: recon, decompile, numbers above. Implemented battle loop for Eye of Cthulhu, verified in lab (above).

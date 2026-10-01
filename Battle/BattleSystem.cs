@@ -165,11 +165,12 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>Multiplayer: the server put this player in a battle with these enemies. False if it can't start.</summary>
-		internal bool StartNet(List<(NPC Npc, float Mercy)> roots)
+		internal bool StartNet(List<(NPC Npc, float Mercy)> roots, bool spectate)
 		{
 			if (Player.dead || ModContent.GetInstance<MercyConfig>()?.TurnBasedBattles == false)
 				return false;
-			Start(roots[0].Npc, "multiplayer", roots.Select(r => r.Npc).ToList());
+			Start(roots[0].Npc, spectate ? "joined" : "multiplayer", roots.Select(r => r.Npc).ToList());
+			spectating = spectate;
 			foreach (BattleEnemy e in enemies)
 			{
 				var r = roots.FirstOrDefault(x => x.Npc == e.E.Npc);
@@ -184,6 +185,7 @@ namespace MercyMode.Battle
 			boss = root;
 			// The enemy, plus nearby ones (a squad, during an event) for regular fights; the first is the target
 			SetUpEnemies(root, given);
+			ResetNet();
 			time = 0;
 			battleOver = false;
 			defending = false;
@@ -373,6 +375,9 @@ namespace MercyMode.Battle
 
 		private void SetText(string s)
 		{
+			// Multiplayer: the others watch this player's turn in their own text box
+			if (executing)
+				Net.BattleNet.SendPartyText(s);
 			text = DrDraw.Wrap(s, 570f);
 			textShown = 0;
 			textSoundedThrough = 0;
@@ -509,6 +514,7 @@ namespace MercyMode.Battle
 				case Phase.Death: UpdateSoulDeath(); break;
 				case Phase.Waiting: UpdateWaiting(); break;
 			}
+			SendSoul();
 		}
 
 		/// <summary>The parts of obj_battlecontroller / obj_tensionbar that count in Deltarune frames.</summary>
@@ -635,7 +641,19 @@ namespace MercyMode.Battle
 			}
 			textShown = 0; // the encounter text types out once the panel is up
 			if (panel >= PanelHeight && phaseTicks > IntroPanelAt)
-				BeginPlayerTurn(keepText: true);
+			{
+				// Multiplayer: the party's bullet box already started, or joined mid-battle and watching for now
+				if (enemyTurnQueued)
+				{
+					enemyTurnQueued = false;
+					enemyTurnGranted = true;
+					StartEnemyTurn();
+				}
+				else if (spectating)
+					EnterWaiting();
+				else
+					BeginPlayerTurn(keepText: true);
+			}
 		}
 
 		private void BeginPlayerTurn(bool keepText = false)
@@ -693,7 +711,7 @@ namespace MercyMode.Battle
 					break;
 				case Choice.Defend:
 					Sfx("select");
-					DoDefend();
+					Commit(FaceDefend, DoDefend);
 					break;
 			}
 		}
@@ -792,15 +810,18 @@ namespace MercyMode.Battle
 			switch (pendingChoice)
 			{
 				case Choice.Fight:
-					faceAction = FaceFight;
-					StartFightBar();
+					Commit(FaceFight, () =>
+					{
+						faceAction = FaceFight;
+						StartFightBar();
+					});
 					break;
 				case Choice.Act:
 					listIndex = 0;
 					SetPhase(Phase.ActSelect);
 					break;
 				case Choice.Spare:
-					DoSpare();
+					Commit(FaceSpare, DoSpare);
 					break;
 			}
 		}
@@ -833,15 +854,19 @@ namespace MercyMode.Battle
 				return;
 			}
 			Sfx("select");
-			faceAction = FaceAct;
 			tpPreview = 0;
-			mp.TP -= act.TPCost;
-			lastHeal = -1;
-			List<string> lines = act.Run(this);
-			SetHeroPose(HeroPose.Act);
-			if (lastHeal >= 0)
-				QueueHealFx(lastHeal, ActHealFrame);
-			ShowMessages(lines, StartEnemyTurn);
+			Commit(FaceAct, () =>
+			{
+				faceAction = FaceAct;
+				// TP may have gone since it was picked (multiplayer): the act still happens, as far as TP goes
+				mp.TP = Math.Max(0f, mp.TP - act.TPCost);
+				lastHeal = -1;
+				List<string> lines = act.Run(this);
+				SetHeroPose(HeroPose.Act);
+				if (lastHeal >= 0)
+					QueueHealFx(lastHeal, ActHealFrame);
+				ShowMessages(lines, StartEnemyTurn);
+			});
 		}
 
 		/// <summary>Two-column list navigation like Deltarune's ACT and ITEM menus.</summary>
@@ -910,6 +935,11 @@ namespace MercyMode.Battle
 				return;
 
 			var (type, _, name, heal) = items[listIndex];
+			Commit(FaceItem, () => UseItem(type, name, heal));
+		}
+
+		private void UseItem(int type, string name, int heal)
+		{
 			for (int i = 0; i < 50; i++)
 			{
 				Item item = Player.inventory[i];
@@ -1007,30 +1037,49 @@ namespace MercyMode.Battle
 				StartOutro();
 				return;
 			}
-			// A boss at the end of its rope says so, then goes all out
+			// Multiplayer: this player's action is over; the bullet box starts for everyone at once, from the server
+			if (Net.BattleNet.InParty && !enemyTurnGranted)
+			{
+				if (executing)
+				{
+					executing = false;
+					Net.BattleNet.SendActionDone();
+				}
+				if (!enemyTurnQueued)
+				{
+					EnterWaiting();
+					return;
+				}
+				enemyTurnQueued = false;
+				enemyTurnGranted = true;
+			}
+			executing = false;
+			// A boss at the end of its rope says so, then goes all out (in a party there's no stopping for it: the box
+			// opens for everyone together)
 			if (DesperateBoss() is BattleEnemy desperate && !desperate.E.DesperationAnnounced)
 			{
 				desperate.E.DesperationAnnounced = true;
 				ShakeScreen(3);
-				ShowMessages(new[] { $"* {desperate.E.Name} is fighting with everything it has left!" }, StartEnemyTurn);
-				return;
-			}
-			// Multiplayer: the enemies attack once the whole party has picked an action
-			if (Net.BattleNet.Online && !enemyTurnGranted && Net.BattleNet.Allies.Any())
-			{
-				Net.BattleNet.SendReady(faceAction);
-				SetPhase(Phase.Waiting);
-				text = WaitingText();
-				textShown = text.Length;
-				return;
+				if (!Net.BattleNet.InParty)
+				{
+					ShowMessages(new[] { $"* {desperate.E.Name} is fighting with everything it has left!" }, StartEnemyTurn);
+					return;
+				}
 			}
 			Bullets.Clear();
 			boxAfterimages.Clear();
 			enemyAttackEnergy = 0f;
 			enemyAttackDirection = Vector2.Zero;
 			RetargetIfNeeded();
-			attack = BuildEnemyTurn();
-			BeginSoulMode(attack.Soul);
+			// Multiplayer: the same attack on every screen (shared seed; turn counters from the server's round)
+			if (Net.BattleNet.InParty)
+				foreach (BattleEnemy en in enemies)
+					en.E.Turn = netRound;
+			WithNetRand(() =>
+			{
+				attack = BuildEnemyTurn();
+				BeginSoulMode(attack.Soul);
+			});
 			turnTimer = attack.Duration;
 			boxTimer = 0;
 			text = "";
@@ -1133,7 +1182,7 @@ namespace MercyMode.Battle
 
 		private void UpdateEnemyTurn()
 		{
-			attack.Update(this, phaseTicks);
+			WithNetRand(() => attack.Update(this, phaseTicks));
 			MoveSoul();
 			UpdateYellowShots();
 
@@ -1319,7 +1368,6 @@ namespace MercyMode.Battle
 		private const float FightBarY = 365;
 		private static readonly Color PanelLine = MergeColor(MergeColor(new Color(128, 0, 128), Color.Black, 0.7f), new Color(64, 64, 64), 0.5f);
 		private static readonly Color Orange = new(255, 160, 64);
-		private static readonly Color KrisCyan = new(0, 255, 255);
 		private static readonly Color BoxGreen = MergeColor(new Color(0, 128, 0), new Color(0, 255, 0), 0.5f);
 
 		private static Color MergeColor(Color a, Color b, float t) => Color.Lerp(a, b, t);
@@ -1592,6 +1640,7 @@ namespace MercyMode.Battle
 			int frame = inv > 0 ? (inv / SoulBlinkTicks) % 2 : 0;
 			// Once the SOUL is back with the hero it isn't drawn in the box any more
 			bool soulHome = phase == Phase.EnemyOutro && phaseTicks >= 8 * TicksPerFrame;
+			DrawAllySouls();
 			if (soulHome)
 			{
 			}

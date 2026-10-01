@@ -667,21 +667,64 @@ namespace MercyMode.Lab
 				Check(!BattleNet.IsFrozen(z2), "an enemy outside the battle froze");
 				Check(z1.velocity == Vector2.Zero, "a frozen enemy kept moving");
 				Check(new[] { 0, 1, 2 }.All(i => BattleNet.LabSent.Contains($"JoinBattle>{i}")), "not every party member was told to join");
-				Check(BattleNet.LabSent.Contains("Frozen>all"), "clients weren't told what froze");
+				Check(BattleNet.LabSent.Contains("Frozen>all") && BattleNet.LabSent.Contains("BattleState>all"), "everyone wasn't told about the battle");
 				Check(BattleNet.InBattle(1) && !BattleNet.InBattle(3), "InBattle is wrong");
-
-				// A second battle can't take the same enemies, and a full party takes no one else
 				Check(BattleNet.ServerStartBattle(4, new List<NPC> { z1 }) == -1, "a second battle took a frozen enemy");
 				BattleNet.ServerJoin(4, z1);
 				Check(!BattleNet.InBattle(4), "a fourth player joined a full party");
 
-				// The enemies attack only once all three have picked
+				int Sent(string m) => BattleNet.LabSent.Count(x => x.StartsWith(m + ">"));
+				// Nobody acts until all three have picked
 				BattleNet.LabSent.Clear();
 				BattleNet.ServerReady(0, id, 1);
 				BattleNet.ServerReady(1, id, 6);
-				Check(!BattleNet.LabSent.Any(m => m.StartsWith("BeginEnemyTurn")), "the enemy turn started before everyone was ready");
-				BattleNet.ServerReady(2, id, 10);
-				Check(BattleNet.LabSent.Count(m => m.StartsWith("BeginEnemyTurn")) == 3, "the enemy turn didn't go out to all three");
+				Check(Sent("TurnOf") == 0, "someone acted before everyone had picked");
+				BattleNet.ServerReady(2, id, 3);
+				Check(BattleNet.LabStage(id) == BattleNet.Stage.Acting && BattleNet.LabCurrent(id) == 0, "player 0 doesn't act first");
+				Check(Sent("TurnOf") == 3, "the turn wasn't announced to all three");
+				// One at a time, in party order; nobody can skip ahead
+				BattleNet.ServerActionDone(1, id);
+				Check(BattleNet.LabCurrent(id) == 0, "player 1 ended player 0's turn");
+				BattleNet.ServerActionDone(0, id);
+				Check(BattleNet.LabCurrent(id) == 1, "player 1 isn't next");
+				BattleNet.ServerActionDone(1, id);
+				Check(BattleNet.LabCurrent(id) == 2, "player 2 isn't next");
+				Check(Sent("BeginEnemyTurn") == 0, "the bullet box opened before the last action");
+				BattleNet.ServerActionDone(2, id);
+				Check(BattleNet.LabStage(id) == BattleNet.Stage.EnemyTurn && Sent("BeginEnemyTurn") == 3, "the bullet box didn't open for all three");
+
+				// Someone leaves; a newcomer presses the join key: they watch, then jump in at the next bullet box
+				BattleNet.ServerLeave(2, id);
+				BattleNet.LabSent.Clear();
+				BattleNet.ServerJoin(4, z1);
+				Check(BattleNet.LabPending(id).SequenceEqual(new[] { 4 }) && BattleNet.LabSent.Contains("JoinBattle>4"), "the newcomer wasn't queued");
+				BattleNet.ServerReady(4, id, 1);
+				BattleNet.ServerReady(0, id, 1);
+				BattleNet.ServerReady(1, id, 1);
+				Check(BattleNet.LabCurrent(id) == 0, "a watcher held up (or joined) the round");
+				BattleNet.ServerActionDone(0, id);
+				BattleNet.ServerActionDone(1, id);
+				Check(BattleNet.LabPlayers(id).SequenceEqual(new[] { 0, 1, 4 }) && BattleNet.LabPending(id).Count == 0, "the newcomer didn't jump in at the bullet box");
+				Check(BattleNet.LabSent.Contains("BeginEnemyTurn>4"), "the newcomer isn't in the bullet box");
+
+				// The acting player leaves: the next one goes
+				BattleNet.ServerReady(0, id, 1);
+				BattleNet.ServerReady(1, id, 1);
+				BattleNet.ServerReady(4, id, 1);
+				BattleNet.ServerLeave(0, id);
+				Check(BattleNet.LabCurrent(id) == 1, "the turn didn't pass on when the acting player left");
+				// An action that never finishes times out
+				for (int t = 0; t <= BattleNet.ActTimeoutTicks + 1; t++)
+					BattleNet.ServerUpdate();
+				Check(BattleNet.LabCurrent(id) == 4, "a stuck action never timed out");
+				BattleNet.ServerActionDone(4, id);
+				Check(BattleNet.LabStage(id) == BattleNet.Stage.EnemyTurn, "no bullet box after the last action");
+				// One AFK player: the others go ahead after the wait
+				BattleNet.ServerReady(1, id, 1);
+				for (int t = 0; t <= BattleNet.ChooseTimeoutTicks + 1; t++)
+					BattleNet.ServerUpdate();
+				Check(BattleNet.LabStage(id) == BattleNet.Stage.Acting && BattleNet.LabCurrent(id) == 1, "the wait for an AFK player never timed out");
+				BattleNet.ServerActionDone(1, id);
 
 				// MERCY adds up across the party, capped at 100
 				BattleNet.ServerAddMercy(z1, 40f);
@@ -690,25 +733,12 @@ namespace MercyMode.Lab
 				BattleNet.ServerAddMercy(z1, 40f);
 				Check(z1.GetGlobalNPC<MercyGlobalNPC>().Mercy == 100f, "MERCY went past 100");
 
-				// Someone leaves: the rest no longer wait for them
-				BattleNet.ServerLeave(2, id);
-				BattleNet.LabSent.Clear();
-				BattleNet.ServerReady(0, id, 1);
-				BattleNet.ServerReady(1, id, 1);
-				Check(BattleNet.LabSent.Count(m => m.StartsWith("BeginEnemyTurn")) == 2, "the enemy turn waited for a player who left");
-
-				// One AFK player: the turn starts anyway after the timeout
-				BattleNet.LabSent.Clear();
-				BattleNet.ServerReady(0, id, 1);
-				for (int t = 0; t <= BattleNet.ReadyTimeoutTicks + 1; t++)
-					BattleNet.ServerUpdate();
-				Check(BattleNet.LabSent.Count(m => m.StartsWith("BeginEnemyTurn")) == 2, "the wait never timed out");
-
 				// A spare goes through the server: the enemy leaves, the others hear about it (not the one who spared)
 				BattleNet.LabSent.Clear();
 				BattleNet.ServerSpare(0, z1);
 				Check(!z1.active, "the spared enemy is still there");
 				Check(BattleNet.LabSent.Contains("Spared>1") && !BattleNet.LabSent.Contains("Spared>0"), $"spare sent {string.Join(" ", BattleNet.LabSent)}");
+				Check(z1.playerInteraction[1] && z1.playerInteraction[4], "the party doesn't count for the boss bags");
 
 				// Only a battle's own enemies can be killed through it
 				BattleNet.ServerKill(0, new List<NPC> { z2 });
@@ -718,14 +748,18 @@ namespace MercyMode.Lab
 
 				// Everyone leaves: the battle closes and its enemies are let go
 				BattleNet.LabSent.Clear();
-				BattleNet.ServerLeave(0, id);
-				BattleNet.ServerDisconnect(1);
+				BattleNet.ServerLeave(1, id);
+				BattleNet.ServerDisconnect(4);
 				Check(BattleNet.LabBattleCount == 0, "the battle stayed open with nobody in it");
 				Check(BattleNet.LabSent.Contains("Unfrozen>all"), "clients weren't told the battle ended");
 
 				// A frozen enemy gets its velocity back when the battle ends
 				int id2 = BattleNet.ServerStartBattle(3, new List<NPC> { z2 });
-				Check(BattleNet.LabPlayers(id2).SequenceEqual(new[] { 3 }), "the far player's battle pulled in others");
+				// Player 3 is far from the others, but they stand by the enemy: near the enemy counts too
+				var party2 = BattleNet.LabPlayers(id2);
+				Check(party2.Count == 3 && party2[0] == 3, $"party {string.Join(",", party2)}: expected 3 plus two players standing by the enemy");
+				foreach (int pl in party2.Skip(1))
+					BattleNet.ServerLeave(pl, id2);
 				Check(z2.velocity == Vector2.Zero && BattleNet.IsFrozen(z2), "z2 didn't freeze");
 				BattleNet.ServerLeave(3, id2);
 				Check(z2.velocity == new Vector2(-2f, 1f), $"z2's velocity came back as {z2.velocity}");

@@ -30,13 +30,9 @@ namespace MercyMode.Battle
 		{
 			if (BattleSystem.Active || Net.BattleNet.Online && Net.BattleNet.RequestPending)
 				return false;
-			// Multiplayer: walking into another party's battle joins it (up to three players)
+			// Multiplayer: another party's enemies are harmless (the join key brings you into their battle)
 			if (Net.BattleNet.IsFrozen(npc))
-			{
-				if (npc.Hitbox.Intersects(target.Hitbox) && BattleSystem.CanStart(npc, target, ignoreGrace: true))
-					BattleSystem.TryStart(npc, target, "joined");
 				return false;
-			}
 			// Terraria asks this for every hostile NPC every tick, before checking that the hitboxes touch
 			if (npc.Hitbox.Intersects(target.Hitbox) && BattleSystem.CanStart(npc, target))
 			{
