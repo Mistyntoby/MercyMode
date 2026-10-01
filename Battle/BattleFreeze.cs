@@ -85,6 +85,30 @@ namespace MercyMode.Battle
 		public override bool ImmuneTo(PlayerDeathReason damageSource, int cooldownCounter, bool dodgeable)
 			=> BattleSystem.Active && !BattleSystem.HurtingPlayer;
 
+		public override void ModifyDrawInfo(ref PlayerDrawSet drawInfo)
+		{
+			if (!BattleSystem.DrawingHero)
+				return;
+			// The battle screen isn't in the world: use the character's own colours, not the light at that spot
+			Player p = drawInfo.drawPlayer;
+			drawInfo.colorHair = p.GetHairColor(useLighting: false);
+			drawInfo.colorEyeWhites = Color.White;
+			drawInfo.colorEyes = p.eyeColor;
+			drawInfo.colorHead = p.skinColor;
+			drawInfo.colorBodySkin = p.skinColor;
+			drawInfo.colorLegs = p.skinColor;
+			drawInfo.colorShirt = p.shirtColor;
+			drawInfo.colorUnderShirt = p.underShirtColor;
+			drawInfo.colorPants = p.pantsColor;
+			drawInfo.colorShoes = p.shoeColor;
+			drawInfo.colorArmorHead = Color.White;
+			drawInfo.colorArmorBody = Color.White;
+			drawInfo.colorArmorLegs = Color.White;
+			drawInfo.colorMount = Color.White;
+			drawInfo.colorDisplayDollSkin = Color.White;
+			drawInfo.floatingTubeColor = Color.White;
+		}
+
 		public override void ModifyHurt(ref Player.HurtModifiers modifiers)
 		{
 			// DEFEND: tdamage = ceil(2 * tdamage / 3)

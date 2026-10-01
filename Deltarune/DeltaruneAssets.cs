@@ -83,6 +83,7 @@ namespace MercyMode.Deltarune
 			"spr_tensionbar", "spr_tensionfilling", "spr_tensionmarker", "spr_tplogo",
 			"spr_grazeappear", "spr_hpname", "spr_numbersfontbig",
 			"spr_ponman_eyebullet", "spr_smallbullet", "spr_healsparkle", "spr_sparestar",
+			"bg_battleback1", "spr_battlemsg", "spr_heartoutline", "spr_heartoutline2", "spr_sparestar_anim", "spr_lightfairy",
 		};
 
 		public static readonly string[] FontNames = { "fnt_mainbig", "fnt_main", "fnt_small" };
