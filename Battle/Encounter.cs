@@ -238,17 +238,19 @@ namespace MercyMode.Battle
 		/// <summary>Extra rotation for the sprite on the battle screen.</summary>
 		public virtual float DrawRotation(int time) => 0f;
 
-		/// <summary>Draws NPC art at its Terraria world size relative to the battle-screen player.</summary>
+		/// <summary>
+		/// Draws NPC art at the same scale as the battle-screen player (1.5x world size), so enemies keep their real
+		/// size next to you; only very big ones are shrunk to fit. (Sizing by hitbox made most enemies too small:
+		/// sprites are usually bigger than their hitboxes.)
+		/// </summary>
 		public virtual float DrawScale(Rectangle frame)
 		{
 			NPC npc = DrawNpc ?? Npc;
-			float desiredHeight = npc == null
-				? BattleConstants.BattleCharacterScale * Main.LocalPlayer.height
-				: npc.height * npc.scale * BattleConstants.BattleCharacterScale;
+			float worldScale = (npc?.scale ?? 1f) * BattleConstants.BattleCharacterScale;
 			float fitToBattleArea = Math.Min(
 				200f / Math.Max(1, frame.Height),
 				220f / Math.Max(1, frame.Width));
-			return Math.Min(desiredHeight / Math.Max(1, frame.Height), fitToBattleArea);
+			return Math.Min(worldScale, fitToBattleArea);
 		}
 
 		/// <summary>Tint used for the sprite (slimes and other recoloured enemies use npc.color).</summary>

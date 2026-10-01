@@ -259,6 +259,8 @@ namespace MercyMode.Battle.Encounters
 
 		public override string Name => "GOLEM";
 		public override bool DrawWithTerraria => true;
+		// The battle can freeze its head mid-fade
+		public override bool ForceOpaque => true;
 		public override Vector2 CompositeSize => new(440f, 380f);
 		public override IEnumerable<NPC> DrawParts() => BossKit.OfTypes(Parts);
 		public override string EncounterText => "* GOLEM stirs in the temple's heart!";
