@@ -150,9 +150,17 @@ namespace MercyMode.Battle
 			}
 		}
 
+		/// <summary>
+		/// Bosses' ACTs give this share of their listed MERCY, so sparing a boss takes about as many turns as beating it
+		/// (around 6-8 instead of 4).
+		/// </summary>
+		public const float BossMercyScale = 0.65f;
+
 		/// <summary>Adds MERCY, halving it each time the same act is repeated. Returns what was actually gained.</summary>
 		protected float GainMercy(string actName, float amount)
 		{
+			if (IsBoss)
+				amount *= BossMercyScale;
 			ActUses.TryGetValue(actName, out int uses);
 			ActUses[actName] = uses + 1;
 			float before = Mercy;
@@ -251,6 +259,10 @@ namespace MercyMode.Battle
 		{
 			NPCID.EyeofCthulhu or NPCID.KingSlime or NPCID.BrainofCthulhu or NPCID.QueenBee or NPCID.SkeletronHead
 				or NPCID.Deerclops or NPCID.WallofFlesh => true,
+			// Hardmode
+			NPCID.QueenSlimeBoss or NPCID.Retinazer or NPCID.Spazmatism or NPCID.TheDestroyer or NPCID.SkeletronPrime
+				or NPCID.Plantera or NPCID.Golem or NPCID.DukeFishron or NPCID.HallowBoss or NPCID.CultistBoss
+				or NPCID.MoonLordCore => true,
 			_ => EaterTypes.Contains(type),
 		};
 
@@ -279,6 +291,46 @@ namespace MercyMode.Battle
 				case NPCID.Bee:
 				case NPCID.BeeSmall:
 					return Find(NPCID.QueenBee) ?? root;
+				// Hardmode bosses' parts and minions
+				case NPCID.QueenSlimeMinionBlue:
+				case NPCID.QueenSlimeMinionPink:
+				case NPCID.QueenSlimeMinionPurple:
+					return Find(NPCID.QueenSlimeBoss) ?? root;
+				case NPCID.Probe:
+					return Find(NPCID.TheDestroyer) ?? root;
+				case NPCID.PrimeCannon:
+				case NPCID.PrimeSaw:
+				case NPCID.PrimeVice:
+				case NPCID.PrimeLaser:
+					return Find(NPCID.SkeletronPrime) ?? root;
+				case NPCID.PlanterasHook:
+				case NPCID.PlanterasTentacle:
+				case NPCID.Spore:
+					return Find(NPCID.Plantera) ?? root;
+				case NPCID.GolemHead:
+				case NPCID.GolemHeadFree:
+				case NPCID.GolemFistLeft:
+				case NPCID.GolemFistRight:
+					return Find(NPCID.Golem) ?? root;
+				case NPCID.Sharkron:
+				case NPCID.Sharkron2:
+				case NPCID.DetonatingBubble:
+					return Find(NPCID.DukeFishron) ?? root;
+				case NPCID.CultistBossClone:
+				case NPCID.AncientLight:
+				case NPCID.AncientDoom:
+				case NPCID.CultistDragonHead:
+				case NPCID.CultistDragonBody1:
+				case NPCID.CultistDragonBody2:
+				case NPCID.CultistDragonBody3:
+				case NPCID.CultistDragonBody4:
+				case NPCID.CultistDragonTail:
+					return Find(NPCID.CultistBoss) ?? root;
+				case NPCID.MoonLordHead:
+				case NPCID.MoonLordHand:
+				case NPCID.MoonLordFreeEye:
+				case NPCID.MoonLordLeechBlob:
+					return Find(NPCID.MoonLordCore) ?? root;
 			}
 			return root;
 		}
@@ -293,6 +345,11 @@ namespace MercyMode.Battle
 
 		public static bool IsBossFight(NPC root) => root.boss || HasCustom(root.type);
 
+		/// <summary>An invasion, a Pumpkin or Frost Moon, an eclipse, the Old One's Army or the Lunar Events.</summary>
+		public static bool EventActive =>
+			Main.invasionType > 0 || Main.pumpkinMoon || Main.snowMoon || Main.eclipse
+			|| Terraria.GameContent.Events.DD2Event.Ongoing || NPC.LunarApocalypseIsUp;
+
 		/// <summary>Whether touching/hitting this (root) NPC starts a battle.</summary>
 		public static bool Eligible(NPC root)
 		{
@@ -303,6 +360,9 @@ namespace MercyMode.Battle
 
 			var config = ModContent.GetInstance<MercyConfig>();
 			if (config != null && !config.BattlesWithEnemies)
+				return false;
+			// An event is a crowd: one battle would freeze the whole thing, so its enemies stay real-time
+			if (EventActive && config?.BattlesDuringEvents != true)
 				return false;
 			// A boss's fight already has its minions; leave the rest of the world alone during it
 			if (MercyMode.AnyBossAlive())
@@ -322,6 +382,16 @@ namespace MercyMode.Battle
 				NPCID.SkeletronHead => new Skeletron(),
 				NPCID.Deerclops => new Deerclops(),
 				NPCID.WallofFlesh => new WallOfFlesh(),
+				NPCID.QueenSlimeBoss => new QueenSlime(),
+				NPCID.Retinazer or NPCID.Spazmatism => new Twins(),
+				NPCID.TheDestroyer => new Destroyer(),
+				NPCID.SkeletronPrime => new SkeletronPrime(),
+				NPCID.Plantera => new Plantera(),
+				NPCID.Golem => new Golem(),
+				NPCID.DukeFishron => new DukeFishron(),
+				NPCID.HallowBoss => new EmpressOfLight(),
+				NPCID.CultistBoss => new LunaticCultist(),
+				NPCID.MoonLordCore => new MoonLord(),
 				_ when EaterTypes.Contains(root.type) => new EaterOfWorlds(),
 				_ when root.boss => new GenericBoss(),
 				_ => EnemyFamilies.For(root),

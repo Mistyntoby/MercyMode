@@ -59,8 +59,12 @@ namespace MercyMode.Battle
 		/// <summary>One bolt per this many ticks of use time (so ~45-tick weapons get one, fast ones up to four).</summary>
 		private const float BoltTierTicks = 45f;
 		private const int MaxBolts = 4;
-		/// <summary>The config's damage multiplier (1 = the balance above).</summary>
-		public static float DamageScale => ModContent.GetInstance<MercyConfig>()?.FightDamageMultiplier ?? 1f;
+		/// <summary>
+		/// The config's damage multiplier (1 = the balance above), times the square root of the difficulty's enemy
+		/// health multiplier: Expert (2x health) fights last ~1.4x as long instead of 2x, Master (3x) ~1.7x.
+		/// </summary>
+		public static float DamageScale =>
+			(ModContent.GetInstance<MercyConfig>()?.FightDamageMultiplier ?? 1f) * (float)Math.Sqrt(Math.Max(1f, Main.GameModeInfo.EnemyMaxLifeMultiplier));
 
 		/// <summary>The weapon chosen in this battle's FIGHT menu (inventory slot and type), or -1 for the held one.</summary>
 		private int fightWeaponSlot = -1, fightWeaponType;

@@ -198,6 +198,25 @@ Resolution 640x480. All sizes below in those pixels.
 - Shots (guns, bows, spells, throwables): item.UseSound, recoil (weapon tips up, hero rocks back 6 frames), muzzle
   flash, the projectile sprite flying 10 frames to the enemy (with a streak for invisible magic shots), impact sparks.
   `/mmbattle kit` now also gives a Flintlock Pistol + Musket Balls, Wand of Sparking and Shurikens.
+- Hardmode bosses (`Encounters/HardmodeBosses.cs`, base `HardmodeBoss`): Queen Slime, Twins, Destroyer, Skeletron
+  Prime, Plantera, Golem, Duke Fishron, Empress of Light, Lunatic Cultist, Moon Lord. 6-7 attacks each from their
+  real moves; most get a full-screen attack in phase 2 (Destroyer, Duke, Empress, Moon Lord always). Parts and
+  minions resolve to their boss in `EncounterRegistry.ResolveRoot`. New pattern `SweepBeam` (rays rotating round a
+  pivot): Moon Lord's deathray from above the screen, Empress's Sun Dance (rainbow arms round the arena centre).
+  Facts: Moon Lord head/hands "die" by going back to full life with ai[0] = -2 (closed, dontTakeDamage, spawns a
+  True Eye); the core goes back to full life with ai[0] = 2 and its AI plays the death + loot. Members() skips
+  those, so the HP bar falls and the fight ends; the real death runs once the world unfreezes. Its parts have no
+  contact damage -> Damage 70 x EnemyDamageMultiplier. Golem's body shield and Moon Lord's core shield are dropped
+  in StrikeTarget (paused AI). Spare keeps the loot part (Golem body, Moon Lord core, Prime head).
+  Sprites drawn from TextureAssets.Npc: Empress and Moon Lord are drawn in pieces in vanilla, so their battle
+  sprite may look odd (untested).
+- Enemy families: Water (Piranha, Jellyfish), Spider (Spider, Herpling), Mimic (+ biome mimics), Charger (Unicorn,
+  Giant Tortoise, Sand Shark), Spirit (Cursed Skull, Dungeon Spirit, Ancient Vision), Blade (Enchanted Sword),
+  Snapper (Man Eater, Antlion).
+- Events: no regular-enemy battles during invasions, Pumpkin/Frost Moon, eclipse, Old One's Army or the pillars
+  (`EncounterRegistry.EventActive`); bosses still start. Config `BattlesDuringEvents` (default off).
+- Balance: boss ACT MERCY x0.65 (`Encounter.BossMercyScale`) so sparing a boss takes ~6-8 turns like beating it.
+  FIGHT damage x sqrt(EnemyMaxLifeMultiplier): Expert fights ~1.4x Normal length, Master ~1.7x (not 2x/3x).
 - Built in the cloud against tModLoader's release DLLs (0 warnings, 0 errors); beam collision unit-tested.
   NOT yet verified in game: needs the lab loop above.
 
