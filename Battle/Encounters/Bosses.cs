@@ -37,6 +37,67 @@ namespace MercyMode.Battle.Encounters
 
 		/// <summary>Worm sprites point up, so their rotation is a quarter turn ahead of their velocity.</summary>
 		public const float WormRotation = MathHelper.PiOver2;
+
+		/// <summary>
+		/// A worm's segments in order from its head (each follower's ai[1] is the segment ahead of it), cut down to
+		/// <paramref name="show"/>: the first ones and then the tail, so the battle shows a whole worm, just shorter.
+		/// </summary>
+		public static List<NPC> WormChain(NPC head, int show)
+		{
+			var chain = new List<NPC>();
+			if (head == null || !head.active)
+				return chain;
+			chain.Add(head);
+			var used = new HashSet<int> { head.whoAmI };
+			NPC cur = head;
+			while (chain.Count < 300)
+			{
+				NPC next = null;
+				int byAi0 = (int)cur.ai[0];
+				if (byAi0 > 0 && byAi0 < Main.maxNPCs && Main.npc[byAi0].active && !used.Contains(byAi0) && (int)Main.npc[byAi0].ai[1] == cur.whoAmI)
+					next = Main.npc[byAi0];
+				for (int i = 0; next == null && i < Main.maxNPCs; i++)
+				{
+					NPC n = Main.npc[i];
+					if (n.active && !used.Contains(i) && (int)n.ai[1] == cur.whoAmI && (n.realLife == head.whoAmI || n.realLife == head.realLife || n.type != head.type))
+						next = n;
+				}
+				if (next == null)
+					break;
+				chain.Add(next);
+				used.Add(next.whoAmI);
+				cur = next;
+			}
+			if (chain.Count <= show)
+				return chain;
+			var cut = chain.Take(show - 1).ToList();
+			cut.Add(chain[^1]);
+			return cut;
+		}
+
+		/// <summary>
+		/// Lays a worm out as a short S that slithers: the head stays put and leads to the left (toward the party), each
+		/// segment follows a travelling wave behind it, turned along the body like Terraria turns them.
+		/// </summary>
+		public static void PoseWorm(List<NPC> chain, int time, float attacking)
+		{
+			if (chain.Count == 0)
+				return;
+			NPC head = chain[0];
+			float spacing = Math.Max(8f, head.height * 0.85f);
+			float t = time / 28f * (1f + attacking);
+			float amp = spacing * 1.1f;
+			Vector2 origin = head.Center;
+			Vector2 At(int i) => origin + new Vector2(i * spacing * 0.92f, (float)(Math.Sin(i * 0.45f - t) - Math.Sin(-t)) * amp);
+			for (int i = 0; i < chain.Count; i++)
+			{
+				NPC n = chain[i];
+				Vector2 here = At(i);
+				Vector2 ahead = i == 0 ? here + (here - At(1)) : At(i - 1);
+				n.position = here - n.Size / 2f;
+				n.rotation = (ahead - here).ToRotation() + WormRotation;
+			}
+		}
 	}
 
 	// ====================================================================== King Slime
@@ -108,6 +169,11 @@ namespace MercyMode.Battle.Encounters
 		public override string Name => "EATER OF WORLDS";
 		public override string EncounterText => "* EATER OF WORLDS bursts out of the ground!";
 		public override float DrawRotation(int time) => -BossKit.WormRotation;
+		// The whole worm (shortened), slithering, instead of just its head
+		public override bool DrawWithTerraria => true;
+		public override IEnumerable<NPC> DrawParts() => BossKit.WormChain(DrawNpc, 16);
+		public override void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking) =>
+			BossKit.PoseWorm(BossKit.WormChain(DrawNpc, 16), time, attacking);
 
 		public override IEnumerable<NPC> Members() =>
 			BossKit.OfTypes(NPCID.EaterofWorldsHead, NPCID.EaterofWorldsBody, NPCID.EaterofWorldsTail);

@@ -171,6 +171,7 @@ namespace MercyMode.Lab
 				("act-second-target", ActSecondTarget),
 				("boss-fights-alone", BossAlone),
 				("single-enemy", SingleEnemy),
+				("worm-chains", WormChains),
 				("parts-skeletron", PartsSkeletron),
 				("parts-twins", PartsTwins),
 				("parts-golem", PartsGolem),
@@ -795,6 +796,29 @@ namespace MercyMode.Lab
 			};
 			foreach (var (label, types) in bosses)
 				yield return SweepAttacks(label, 9, types);
+		}
+
+		/// <summary>Worms are drawn as a chain of segments from the head to the tail, not just their head.</summary>
+		private IEnumerable WormChains()
+		{
+			foreach (var (label, type, tail) in new (string, int, int)[]
+			{
+				("destroyer", NPCID.TheDestroyer, NPCID.TheDestroyerTail),
+				("eater of worlds", NPCID.EaterofWorldsHead, NPCID.EaterofWorldsTail),
+				("giant worm", NPCID.GiantWormHead, NPCID.GiantWormTail),
+			})
+			{
+				yield return StartWith(type);
+				yield return Menu();
+				var chain = B.LabTarget.DrawParts().ToList();
+				string kinds = string.Join(" ", chain.Select(n => n.type == type ? "H" : n.type == tail ? "T" : "b"));
+				Log($"  {label}: {chain.Count} segments drawn: {kinds}");
+				Check(chain.Count >= 5, $"{label}: only {chain.Count} segments in the chain");
+				Check(chain[0].type == type && chain[^1].type == tail, $"{label}: the chain doesn't run head to tail ({kinds})");
+				foreach (NPC m in B.LabTarget.Members().ToList())
+					m.active = false;
+				yield return Until(() => !BattleSystem.Active, "the battle ending", 60 * 30);
+			}
 		}
 
 		// ================================================================== breakable bosses

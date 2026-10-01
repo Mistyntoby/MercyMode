@@ -368,6 +368,9 @@ Resolution 640x480. All sizes below in those pixels.
 - Yellow SOUL charge as in Deltarune's soul mode code: from z_hold 15 four spr_yheart_charge sparks spiral in from 35 px,
   from 35 the SOUL pulses (two glow layers), the snd_chargeshot_charge hum loops from 20, fading in and rising in
   pitch to 40; shots that hit play spr_yheart_shot_hit; max 3 shots including big ones.
+- Worms (Destroyer, Eater of Worlds, regular worm enemies) are drawn whole with Terraria's renderer: `BossKit.WormChain`
+  follows the segments from the head (ai[1] = segment ahead), shortened to 14 / 16 / 10 with the tail kept, and
+  `PoseWorm` lays them out as a slithering S leading left. Before, only the head sprite showed. Lab `worm-chains`.
 - Lab: `parts-skeletron`, `parts-twins`, `parts-golem`.
 
 ## Log
