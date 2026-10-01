@@ -84,18 +84,25 @@ namespace MercyMode.Battle.Encounters
 			if (chain.Count == 0)
 				return;
 			NPC head = chain[0];
-			float spacing = Math.Max(8f, head.height * 0.85f);
 			float t = time / 28f * (1f + attacking);
-			float amp = spacing * 1.1f;
-			Vector2 origin = head.Center;
-			Vector2 At(int i) => origin + new Vector2(i * spacing * 0.92f, (float)(Math.Sin(i * 0.45f - t) - Math.Sin(-t)) * amp);
+			// Segments sit a sprite-length apart (their hitboxes are much smaller than what's drawn, and spacing by
+			// those piled them on top of each other)
+			float SpriteLength(NPC n) => (n.frame.Height > 0 ? n.frame.Height : n.height) * n.scale;
+			var at = new Vector2[chain.Count];
+			at[0] = head.Center;
+			float along = 0f;
+			for (int i = 1; i < chain.Count; i++)
+			{
+				along += (SpriteLength(chain[i - 1]) + SpriteLength(chain[i])) / 2f * 0.82f;
+				float amp = SpriteLength(head) * 0.7f;
+				at[i] = head.Center + new Vector2(along, (float)(Math.Sin(i * 0.55f - t) - Math.Sin(-t)) * amp);
+			}
 			for (int i = 0; i < chain.Count; i++)
 			{
 				NPC n = chain[i];
-				Vector2 here = At(i);
-				Vector2 ahead = i == 0 ? here + (here - At(1)) : At(i - 1);
-				n.position = here - n.Size / 2f;
-				n.rotation = (ahead - here).ToRotation() + WormRotation;
+				Vector2 ahead = i == 0 ? at[0] + (at[0] - at[Math.Min(1, chain.Count - 1)]) : at[i - 1];
+				n.position = at[i] - n.Size / 2f;
+				n.rotation = (ahead - at[i]).ToRotation() + WormRotation;
 			}
 		}
 	}
@@ -171,9 +178,13 @@ namespace MercyMode.Battle.Encounters
 		public override float DrawRotation(int time) => -BossKit.WormRotation;
 		// The whole worm (shortened), slithering, instead of just its head
 		public override bool DrawWithTerraria => true;
-		public override IEnumerable<NPC> DrawParts() => BossKit.WormChain(DrawNpc, 16);
+		// Frozen mid fade-in, back segments were see-through
+		public override bool ForceOpaque => true;
+		public override Vector2 CompositeArea => new(360f, 200f);
+		public override Vector2 DrawCenter => new(430f, 170f);
+		public override IEnumerable<NPC> DrawParts() => BossKit.WormChain(DrawNpc, 10);
 		public override void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking) =>
-			BossKit.PoseWorm(BossKit.WormChain(DrawNpc, 16), time, attacking);
+			BossKit.PoseWorm(BossKit.WormChain(DrawNpc, 10), time, attacking);
 
 		public override IEnumerable<NPC> Members() =>
 			BossKit.OfTypes(NPCID.EaterofWorldsHead, NPCID.EaterofWorldsBody, NPCID.EaterofWorldsTail);
