@@ -519,8 +519,14 @@ namespace MercyMode.Deltarune
 			}
 		}
 
+		/// <summary>
+		/// Rude Buster is mastered louder than Terraria's music; this brings it down to sit with the boss tracks at the
+		/// same Music volume. The config's Battle Music Volume still scales it.
+		/// </summary>
+		private const float RudeBusterGain = 0.6f;
+
 		public static float BattleMusicVolume => MathHelper.Clamp(
-			Main.musicVolume * ModContent.GetInstance<MercyConfig>().BattleMusicVolume, 0f, 1f);
+			Main.musicVolume * ModContent.GetInstance<MercyConfig>().BattleMusicVolume * RudeBusterGain, 0f, 1f);
 
 		private static MercySoundRedirect SoundRedirectFor(string role, MercyConfig config) => role switch
 		{
