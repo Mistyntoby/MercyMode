@@ -49,7 +49,7 @@ namespace MercyMode.Battle
 		{
 			List<NPC> parts = encounter.DrawParts().Where(n => n.active).Distinct().ToList();
 			// The NPC the battle started with, unless it isn't one of the drawn parts (a worm touched mid-body: its head leads)
-			NPC anchorNpc = encounter.Npc.active && (parts.Count == 0 || parts.Contains(encounter.Npc)) ? encounter.Npc : encounter.DrawNpc;
+			NPC anchorNpc = !encounter.LeadWithDrawNpc && encounter.Npc.active && (parts.Count == 0 || parts.Contains(encounter.Npc)) ? encounter.Npc : encounter.DrawNpc;
 			if (anchorNpc == null || !anchorNpc.active)
 				return;
 			if (!parts.Contains(anchorNpc))
@@ -75,12 +75,13 @@ namespace MercyMode.Battle
 			float glide = FlyProgress();
 			// Fits the encounter's area on the battle screen, no bigger than the hero's scale
 			Vector2 area = encounter.CompositeArea;
-			float fit = Math.Min(BattleCharacterScale, Math.Min(area.X / Math.Max(1, bounds.Width), area.Y / Math.Max(1, bounds.Height)));
+			float fit = encounter.LeadWithDrawNpc ? BattleCharacterScale
+				: Math.Min(BattleCharacterScale, Math.Min(area.X / Math.Max(1, bounds.Width), area.Y / Math.Max(1, bounds.Height)));
 			float s = MathHelper.Lerp(WorldPixelScale(), fit, glide);
 
 			// Where the anchor NPC lands; once it has arrived the whole group is centred on the enemy's spot
 			Vector2 anchor = anchorNpc.Center;
-			Vector2 centring = (bounds.Center.ToVector2() - anchor) * s * glide;
+			Vector2 centring = encounter.LeadWithDrawNpc ? Vector2.Zero : (bounds.Center.ToVector2() - anchor) * s * glide;
 			float attackMotion = phase == Phase.EnemyTurn ? MathHelper.Clamp(enemyAttackEnergy, 0f, 1f) : 0f;
 			Vector2 p = EnemyPosNow - centring + new Vector2(0, (float)Math.Sin(time / 20f) * 4f * glide) - enemyAttackDirection * (attackMotion * 3f);
 			if (enemyShake > 0)
