@@ -118,5 +118,21 @@ Resolution 640x480. All sizes below in those pixels.
   BoC FIGHT hits a Creeper first. Slime: two ACTs -> 100% MERCY -> spare.
 - `/mmbattle npc <id|name>`, `spawnnpc`, `end`, `heal`, `mercy <n>` for tests.
 
+## Hero and Deltarune animations (2026-09-30)
+- Player drawn on the battle screen where a lone Kris stands (scr_encountersetup: 80,140; feet ~116,216) with
+  Main.PlayerRenderer.DrawPlayer at scale 1.5 inside our Deltarune-space matrix (Immediate sort for dyes). DrawPlayer
+  scales around the hitbox bottom-centre and samples world lighting -> BattlePlayer.ModifyDrawInfo sets true colours
+  while BattleSystem.DrawingHero. Poses via bodyFrame/legFrame (0 stand, 1-4 use, 5 jump) + weapon drawn by hand.
+- From the decompile: obj_moveheart/obj_returnheart (8-frame flights from kris.x+10, kris.y+40; alpha +0.334/frame;
+  obj_heartburst at start/end), obj_dmgwriter (vspeed -5..-7, hspeed 10 decaying, 2 bounces, stretch 0.2->1, fade
+  after 35 frames; Kris colour merge(aqua, white, .5); spr_battlemsg 0 MISS 1 DOWN 2 MAX 3 UP),
+  heroparent states (attack hit at alarm[1]=10 frames, item at 15, hurt shift -20+hurtindex*10 for 15 frames),
+  obj_shake (4 px, flips, -1/frame), obj_spareanim, obj_deathanim (red, blocks peel right), obj_healanim (lime
+  spr_sparestar_anim), obj_battleback (black + bg_battleback1 tiled twice: +0.5/frame at half alpha, -1/frame),
+  obj_encounterbasic (party flies to battle spots over 10 frames), crit spr_lightfairy sparkles.
+- Verified with a recorded take (frames at 20 fps): fly-in, heart out/back + bursts, hurt number on the hero,
+  item rise + heal stars + MAX, FIGHT thrust + slash + aqua number, MISS, spare flash/stars/streak, death dissolve,
+  fly-back at the end.
+
 ## Log
 - 2026-09-30: recon, decompile, numbers above. Implemented battle loop for Eye of Cthulhu, verified in lab (above).

@@ -11,7 +11,7 @@ namespace MercyMode.Battle
 	{
 		public override CommandType Type => CommandType.Chat;
 		public override string Command => "mmbattle";
-		public override string Usage => "/mmbattle [npc <id|name> | spawn [dx dy] | spawnnpc <id|name> | end | heal | mercy <n> | kit | night | tp <0-100> | bosshp <n>]";
+		public override string Usage => "/mmbattle [npc <id|name> | spawn [dx dy] | spawnnpc <id|name> | end | clear | heal | mercy <n> | kit | night | tp <0-100> | bosshp <n>]";
 		public override string Description => "Start Mercy Mode battles for testing (no arguments: Eye of Cthulhu)";
 
 		public override void Action(CommandCaller caller, string input, string[] args)
@@ -28,6 +28,12 @@ namespace MercyMode.Battle
 				case "mercy" when args.Length == 2 && float.TryParse(args[1], out float mercy) && BattleSystem.Active:
 					BattleSystem.Instance.Encounter.Mercy = mercy;
 					caller.Reply($"* MERCY set to {mercy}%.", MercyMode.MercyYellow);
+					return;
+				case "clear":
+					foreach (NPC n in Main.ActiveNPCs)
+						if (!n.friendly && !n.townNPC)
+							n.active = false;
+					caller.Reply("* Cleared nearby enemies.", MercyMode.Gray);
 					return;
 				case "heal":
 					player.statLife = player.statLifeMax2;
