@@ -1036,7 +1036,7 @@ namespace MercyMode.Battle
 			enemyAttackEnergy = Math.Min(1.5f, enemyAttackEnergy + 0.22f);
 
 			// Pattern volleys can create many projectiles in one tick; throttle the cue so it reads as attack rhythm.
-			if (b.OnDraw == null && patternSoundCooldown <= 0)
+			if ((b.OnDraw == null || b.SoundOnSpawn) && patternSoundCooldown <= 0)
 			{
 				Sfx("attack");
 				patternSoundCooldown = 12;

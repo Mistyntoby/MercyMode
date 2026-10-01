@@ -83,6 +83,26 @@ namespace MercyMode.Battle
 			return b;
 		}
 
+		/// <summary>A short glowing laser streak pointing the way it flies: a coloured glow around a white core.</summary>
+		public static Bullet Laser(Vector2 pos, Vector2 vel, Color color, float length = 14f, float damage = 0.7f) => new()
+		{
+			Position = pos,
+			Velocity = vel,
+			Color = color,
+			HitSize = new Vector2(6, 6),
+			DamageMult = damage,
+			SoundOnSpawn = true,
+			OnDraw = b =>
+			{
+				Vector2 dir = b.Velocity.LengthSquared() > 0.01f ? Vector2.Normalize(b.Velocity) : Vector2.UnitX;
+				Vector2 tip = b.Position + dir * length / 2f, tail = b.Position - dir * length / 2f;
+				Color c = b.Flash > 0 ? Color.White : b.Color;
+				DrDraw.Line(tail, tip, 5f, c * (0.45f * b.Alpha));
+				DrDraw.Line(tail, tip, 3f, c * b.Alpha);
+				DrDraw.Line(tail + dir * 2f, tip - dir * 1f, 1f, Color.White * b.Alpha);
+			},
+		};
+
 		/// <summary>A flashing red area that can't hurt: telegraphs an attack.</summary>
 		public static Bullet Warning(Rectangle area, int ticks, Color? color = null) => new()
 		{

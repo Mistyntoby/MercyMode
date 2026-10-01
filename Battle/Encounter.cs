@@ -160,7 +160,7 @@ namespace MercyMode.Battle
 		/// centring the whole group: a worm's head on its spot with the body trailing off the screen's right edge.
 		/// </summary>
 		public virtual bool LeadWithDrawNpc => false;
-		/// <summary>Each part floats on its own rhythm while idle (off for worms: their segments have to stay joined).</summary>
+		/// <summary>Each part floats on its own rhythm while idle, and the whole body breathes and bobs (off for worms: they hold still).</summary>
 		public virtual bool SwayParts => true;
 		/// <summary>Draw fully opaque even if the battle froze it mid fade-in (the Empress).</summary>
 		public virtual bool ForceOpaque => false;

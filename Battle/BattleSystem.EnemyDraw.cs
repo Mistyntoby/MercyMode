@@ -83,13 +83,14 @@ namespace MercyMode.Battle
 			Vector2 anchor = anchorNpc.Center;
 			Vector2 centring = encounter.LeadWithDrawNpc ? Vector2.Zero : (bounds.Center.ToVector2() - anchor) * s * glide;
 			float attackMotion = phase == Phase.EnemyTurn ? MathHelper.Clamp(enemyAttackEnergy, 0f, 1f) : 0f;
-			Vector2 p = EnemyPosNow - centring + new Vector2(0, (float)Math.Sin(time / 20f) * 4f * glide) - enemyAttackDirection * (attackMotion * 3f);
+			float bob = encounter.SwayParts ? (float)Math.Sin(time / 20f) * 4f * glide : 0f;
+			Vector2 p = EnemyPosNow - centring + new Vector2(0, bob) - enemyAttackDirection * (attackMotion * 3f);
 			if (enemyShake > 0)
 				p.X += (enemyShake % 4 < 2 ? 1 : -1) * enemyShake / 2f;
 
 			// Idle animation (the battle freezes the boss's AI): the whole body breathes, and every part other than
 			// the anchor floats on its own rhythm. Arms and chains follow, since Terraria draws them between the parts.
-			float breathe = 1f + (float)Math.Sin(time / 45f) * 0.015f;
+			float breathe = encounter.SwayParts ? 1f + (float)Math.Sin(time / 45f) * 0.015f : 1f;
 			float sway = Math.Max(bounds.Width, bounds.Height) * 0.018f;
 			Vector2 PartSway(int i) => new(
 				(float)Math.Sin(time / 37f + i * 1.9f) * sway,

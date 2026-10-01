@@ -76,7 +76,7 @@ namespace MercyMode.Battle.Encounters
 		}
 
 		/// <summary>
-		/// Lays a worm out as a short S that slithers: the head stays put and leads to the left (toward the party), each
+		/// Lays a worm out as a still S: the head stays put and leads to the left (toward the party), each
 		/// segment follows a travelling wave behind it, turned along the body like Terraria turns them.
 		/// </summary>
 		public static void PoseWorm(List<NPC> chain, int time, float attacking)
@@ -84,8 +84,8 @@ namespace MercyMode.Battle.Encounters
 			if (chain.Count == 0)
 				return;
 			NPC head = chain[0];
-			// A gentle slither, only a little quicker while attacking
-			float t = time / 32f * (1f + attacking * 0.3f);
+			// Held still in its S (animating it looked wrong)
+			const float t = 0f;
 			// Segments sit one width apart, as Terraria's worm AI keeps them (the sprite sheet's frame height can be
 			// several segments tall, which left gaps)
 			float SpriteLength(NPC n) => n.width * n.scale;

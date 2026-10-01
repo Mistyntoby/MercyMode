@@ -178,7 +178,8 @@ namespace MercyMode.Battle.Encounters
 		{
 			Bullet head(Vector2 p, Vector2 v) => Shots.Npc(NPCID.TheDestroyer, p, v, 0.45f, 1.1f, new Vector2(18, 18), rotationOffset: BossKit.WormRotation);
 			Bullet body(Vector2 p, Vector2 v) => Shots.Npc(NPCID.TheDestroyerBody, p, v, 0.45f, 0.9f, new Vector2(16, 16), rotationOffset: BossKit.WormRotation);
-			Bullet laser(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.DeathLaser, p, v, 1f, 0.7f, new Vector2(8, 8), rotationOffset: MathHelper.PiOver2);
+			// Its lasers (and its probes') as glowing streaks: Terraria's long Death Laser sprite looked odd this small
+			Bullet laser(Vector2 p, Vector2 v) => Shots.Laser(p, v, new Color(255, 60, 70));
 			Bullet probe(Vector2 p, Vector2 v) => Shots.Npc(NPCID.Probe, p, v, 0.8f, 0.7f, new Vector2(14, 14), rotate: false);
 			return Cycle(
 				() => new Snake(head, body, Hard ? 70 : 95) { Segments = 12, SegmentLag = 5, Speed = Hard ? 3f : 2.5f },
