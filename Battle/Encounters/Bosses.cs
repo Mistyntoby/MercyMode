@@ -317,9 +317,9 @@ namespace MercyMode.Battle.Encounters
 		public override Vector2 CompositeSize => new(300f, 220f);
 
 		/// <summary>
-		/// Head upright, hands where its AI parks them between attacks (AI style 12): head centre - 120 * ai[0] across,
-		/// 230 below the head's top. The arm bones are drawn toward fixed points by the head, so anywhere else they
-		/// come apart.
+		/// Head upright, hands raised beside it like during its spin (AI style 12 moves them to head centre
+		/// - 120 * ai[0] across, 100 above the head's top then). Resting low (+230) looked like a zombie shuffle: the
+		/// arm bones hang off the hands toward fixed points out to the side.
 		/// </summary>
 		public override void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking)
 		{
@@ -328,9 +328,8 @@ namespace MercyMode.Battle.Encounters
 				p.rotation = 0f;
 				if (p.type != NPCID.SkeletronHand)
 					continue;
-				// A little tighter than the AI's 120 / 230: the bones still meet, bending more at the elbow
-				p.position.X = anchor.Center.X - 90f * p.ai[0] - p.width / 2f;
-				p.position.Y = anchor.position.Y + 175f;
+				p.position.X = anchor.Center.X - 120f * p.ai[0] - p.width / 2f;
+				p.position.Y = anchor.position.Y - 60f;
 			}
 		}
 		public override string EncounterText => "* SKELETRON rises to guard the dungeon!";
