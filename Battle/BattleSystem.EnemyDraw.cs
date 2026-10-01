@@ -44,9 +44,12 @@ namespace MercyMode.Battle
 			NPC anchorNpc = encounter.Npc.active ? encounter.Npc : encounter.DrawNpc;
 			if (anchorNpc == null || !anchorNpc.active)
 				return;
-			List<NPC> parts = encounter.DrawParts().Where(n => n.active).Distinct().OrderBy(n => n.whoAmI).ToList();
+			List<NPC> parts = encounter.DrawParts().Where(n => n.active).Distinct().ToList();
 			if (!parts.Contains(anchorNpc))
-				parts.Insert(0, anchorNpc);
+				parts.Add(anchorNpc);
+			// Terraria's order (Main.DrawNPCs): behind-tiles NPCs first, then each pass from slot 199 down to 0,
+			// so lower slots end up on top (Golem's head over its body)
+			parts = parts.OrderByDescending(n => n.behindTiles).ThenByDescending(n => n.whoAmI).ToList();
 
 			Rectangle bounds = PartBounds(parts);
 			// Never smaller than the boss's known size (its drawing can be far bigger than its hitboxes)

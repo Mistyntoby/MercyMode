@@ -224,6 +224,8 @@ Resolution 640x480. All sizes below in those pixels.
   head (400 up). Battles wait for ai[0] >= 0 (Eligible); `/mmbattle npc` retries for up to 5 s instead of starting
   at 20 ticks. Head and hands have npc.hide (the normal pass skips them; Main.CacheNPCDraws draws them with the
   core) but DrawNPCDirect draws them fine.
+- Composite draw order matches Main.DrawNPCs: behindTiles pass first, each pass from slot 199 down to 0 (lower
+  slots on top). Ascending order put Golem's head behind its body.
 - Composite idle animation: s * (1 + 0.015 sin(t/45)) breathing, and each non-anchor part offset by sin/cos sway of
   1.8% of the boss's size, applied to the NPCs' positions for the draw (restored after) so connectors follow.
 - Widescreen / rounded-down scale: the bottom panel's black now reaches the window bottom (DrawPanel(bottom)).
