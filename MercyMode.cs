@@ -68,6 +68,6 @@ namespace MercyMode
 			return false;
 		}
 
-		public static bool IsSingleplayer => Main.netMode == NetmodeID.SinglePlayer;
+		public static bool IsSingleplayer => Main.netMode == NetmodeID.SinglePlayer || Lab.LabSystem.Enabled;
 	}
 }

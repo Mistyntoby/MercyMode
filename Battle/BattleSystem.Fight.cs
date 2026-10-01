@@ -213,8 +213,7 @@ namespace MercyMode.Battle
 			// Weapons on the hotbar get equipped for real
 			if (pick.Slot >= 0 && pick.Slot < 10)
 				Player.selectedItem = pick.Slot;
-			listIndex = 0;
-			SetPhase(Phase.EnemySelect);
+			OpenEnemySelect();
 		}
 
 		private void DrawWeaponSelect(float y)
@@ -482,7 +481,7 @@ namespace MercyMode.Battle
 			if (!hit.Ranged)
 				slashTimer = 0;
 			else
-				AddEffect(new ShotImpact(encounter.DrawCenter + Main.rand.NextVector2Circular(14f, 14f)));
+				AddEffect(new ShotImpact(encounter.ScreenCenter + Main.rand.NextVector2Circular(14f, 14f)));
 			enemyShake = 18;
 			if (hit.Crit)
 				Sfx("crit");
@@ -493,7 +492,11 @@ namespace MercyMode.Battle
 
 			// A killing blow: the enemy breaks apart right away (obj_deathanim), from how it looked a moment ago
 			if (!encounter.Alive && enemyOverride == null)
+			{
 				PlayEnemyDeath();
+				targetEnemy.Out = true;
+				OnEnemyDefeated(targetEnemy);
+			}
 
 			if (dealt > 0)
 			{
@@ -515,9 +518,18 @@ namespace MercyMode.Battle
 
 			if (!encounter.Alive)
 			{
-				battleOver = true;
-				SetHeroPose(HeroPose.Victory);
-				ShowMessages(new[] { $"* YOU WON!\n* {encounter.Name} was defeated." }, StartOutro);
+				if (LivingEnemies.Count == 0)
+				{
+					battleOver = true;
+					SetHeroPose(HeroPose.Victory);
+					string won = enemies.Count == 1 ? $"* {encounter.Name} was defeated." : "* Every enemy was defeated.";
+					ShowMessages(new[] { "* YOU WON!\n" + won }, StartOutro);
+					return;
+				}
+				string line = $"* {encounter.Name} was defeated.";
+				if (encounter is Encounters.ArmyEnemy army && LivingEnemies.Any(e => e.E is Encounters.ArmyEnemy o && o.Kind == army.Kind))
+					line += "\n* The rest of the squad is furious!";
+				ShowMessages(new[] { line }, StartEnemyTurn);
 				return;
 			}
 			StartEnemyTurn();
@@ -548,7 +560,7 @@ namespace MercyMode.Battle
 				Sfx("attack");
 			heroRecoil = RecoilFrames;
 			Vector2 from = Muzzle();
-			Vector2 to = encounter.DrawCenter + Main.rand.NextVector2Circular(14f, 14f);
+			Vector2 to = encounter.ScreenCenter + Main.rand.NextVector2Circular(14f, 14f);
 			AddEffect(new MuzzleFlash(from));
 			AddEffect(new ShotProjectile(projectile, from, to, 10f));
 		}

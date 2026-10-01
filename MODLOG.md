@@ -271,12 +271,50 @@ Resolution 640x480. All sizes below in those pixels.
 - Enemy families: Water (Piranha, Jellyfish), Spider (Spider, Herpling), Mimic (+ biome mimics), Charger (Unicorn,
   Giant Tortoise, Sand Shark), Spirit (Cursed Skull, Dungeon Spirit, Ancient Vision), Blade (Enchanted Sword),
   Snapper (Man Eater, Antlion).
-- Events: no regular-enemy battles during invasions, Pumpkin/Frost Moon, eclipse, Old One's Army or the pillars
-  (`EncounterRegistry.EventActive`); bosses still start. Config `BattlesDuringEvents` (default off).
+- Events: regular-enemy battles during invasions, Pumpkin/Frost Moon, eclipse and Old One's Army are army squads
+  (below); config `EventBattles` (default on, replaces `BattlesDuringEvents`). Eternia Crystal and lane portals
+  never start battles.
 - Balance: boss ACT MERCY x0.65 (`Encounter.BossMercyScale`) so sparing a boss takes ~6-8 turns like beating it.
   FIGHT damage x sqrt(EnemyMaxLifeMultiplier): Expert fights ~1.4x Normal length, Master ~1.7x (not 2x/3x).
 - Built in the cloud against tModLoader's release DLLs (0 warnings, 0 errors); beam collision unit-tested.
   NOT yet verified in game: needs the lab loop above.
 
+## Enemy squads and armies (2026-10-01)
+- Regular battles pull in up to 2 more eligible enemies within 640 px of the player (`BattleSystem.Enemies.cs`,
+  `GatherEnemies`); during an event only the same army. Bosses always fight alone. Each enemy is a `BattleEnemy`
+  (its encounter, glide-in spot, snapshot, spare/death animation, shake, afterimages, `Out`).
+- Formation: 2 enemies at (470,135)/(545,235) fitting 160x120; 3 at (455,100)/(550,180)/(455,262) fitting 130x95
+  (`Encounter.Slot`/`SlotArea`; `ScreenCenter` is the slot or the old DrawCenter).
+- FIGHT/ACT/SPARE pick a target (Up/Down in the enemy list, one row per living enemy with HP and MERCY).
+  Defeating or sparing one marks it Out; the battle goes on to the enemy turn while any are left; YOU WON only when
+  none are. SPARE glows if anyone is spareable.
+- Enemy turn: every living enemy attacks when there are 2, two random ones when there are 3, layered (`Combo`).
+  `OwnedAttack` runs each with its own enemy as `battle.Encounter` and tags bullets (`Bullet.Owner`), so a hit uses
+  the shooter's damage and name.
+- Armies (`Encounters/Armies.cs`): Goblins, Pirates, Frost Legion, Martians, Pumpkin Moon, Frost Moon, Old One's
+  Army, Eclipse, each with its own CHECK, lines, ACTs and attacks (per type: goblin archers shoot arrows, sorcerers
+  homing chaos balls). Sparing one gives the rest of its squad +30 MERCY ("the war isn't worth it"); defeating one
+  enrages the rest (`EnemyEncounter.Enraged`: attacks as Hard).
+- Spared regular enemies go through `NPC.checkDead` (death sound muted) instead of `NPCLoot`, so they count toward
+  invasion / event progress like kills. Bosses keep `NPCLoot`.
+- `/mmbattle group 3 zombie` or `/mmbattle group goblin peon, goblin archer, goblin sorcerer` spawns a squad and
+  starts the battle; `/mmbattle end` ends every enemy in it.
+
+## Headless lab (2026-10-01)
+- `tools/lab/lab.sh test [scenarios]` (Linux / the cloud) and `tools/lab/lab.ps1 test` (Windows) build the mod, start
+  a tModLoader dedicated server on a throwaway world with `MERCYMODE_LAB=<scenarios|all>`, and print the report
+  (also `lab-results.txt` in the lab folder). Exit code 0 = all passed. `lab.ps1 client` is the old windowed lab.
+- `Lab/LabSystem.cs` only runs on a dedicated server with that variable set. A server only updates the world while a
+  client is connected, so the lab runs `Main.DoUpdate` itself from `Main.OnTickForThirdPartySoftwareOnly`, keeps
+  player 0 active as the local player (stubs `Netplay.UpdateConnectedClients`), counts as single-player
+  (`MercyMode.IsSingleplayer`), feeds keys through `Main.keyState`, and gives every texture a 48x48 pixel-less
+  stand-in (`Asset<Texture2D>.DefaultValue`). No drawing or sound is tested; every battle rule is.
+- Scenarios: `squad-fight` (3 zombies, kill one at a time, 2 then 1 attackers), `goblin-squad-spare` (morale line,
+  +30 MERCY, invasion 80 -> 77), `army-enrage` (pirates), `act-second-target`, `boss-fights-alone` (EoC ignores
+  nearby zombies), `single-enemy`. All pass (2026-10-01, tML 2026.8.3.0).
+- Bugs the lab caught on the way: none in battle rules; server-only crashes (texture sizes, view matrix, fonts) now
+  have fallbacks (`Main.dedServ`).
+
 ## Log
 - 2026-09-30: recon, decompile, numbers above. Implemented battle loop for Eye of Cthulhu, verified in lab (above).
+- 2026-10-01: enemy squads (up to 3 per battle), armies with squad morale, spares count toward events; headless lab.

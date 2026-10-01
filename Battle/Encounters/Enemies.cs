@@ -13,7 +13,7 @@ namespace MercyMode.Battle.Encounters
 	/// </summary>
 	public static class EnemyFamilies
 	{
-		public static Encounter For(NPC npc) => npc.aiStyle switch
+		public static Encounter For(NPC npc) => Armies.ArmyOf(npc) is var army && army != ArmyKind.None ? new ArmyEnemy(army) : npc.aiStyle switch
 		{
 			NPCAIStyleID.Slime => new SlimeEnemy(),
 			NPCAIStyleID.Fighter => new FighterEnemy(),
@@ -40,8 +40,11 @@ namespace MercyMode.Battle.Encounters
 
 		public override bool IsBoss => false;
 
-		/// <summary>Stronger enemies (and anything in Hardmode) attack harder.</summary>
-		protected bool Hard => Npc.damage >= 40 || Main.hardMode;
+		/// <summary>Angry after a squadmate was defeated in front of it: attacks as if Hard.</summary>
+		public bool Enraged;
+
+		/// <summary>Stronger enemies (and anything in Hardmode) attack harder, and so does an enraged one.</summary>
+		protected bool Hard => Npc.damage >= 40 || Main.hardMode || Enraged;
 
 		protected abstract string[] Lines { get; }
 		protected abstract (string name, string desc, string line)[] ActList { get; }
@@ -51,6 +54,8 @@ namespace MercyMode.Battle.Encounters
 		{
 			if (Mercy >= 100f)
 				return $"* {Name} seems ready to leave.";
+			if (Enraged && Turn % 2 == 0)
+				return $"* {Name} is furious about its fallen comrade.";
 			if (LifeRatio < 0.35f)
 				return $"* {Name} looks hurt.";
 			return string.Format(Lines[Turn % Lines.Length], Name);

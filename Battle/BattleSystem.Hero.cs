@@ -29,10 +29,15 @@ namespace MercyMode.Battle
 		/// <summary>True for the NPC the battle screen draws; the world copy is hidden so it never shows twice.</summary>
 		public static bool IsBattleSprite(NPC npc)
 		{
-			if (!Active || Instance.encounter == null)
+			if (!Active)
 				return false;
-			Encounter e = Instance.encounter;
-			return e.DrawNpc == npc || e.DrawWithTerraria && (e.Npc == npc || e.DrawParts().Contains(npc));
+			foreach (BattleEnemy en in Instance.enemies)
+			{
+				Encounter e = en.E;
+				if (e.DrawNpc == npc || e.DrawWithTerraria && (e.Npc == npc || e.DrawParts().Contains(npc)))
+					return true;
+			}
+			return false;
 		}
 
 		private enum HeroPose { Idle, AttackReady, Attack, ActReady, Act, ItemReady, Item, Defend, Victory }
@@ -69,14 +74,10 @@ namespace MercyMode.Battle
 		private float hurtTimer = -1; // hurttimer, frames
 		private Vector2 heroWorldScreen; // the player's feet in the world, in battle-screen coordinates
 		private float heroWorldScale;
-		private Vector2 enemyWorldScreen;
-		private float enemyWorldScale;
 		private float shake; // obj_shake: 4 px, flips each frame, decays by 1 per frame
 		private float pendingHealFx = -1; // frames until the heal lands
 		private int pendingHealAmount;
 		private readonly List<BattleEffect> effects = new();
-		private EnemySnapshot enemySnap;
-		private BattleEffect enemyOverride; // spare / death animation replaces the enemy sprite
 		private int usedItemType;
 		/// <summary>Frames of gun kick left after a shot (the weapon tips up and the hero rocks back).</summary>
 		private float heroRecoil;
@@ -87,8 +88,6 @@ namespace MercyMode.Battle
 		{
 			public Vector2 HeroFeet;
 			public float HeroScale;
-			public Vector2 EnemyPos;
-			public float EnemyScale;
 			public float Age; // frames
 		}
 		private readonly List<TrailPoint> trail = new();
@@ -146,9 +145,28 @@ namespace MercyMode.Battle
 				{
 					HeroFeet = HeroFeetNow,
 					HeroScale = HeroScaleNow,
-					EnemyPos = EnemyPosNow,
-					EnemyScale = EnemyScaleNow(out _, out _),
 				});
+			}
+			// Every enemy leaves its own afterimages, and plays its own spare / death animation
+			foreach (BattleEnemy en in enemies)
+			{
+				for (int i = en.Trail.Count - 1; i >= 0; i--)
+				{
+					EnemyTrail et = en.Trail[i];
+					et.Age += dt;
+					if (et.Age > TrailLife)
+						en.Trail.RemoveAt(i);
+					else
+						en.Trail[i] = et;
+				}
+				if (Gliding && time % TicksPerFrame == 0 && en.Living)
+					WithEnemy(en, () => en.Trail.Add(new EnemyTrail { Pos = EnemyPosNow, Scale = EnemyScaleNow(out _, out _) }));
+				if (en.Override != null)
+				{
+					en.Override.Step(dt);
+					if (en.Override.Done)
+						en.Override = null;
+				}
 			}
 
 			foreach (var e in effects)
@@ -163,13 +181,6 @@ namespace MercyMode.Battle
 				else
 					boxAfterimages[i] = image;
 			}
-			if (enemyOverride != null)
-			{
-				enemyOverride.Step(dt);
-				if (enemyOverride.Done)
-					enemyOverride = null;
-			}
-
 			if (pendingHealFx > 0)
 			{
 				pendingHealFx -= dt;
@@ -211,7 +222,7 @@ namespace MercyMode.Battle
 		private Vector2 WorldToBattle(Vector2 world)
 		{
 			ComputeScreenTransform();
-			Vector2 screen = Vector2.Transform(world - Main.screenPosition, Main.GameViewMatrix.ZoomMatrix);
+			Vector2 screen = Vector2.Transform(world - Main.screenPosition, Main.GameViewMatrix?.ZoomMatrix ?? Matrix.Identity);
 			return new Vector2((screen.X - drOx) / drScale, (screen.Y - drOy) / drScale);
 		}
 
@@ -219,7 +230,7 @@ namespace MercyMode.Battle
 		private float WorldPixelScale()
 		{
 			ComputeScreenTransform();
-			return Main.GameViewMatrix.Zoom.X / drScale;
+			return (Main.GameViewMatrix?.Zoom.X ?? 1f) / drScale;
 		}
 
 		private bool Gliding => phase == Phase.Intro && phaseTicks <= GlideTicks || phase == Phase.Outro && phaseTicks <= GlideTicks;
@@ -243,7 +254,7 @@ namespace MercyMode.Battle
 
 		private Vector2 HeroFeetNow => Vector2.Lerp(heroWorldScreen, HeroFeet, FlyProgress());
 		private float HeroScaleNow => MathHelper.Lerp(heroWorldScale, HeroScale, FlyProgress());
-		private Vector2 EnemyPosNow => encounter == null ? Vector2.Zero : Vector2.Lerp(enemyWorldScreen, encounter.DrawCenter, FlyProgress());
+		private Vector2 EnemyPosNow => encounter == null ? Vector2.Zero : Vector2.Lerp(enemyWorldScreen, encounter.ScreenCenter, FlyProgress());
 
 		/// <summary>The enemy's sprite frame and its size right now (world size at the start of the glide).</summary>
 		private float EnemyScaleNow(out Texture2D tex, out Rectangle frame)
@@ -251,21 +262,32 @@ namespace MercyMode.Battle
 			tex = null;
 			frame = default;
 			NPC npc = encounter?.DrawNpc;
-			if (npc == null || !npc.active)
+			// No textures on a dedicated server (the headless lab)
+			if (npc == null || !npc.active || Main.dedServ)
 				return 1f;
 			Main.instance.LoadNPC(npc.type);
 			tex = TextureAssets.Npc[npc.type].Value;
 			frame = npc.frame.Width > 0 && npc.frame.Height > 0 ? npc.frame : new Rectangle(0, 0, tex.Width, tex.Height / Math.Max(1, Main.npcFrameCount[npc.type]));
-			return MathHelper.Lerp(enemyWorldScale, encounter.DrawScale(frame), FlyProgress());
+			float battleScale = encounter.DrawScale(frame);
+			// In a group, each enemy also fits its own slot
+			if (encounter.SlotArea is Vector2 area)
+				battleScale = Math.Min(battleScale, Math.Min(area.X / Math.Max(1, frame.Width), area.Y / Math.Max(1, frame.Height)));
+			return MathHelper.Lerp(enemyWorldScale, battleScale, FlyProgress());
 		}
 
 		/// <summary>Called when the battle starts: remembers where and how big things were in the world.</summary>
-		private void CaptureWorldPositions(NPC root)
+		private void CaptureWorldPositions()
 		{
 			heroWorldScreen = WorldToBattle(Player.Bottom);
 			heroWorldScale = WorldPixelScale();
-			enemyWorldScreen = WorldToBattle(root.Center);
-			enemyWorldScale = WorldPixelScale() * root.scale;
+			foreach (BattleEnemy en in enemies)
+			{
+				NPC n = en.E.Npc;
+				en.WorldScreen = WorldToBattle(n.Center);
+				en.WorldScale = WorldPixelScale() * n.scale;
+				en.WorldRotation = n.rotation;
+				en.Trail.Clear();
+			}
 			trail.Clear();
 		}
 
@@ -534,7 +556,7 @@ namespace MercyMode.Battle
 			if (amount <= 0f || encounter == null)
 				return;
 
-			AddEffect(new MercyGainPopup(encounter.DrawCenter + new Vector2(0f, -55f), amount));
+			AddEffect(new MercyGainPopup(encounter.ScreenCenter + new Vector2(0f, -55f), amount));
 			Sfx("mercyadd");
 		}
 
@@ -550,7 +572,7 @@ namespace MercyMode.Battle
 		/// <summary>The enemy's damage number: from its sprite, 8 frames after the hit.</summary>
 		private void EnemyNumber(int amount, Color color, int message = -1, float yOffset = 0f)
 		{
-			Vector2 c = encounter.DrawCenter;
+			Vector2 c = encounter.ScreenCenter;
 			AddEffect(new DamageNumber(c.X - 30, c.Y - 20 + yOffset, amount, color, message, delay: 8));
 		}
 

@@ -242,6 +242,15 @@ namespace MercyMode.Battle
 
 		/// <summary>Where the enemy is drawn on the battle screen (its centre).</summary>
 		public virtual Vector2 DrawCenter => new(500, 190);
+		/// <summary>In a battle with several enemies: this one's spot and the size it must fit in.</summary>
+		public Vector2? Slot;
+		public Vector2? SlotArea;
+		/// <summary>Where it's actually drawn: its slot in a group, otherwise <see cref="DrawCenter"/>.</summary>
+		public Vector2 ScreenCenter => Slot ?? DrawCenter;
+
+		/// <summary>The opening line when it leads a group of several enemies.</summary>
+		public virtual string GroupEncounterText(int others) =>
+			others == 1 ? $"* {Name} and a friend drew near!" : $"* {Name} and {others} others drew near!";
 		/// <summary>Extra rotation for the sprite on the battle screen.</summary>
 		public virtual float DrawRotation(int time) => 0f;
 
@@ -394,8 +403,10 @@ namespace MercyMode.Battle
 			var config = ModContent.GetInstance<MercyConfig>();
 			if (config != null && !config.BattlesWithEnemies)
 				return false;
-			// An event is a crowd: one battle would freeze the whole thing, so its enemies stay real-time
-			if (EventActive && config?.BattlesDuringEvents != true)
+			if (Armies.NeverBattle(root.type))
+				return false;
+			// During an event, battles take on a squad of that army at a time (or none, if turned off)
+			if (EventActive && config?.EventBattles == false)
 				return false;
 			// A boss's fight already has its minions; leave the rest of the world alone during it
 			if (MercyMode.AnyBossAlive())
