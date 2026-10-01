@@ -406,7 +406,17 @@ namespace MercyMode.Battle
 				Vector2 side = new(-dir.Y, dir.X);
 				Vector2 mid = centre + dir * ShieldDistance;
 				Color shield = shieldFlash > 0 ? Color.White : new Color(80, 160, 255);
-				DrDraw.Line(mid - side * ShieldWidth / 2f, mid + side * ShieldWidth / 2f, ShieldThickness, shield * alpha);
+				if (DeltaruneAssets.Sprite("shield") is DrSprite sh)
+				{
+					// Deltarune's shield sprite: a wide one faces up, a tall one faces right; turned to face the shield's way
+					var tex = sh.Frame(0);
+					float rot = tex.Width >= tex.Height ? shieldAngle + MathHelper.PiOver2 : shieldAngle;
+					float fit = ShieldWidth / Math.Max(tex.Width, tex.Height) * 1.1f;
+					DrDraw.Sb.Draw(tex, mid, null, (shieldFlash > 0 ? Color.White : Color.White * 0.95f) * alpha, rot, new Vector2(tex.Width, tex.Height) / 2f,
+						Math.Max(1f, (float)Math.Round(fit)), Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
+				}
+				else
+					DrDraw.Line(mid - side * ShieldWidth / 2f, mid + side * ShieldWidth / 2f, ShieldThickness, shield * alpha);
 			}
 		}
 	}

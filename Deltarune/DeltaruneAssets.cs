@@ -112,7 +112,20 @@ namespace MercyMode.Deltarune
 			("soul_blue", "blue"), ("soul_green", "green"), ("soul_purple", "purple"), ("soul_yellow", "yellow"),
 		};
 		private static readonly string[] NotASoul = { "shot", "charge", "break", "shard", "outline", "graze", "trail", "burst", "spawn", "marker", "hit", "anim", "flash" };
-		/// <summary>Which Deltarune sprite each coloured SOUL came from (for /drassets).</summary>
+		/// <summary>
+		/// Other sprites found by searching names, since their exact names vary by chapter: a bone bullet and the green
+		/// SOUL's shield. Each tries exact names first, then the shortest name with all the keywords and none of the
+		/// excluded words.
+		/// </summary>
+		public static readonly (string key, string[] exact, string[] keywords, string[] exclude)[] SearchedSprites =
+		{
+			("bone", new[] { "spr_bone", "spr_s_bone", "spr_bonebullet", "spr_bone_bullet", "spr_papyrus_bone" },
+				new[] { "bone" }, new[] { "bird", "dog", "pile", "bonus", "trombone", "head", "face", "body", "walk", "idle", "talk", "fight" }),
+			("shield", new[] { "spr_greenshield", "spr_heart_shield", "spr_soulshield", "spr_shield" },
+				new[] { "shield" }, new[] { "icon", "item", "menu", "face", "walk", "idle", "talk", "hp", "break" }),
+		};
+
+		/// <summary>Which Deltarune sprite each coloured SOUL (and searched sprite) came from (for /drassets).</summary>
 		public static readonly Dictionary<string, string> SoulModeSources = new();
 
 		public override void PostSetupContent()
@@ -278,6 +291,24 @@ namespace MercyMode.Deltarune
 					string best = data.Sprites.Keys
 						.Where(n => n.Contains("heart", StringComparison.OrdinalIgnoreCase) && n.Contains(colour, StringComparison.OrdinalIgnoreCase)
 							&& !NotASoul.Any(w => n.Contains(w, StringComparison.OrdinalIgnoreCase)))
+						.OrderBy(n => n.Length).ThenBy(n => n).FirstOrDefault();
+					if (best == null)
+						continue;
+					RawSprite s = TryRead(() => data.ReadSprite(best), best, log);
+					if (s != null && s.Frames.Count > 0)
+					{
+						rawSprites[key] = s;
+						SoulModeSources[key] = $"{best} (chapter {chapter})";
+					}
+				}
+
+				foreach (var (key, exact, keywords, exclude) in SearchedSprites)
+				{
+					if (rawSprites.ContainsKey(key))
+						continue;
+					string best = exact.FirstOrDefault(data.Sprites.ContainsKey) ?? data.Sprites.Keys
+						.Where(n => keywords.All(k => n.Contains(k, StringComparison.OrdinalIgnoreCase))
+							&& !exclude.Any(w => n.Contains(w, StringComparison.OrdinalIgnoreCase)))
 						.OrderBy(n => n.Length).ThenBy(n => n).FirstOrDefault();
 					if (best == null)
 						continue;

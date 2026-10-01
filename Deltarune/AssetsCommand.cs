@@ -28,6 +28,8 @@ namespace MercyMode.Deltarune
 				$"{DeltaruneAssets.LoadedFontCount}/{DeltaruneAssets.FontNames.Length}, battle music: {(DeltaruneAssets.BattleMusic != null ? "yes" : "no")}", MercyMode.Gray);
 			foreach (var (key, _) in DeltaruneAssets.SoulModeSprites)
 				caller.Reply($"   {key}: {(DeltaruneAssets.SoulModeSources.TryGetValue(key, out string from) ? from : "not in Deltarune's files (recoloured red SOUL)")}", MercyMode.Gray);
+			foreach (var s in DeltaruneAssets.SearchedSprites)
+				caller.Reply($"   {s.key}: {(DeltaruneAssets.SoulModeSources.TryGetValue(s.key, out string from) ? from : "not found (drawn by the mod)")}", MercyMode.Gray);
 			if (!string.IsNullOrEmpty(DeltaruneAssets.DumpPath))
 				caller.Reply("* Full asset name list: " + DeltaruneAssets.DumpPath, MercyMode.Gray);
 		}

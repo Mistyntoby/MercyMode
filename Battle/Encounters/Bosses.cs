@@ -273,6 +273,8 @@ namespace MercyMode.Battle.Encounters
 	{
 		public override string Name => "QUEEN BEE";
 		public override string EncounterText => "* QUEEN BEE buzzes furiously!";
+		// Her wings make her sprite tall and her body sits low in it; lifted so she isn't down by the box
+		public override Vector2 DrawCenter => new(500, 150);
 
 		public override string FlavorText()
 		{
