@@ -450,6 +450,8 @@ namespace MercyMode.Lab
 			// Last one first, to check the cursor wraps and the target follows it
 			yield return FightAndKill(2);
 			Check(Living().Count == 2, $"expected 2 left, {Living().Count} living");
+			yield return Until(() => B.LabPhase != Phase.FightResult, "the end of the FIGHT", skipText: false);
+			Check(B.LabPhase is Phase.EnemyIntro or Phase.EnemyTurn, $"expected the enemy turn right after the kill, got {B.LabPhase}");
 			yield return WatchEnemyTurn(2);
 			yield return Menu();
 			yield return FightAndKill(0);
@@ -507,8 +509,9 @@ namespace MercyMode.Lab
 			yield return Menu();
 			yield return FightAndKill(0);
 			Check(Living().Count == 1 && Living()[0] is EnemyEncounter { Enraged: true }, "the other pirate didn't get enraged");
-			yield return Until(() => B.LabPhase == Phase.Message, "the defeat message", skipText: false);
-			Log($"  \"{B.LabText}\"");
+			// No "was defeated" box while others remain: straight to the bullet box
+			yield return Until(() => B.LabPhase != Phase.FightResult, "the end of the FIGHT", skipText: false);
+			Check(B.LabPhase is Phase.EnemyIntro or Phase.EnemyTurn, $"expected the enemy turn right after the kill, got {B.LabPhase}");
 			yield return WatchEnemyTurn(1);
 			yield return Menu();
 			yield return FightAndKill(0);

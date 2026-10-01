@@ -526,10 +526,8 @@ namespace MercyMode.Battle
 					ShowMessages(new[] { "* YOU WON!\n" + won }, StartOutro);
 					return;
 				}
-				string line = $"* {encounter.Name} was defeated.";
-				if (encounter is Encounters.ArmyEnemy army && LivingEnemies.Any(e => e.E is Encounters.ArmyEnemy o && o.Kind == army.Kind))
-					line += "\n* The rest of the squad is furious!";
-				ShowMessages(new[] { line }, StartEnemyTurn);
+				// Others are still fighting: straight on to their turn, like Deltarune
+				StartEnemyTurn();
 				return;
 			}
 			StartEnemyTurn();
