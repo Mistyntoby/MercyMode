@@ -14,6 +14,23 @@ using Terraria.ModLoader;
 
 namespace MercyMode.Deltarune
 {
+	/// <summary>A sprite from data.win turned into textures. Origin is in sprite pixels, like GameMaker's.</summary>
+	public sealed class DrSprite
+	{
+		public Texture2D[] Frames;
+		public Vector2 Origin;
+		public int Width => Frames[0].Width;
+		public int Height => Frames[0].Height;
+		public Texture2D Frame(int i) => Frames[((i % Frames.Length) + Frames.Length) % Frames.Length];
+	}
+
+	public sealed class DrFont
+	{
+		public Texture2D Texture;
+		public Dictionary<char, RawGlyph> Glyphs;
+		public int LineHeight;
+	}
+
 	/// <summary>
 	/// Pulls real Deltarune assets out of the player's own install at runtime.
 	/// Nothing from Deltarune ships with the mod, so this only works if you own the game.
@@ -28,8 +45,11 @@ namespace MercyMode.Deltarune
 		public static string DumpPath = "";
 
 		public static Texture2D Soul;
+		public static SoundEffect BattleMusic;
 		private static readonly Dictionary<string, SoundEffect> sounds = new();
 		private static readonly Dictionary<string, float> soundVolumes = new();
+		private static readonly Dictionary<string, DrSprite> sprites = new();
+		private static readonly Dictionary<string, DrFont> fonts = new();
 
 		// Role -> sprite/sound names to try, in order. Exact names get confirmed by the asset dump.
 		private static readonly string[] SoulNames = { "spr_heart", "spr_heart_centered", "spr_soul" };
@@ -41,7 +61,31 @@ namespace MercyMode.Deltarune
 			["act"] = new[] { "snd_select", "snd_menumove" },
 			["error"] = new[] { "snd_error", "snd_cantselect" },
 			["hurt"] = new[] { "snd_hurt1" },
+			["menumove"] = new[] { "snd_menumove" },
+			["select"] = new[] { "snd_select" },
+			["cantselect"] = new[] { "snd_cantselect", "snd_error" },
+			["damage"] = new[] { "snd_damage" },
+			["slash"] = new[] { "snd_laz_c" },
+			["crit"] = new[] { "snd_criticalswing" },
+			["battleenter"] = new[] { "snd_battleenter" },
+			["weaponpull"] = new[] { "snd_weaponpull_fast", "snd_weaponpull" },
+			["item"] = new[] { "snd_item" },
+			["boost"] = new[] { "snd_boost" },
+			["defeat"] = new[] { "snd_defeatrun" },
 		};
+
+		/// <summary>Sprites the battle screen uses. Missing ones fall back to simple shapes.</summary>
+		public static readonly string[] SpriteNames =
+		{
+			"spr_heart", "spr_dodgeheart", "spr_battlebg_0",
+			"spr_btfight", "spr_btact", "spr_btitem", "spr_btspare", "spr_btdefend",
+			"spr_pressfront", "spr_pressspot", "spr_attackspot", "spr_attack_cut1",
+			"spr_tensionbar", "spr_tensionfilling", "spr_tensionmarker", "spr_tplogo",
+			"spr_grazeappear", "spr_hpname", "spr_numbersfontbig",
+			"spr_ponman_eyebullet", "spr_smallbullet", "spr_healsparkle", "spr_sparestar",
+		};
+
+		public static readonly string[] FontNames = { "fnt_mainbig", "fnt_main", "fnt_small" };
 
 		public override void PostSetupContent()
 		{
@@ -51,15 +95,29 @@ namespace MercyMode.Deltarune
 
 		public override void Unload()
 		{
+			var textures = new List<Texture2D>();
+			if (Soul != null)
+				textures.Add(Soul);
+			foreach (var s in sprites.Values)
+				textures.AddRange(s.Frames);
+			foreach (var f in fonts.Values)
+				textures.Add(f.Texture);
+			var effects = sounds.Values.ToList();
+			if (BattleMusic != null)
+				effects.Add(BattleMusic);
 			Main.QueueMainThreadAction(() =>
 			{
-				Soul?.Dispose();
-				foreach (var s in sounds.Values)
+				foreach (var t in textures)
+					t.Dispose();
+				foreach (var s in effects)
 					s.Dispose();
 			});
 			Soul = null;
+			BattleMusic = null;
 			sounds.Clear();
 			soundVolumes.Clear();
+			sprites.Clear();
+			fonts.Clear();
 			State = LoadState.NotStarted;
 		}
 
@@ -96,6 +154,19 @@ namespace MercyMode.Deltarune
 			});
 		}
 
+		/// <summary>
+		/// Chosen chapter first, then the newest chapter down to chapter 1, and the launcher's data.win last
+		/// (it only holds the chapter select screen).
+		/// </summary>
+		public static List<(int chapter, string path)> OrderDataFiles(List<(int chapter, string path)> files, int chapterPref)
+		{
+			return files
+				.OrderByDescending(d => chapterPref > 0 && d.chapter == chapterPref)
+				.ThenByDescending(d => d.chapter > 0)
+				.ThenByDescending(d => d.chapter)
+				.ToList();
+		}
+
 		private static void LoadFromInstall(string folderOverride, int chapterPref)
 		{
 			var log = ModContent.GetInstance<MercyMode>().Logger;
@@ -111,6 +182,7 @@ namespace MercyMode.Deltarune
 				return;
 			}
 
+			DumpPath = "";
 			var dataFiles = InstallFinder.FindDataFiles(install);
 			if (dataFiles.Count == 0)
 			{
@@ -119,30 +191,40 @@ namespace MercyMode.Deltarune
 				return;
 			}
 
-			// Chapter 0 = auto: newest chapter first. Otherwise try the chosen chapter first.
-			var ordered = dataFiles.OrderByDescending(d => d.chapter == chapterPref ? int.MaxValue : d.chapter).ToList();
+			RawFrame soulFrame = null;
+			var rawSounds = new Dictionary<string, RawSound>();
+			var rawSprites = new Dictionary<string, RawSprite>();
+			var rawFonts = new Dictionary<string, RawFont>();
+			var usedChapters = new List<int>();
 
-			foreach (var (chapter, path) in ordered)
+			// Take each asset from the first data file that has it, so a sprite missing from one chapter
+			// can still come from another.
+			foreach (var (chapter, path) in OrderDataFiles(dataFiles, chapterPref))
 			{
 				StatusMessage = $"Reading chapter {chapter}...";
 				using var data = new DataWin(path);
+				int before = rawSounds.Count + rawSprites.Count + rawFonts.Count + (soulFrame != null ? 1 : 0);
 
-				RawSprite soul = null;
-				foreach (string n in SoulNames)
-					if ((soul = data.ReadSprite(n)) != null && soul.Frames.Count > 0)
-						break;
-				if (soul == null)
+				if (soulFrame == null)
 				{
-					log.Info($"No SOUL sprite in {path}, trying next data file");
-					continue;
+					foreach (string n in SoulNames)
+					{
+						RawSprite s = data.ReadSprite(n);
+						if (s != null && s.Frames.Count > 0)
+						{
+							soulFrame = s.Frames[0];
+							break;
+						}
+					}
 				}
 
-				var rawSounds = new Dictionary<string, RawSound>();
 				foreach (var (role, names) in SoundRoles)
 				{
+					if (rawSounds.ContainsKey(role))
+						continue;
 					foreach (string n in names)
 					{
-						RawSound s = data.ReadSound(n);
+						RawSound s = TryRead(() => data.ReadSound(n), n, log);
 						if (s != null)
 						{
 							rawSounds[role] = s;
@@ -151,36 +233,118 @@ namespace MercyMode.Deltarune
 					}
 				}
 
-				DumpPath = WriteDump(data, chapter);
-				data.ClearPageCache();
-				LoadedFrom = $"chapter {chapter} ({path})";
-
-				// GPU resources have to be created on the main thread
-				RawFrame f = soul.Frames[0];
-				Main.QueueMainThreadAction(() =>
+				foreach (string n in SpriteNames)
 				{
-					Soul = MakeTexture(f);
-					foreach (var (role, raw) in rawSounds)
-					{
-						try
-						{
-							sounds[role] = AudioDecoder.ToSoundEffect(raw.Data);
-							soundVolumes[role] = raw.Volume <= 0 ? 1f : raw.Volume;
-						}
-						catch (Exception e)
-						{
-							log.Warn($"Couldn't decode {raw.Name}: {e.Message}");
-						}
-					}
-					State = LoadState.Ready;
-					StatusMessage = $"Loaded SOUL and {sounds.Count}/{SoundRoles.Count} sounds from {LoadedFrom}";
-					log.Info(StatusMessage);
-				});
+					if (rawSprites.ContainsKey(n))
+						continue;
+					RawSprite s = TryRead(() => data.ReadSprite(n), n, log);
+					if (s != null && s.Frames.Count > 0)
+						rawSprites[n] = s;
+				}
+
+				foreach (string n in FontNames)
+				{
+					if (rawFonts.ContainsKey(n))
+						continue;
+					RawFont f = TryRead(() => data.ReadFont(n), n, log);
+					if (f != null && f.Glyphs.Count > 0)
+						rawFonts[n] = f;
+				}
+
+				if (chapter > 0 && DumpPath == "")
+					DumpPath = WriteDump(data, chapter);
+				data.ClearPageCache();
+
+				if (rawSounds.Count + rawSprites.Count + rawFonts.Count + (soulFrame != null ? 1 : 0) > before)
+					usedChapters.Add(chapter);
+
+				if (soulFrame != null && rawSounds.Count == SoundRoles.Count && rawSprites.Count == SpriteNames.Length && rawFonts.Count == FontNames.Length)
+					break;
+			}
+
+			if (soulFrame == null)
+			{
+				State = LoadState.Failed;
+				StatusMessage = "Found Deltarune but none of its data files had the SOUL sprite. Check the asset dump for the right names.";
 				return;
 			}
 
-			State = LoadState.Failed;
-			StatusMessage = "Found Deltarune but none of its data files had the SOUL sprite. Check the asset dump for the right names.";
+			// Rude Buster, streamed from the shared mus folder
+			(byte[] pcm, int rate, int channels)? music = null;
+			string musicPath = Path.Combine(install, "mus", "battle.ogg");
+			if (File.Exists(musicPath))
+			{
+				try
+				{
+					StatusMessage = "Decoding battle music...";
+					music = AudioDecoder.DecodeOgg(File.ReadAllBytes(musicPath));
+				}
+				catch (Exception e)
+				{
+					log.Warn($"Couldn't decode battle music: {e.Message}");
+				}
+			}
+
+			LoadedFrom = $"chapter {string.Join(", ", usedChapters)} ({install})";
+
+			// GPU and audio resources have to be created on the main thread
+			Main.QueueMainThreadAction(() =>
+			{
+				Soul = MakeTexture(soulFrame);
+				foreach (var (role, raw) in rawSounds)
+				{
+					try
+					{
+						sounds[role] = AudioDecoder.ToSoundEffect(raw.Data);
+						soundVolumes[role] = raw.Volume <= 0 ? 1f : raw.Volume;
+					}
+					catch (Exception e)
+					{
+						log.Warn($"Couldn't decode {raw.Name}: {e.Message}");
+					}
+				}
+				foreach (var (name, raw) in rawSprites)
+				{
+					sprites[name] = new DrSprite
+					{
+						Frames = raw.Frames.Select(MakeTexture).ToArray(),
+						Origin = new Vector2(raw.OriginX, raw.OriginY),
+					};
+				}
+				foreach (var (name, raw) in rawFonts)
+				{
+					fonts[name] = new DrFont
+					{
+						Texture = MakeTexture(raw.Texture),
+						Glyphs = raw.Glyphs,
+						LineHeight = raw.Glyphs.Values.Max(g => g.Height),
+					};
+				}
+				if (music is { } m)
+					BattleMusic = new SoundEffect(m.pcm, m.rate, m.channels == 1 ? AudioChannels.Mono : AudioChannels.Stereo);
+
+				State = LoadState.Ready;
+				StatusMessage = $"Loaded SOUL, {sounds.Count}/{SoundRoles.Count} sounds, {sprites.Count}/{SpriteNames.Length} sprites, " +
+					$"{fonts.Count}/{FontNames.Length} fonts{(BattleMusic != null ? ", battle music" : "")} from {LoadedFrom}";
+				log.Info(StatusMessage);
+				var missing = SpriteNames.Where(n => !sprites.ContainsKey(n)).Concat(FontNames.Where(n => !fonts.ContainsKey(n)))
+					.Concat(SoundRoles.Keys.Where(r => !sounds.ContainsKey(r)).Select(r => "sound:" + r)).ToList();
+				if (missing.Count > 0)
+					log.Info("Missing Deltarune assets (using fallbacks): " + string.Join(", ", missing));
+			});
+		}
+
+		private static T TryRead<T>(Func<T> read, string name, log4net.ILog log) where T : class
+		{
+			try
+			{
+				return read();
+			}
+			catch (Exception e)
+			{
+				log.Warn($"Couldn't read {name}: {e.Message}");
+				return null;
+			}
 		}
 
 		private static Texture2D MakeTexture(RawFrame frame)
@@ -207,9 +371,12 @@ namespace MercyMode.Deltarune
 				string path = Path.Combine(Main.SavePath, $"MercyMode_deltarune_ch{chapter}_assets.txt");
 				var sb = new StringBuilder();
 				sb.AppendLine($"# Asset names from {data.Path}");
-				sb.AppendLine($"# {data.Sprites.Count} sprites, {data.Sounds.Count} sounds");
+				sb.AppendLine($"# {data.Sprites.Count} sprites, {data.Sounds.Count} sounds, {data.Fonts.Count} fonts");
 				sb.AppendLine("\n## Sounds");
 				foreach (string n in data.Sounds.Keys.OrderBy(n => n))
+					sb.AppendLine(n);
+				sb.AppendLine("\n## Fonts");
+				foreach (string n in data.Fonts.Keys.OrderBy(n => n))
 					sb.AppendLine(n);
 				sb.AppendLine("\n## Sprites");
 				foreach (string n in data.Sprites.Keys.OrderBy(n => n))
@@ -250,6 +417,14 @@ namespace MercyMode.Deltarune
 		public static int LoadedSoundCount => sounds.Count;
 
 		public static bool HasSound(string role) => sounds.ContainsKey(role);
+
+		/// <summary>Null when the sprite didn't load; callers draw a fallback shape.</summary>
+		public static DrSprite Sprite(string name) => sprites.GetValueOrDefault(name);
+
+		public static DrFont Font(string name) => fonts.GetValueOrDefault(name);
+
+		public static int LoadedSpriteCount => sprites.Count;
+		public static int LoadedFontCount => fonts.Count;
 	}
 
 	public static class InstallFinder
@@ -337,27 +512,34 @@ namespace MercyMode.Deltarune
 
 			if (data.Length > 4 && data[0] == 'O' && data[1] == 'g' && data[2] == 'g' && data[3] == 'S')
 			{
-				using var ms = new MemoryStream(data);
-				using var vorbis = new NVorbis.VorbisReader(ms, false);
-				int channels = vorbis.Channels;
-				var samples = new List<float>();
-				float[] buffer = new float[4096 * channels];
-				int read;
-				while ((read = vorbis.ReadSamples(buffer, 0, buffer.Length)) > 0)
-					for (int i = 0; i < read; i++)
-						samples.Add(buffer[i]);
-
-				byte[] pcm = new byte[samples.Count * 2];
-				for (int i = 0; i < samples.Count; i++)
-				{
-					short s = (short)(MathHelper.Clamp(samples[i], -1f, 1f) * short.MaxValue);
-					pcm[i * 2] = (byte)s;
-					pcm[i * 2 + 1] = (byte)(s >> 8);
-				}
-				return new SoundEffect(pcm, vorbis.SampleRate, channels == 1 ? AudioChannels.Mono : AudioChannels.Stereo);
+				var (pcm, rate, channels) = DecodeOgg(data);
+				return new SoundEffect(pcm, rate, channels == 1 ? AudioChannels.Mono : AudioChannels.Stereo);
 			}
 
 			throw new InvalidDataException("Unknown audio format");
+		}
+
+		/// <summary>OGG Vorbis to 16-bit PCM. Safe to call off the main thread.</summary>
+		public static (byte[] pcm, int rate, int channels) DecodeOgg(byte[] data)
+		{
+			using var ms = new MemoryStream(data);
+			using var vorbis = new NVorbis.VorbisReader(ms, false);
+			int channels = vorbis.Channels;
+			using var output = new MemoryStream();
+			float[] buffer = new float[4096 * channels];
+			byte[] bytes = new byte[buffer.Length * 2];
+			int read;
+			while ((read = vorbis.ReadSamples(buffer, 0, buffer.Length)) > 0)
+			{
+				for (int i = 0; i < read; i++)
+				{
+					short s = (short)(MathHelper.Clamp(buffer[i], -1f, 1f) * short.MaxValue);
+					bytes[i * 2] = (byte)s;
+					bytes[i * 2 + 1] = (byte)(s >> 8);
+				}
+				output.Write(bytes, 0, read * 2);
+			}
+			return (output.ToArray(), vorbis.SampleRate, channels);
 		}
 	}
 }

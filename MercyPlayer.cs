@@ -44,7 +44,8 @@ namespace MercyMode
 			if (GrazeFlash > 0)
 				GrazeFlash--;
 
-			if (Player.dead || Player.immune)
+			// The battle screen has its own grazing; frozen bullets in the world shouldn't feed TP
+			if (Player.dead || Player.immune || Battle.BattleSystem.Active)
 				return;
 
 			CheckGrazes();
@@ -104,6 +105,8 @@ namespace MercyMode
 
 		public override void ProcessTriggers(TriggersSet triggersSet)
 		{
+			if (Battle.BattleSystem.Active)
+				return;
 			if (MercyMode.ActKey.JustPressed)
 				DoAct();
 			if (MercyMode.SpareKey.JustPressed)

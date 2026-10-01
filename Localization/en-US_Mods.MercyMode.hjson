@@ -8,6 +8,16 @@ Configs: {
 	MercyConfig: {
 		DisplayName: Mercy Mode
 
+		TurnBasedBattles: {
+			Label: Deltarune-style turn-based boss battles
+			Tooltip: Touching or hitting a supported boss (Eye of Cthulhu for now) opens a battle screen with FIGHT, ACT, ITEM, SPARE and DEFEND.
+		}
+
+		FightDamageMultiplier: {
+			Label: FIGHT damage multiplier
+			Tooltip: FIGHT deals weapon damage x (timing points / 20), like Deltarune's AT x points / 20. Raise this for shorter fights.
+		}
+
 		UseDeltaruneAssets: {
 			Label: Use assets from your Deltarune install
 			Tooltip: Loads the real SOUL sprite and sounds from your own copy of Deltarune. Nothing from Deltarune ships with this mod.
