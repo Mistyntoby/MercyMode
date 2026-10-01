@@ -232,6 +232,13 @@ Resolution 640x480. All sizes below in those pixels.
   body into the screen corner and broke our matrix. ForceOpaque also on Golem (head was half transparent).
 - Single-sprite enemies: DrawScale = npc.scale x 1.5 (the hero's scale), capped to fit 220x200. Was hitbox height
   x 1.5 / frame height, which made most enemies (Eater of Souls...) too small since sprites exceed hitboxes.
+- Encounter.PoseForBattle poses composite parts for the draw (position, rotation, frame, spriteDirection; all
+  restored): Prime arms at fixed offsets (cannon/laser -/+170,-40; saw/vice -/+130,120), Skeletron hands +/-150,70
+  (side from ai[0]), heads upright. Deerclops: frame.Y is a cell of a 5x5 sheet (Main.DrawNPCDirect_Deerclops:
+  Frame(5,5,Y/5,Y%5)); FindFrame: 0 stand, 1 air, 2-11 walk (velocity-driven, so 0 while frozen), 12-17/18 roar
+  attacks, 19-24 rubble attack. Battle: walk cycle in place, roar while attacking.
+- Deerclops rubble (projectile 962): texture is Frame(projFrames, 4) (a column per shape, 4 rows; Main.DrawProj),
+  drawn whole it showed a grid of rocks. Now one random cell.
 - Composite idle animation: s * (1 + 0.015 sin(t/45)) breathing, and each non-anchor part offset by sin/cos sway of
   1.8% of the boss's size, applied to the NPCs' positions for the draw (restored after) so connectors follow.
 - Widescreen / rounded-down scale: the bottom panel's black now reaches the window bottom (DrawPanel(bottom)).
