@@ -48,6 +48,7 @@ namespace MercyMode.Deltarune
 		public static SoundEffect BattleMusic;
 		private static readonly Dictionary<string, SoundEffect> sounds = new();
 		private static readonly Dictionary<string, float> soundVolumes = new();
+		private static readonly Dictionary<string, float> soundPitches = new();
 		private static readonly Dictionary<string, DrSprite> sprites = new();
 		private static readonly Dictionary<string, DrFont> fonts = new();
 
@@ -69,6 +70,8 @@ namespace MercyMode.Deltarune
 			["crit"] = new[] { "snd_criticalswing" },
 			["battleenter"] = new[] { "snd_battleenter" },
 			["weaponpull"] = new[] { "snd_weaponpull_fast", "snd_weaponpull" },
+			["attack"] = new[] { "snd_heartshot_dr_b", "snd_heartshot_dr" },
+			["text"] = new[] { "snd_text" },
 			["item"] = new[] { "snd_item" },
 			["boost"] = new[] { "snd_boost" },
 			["mercyadd"] = new[] { "snd_mercyadd" },
@@ -117,6 +120,7 @@ namespace MercyMode.Deltarune
 			BattleMusic = null;
 			sounds.Clear();
 			soundVolumes.Clear();
+			soundPitches.Clear();
 			sprites.Clear();
 			fonts.Clear();
 			State = LoadState.NotStarted;
@@ -297,7 +301,8 @@ namespace MercyMode.Deltarune
 					try
 					{
 						sounds[role] = AudioDecoder.ToSoundEffect(raw.Data);
-						soundVolumes[role] = raw.Volume <= 0 ? 1f : raw.Volume;
+						soundVolumes[role] = MathHelper.Clamp(raw.Volume, 0f, 1f);
+						soundPitches[role] = MathHelper.Clamp((float)Math.Log2(Math.Max(0.5f, raw.Pitch)), -1f, 1f);
 					}
 					catch (Exception e)
 					{
@@ -396,24 +401,25 @@ namespace MercyMode.Deltarune
 		{
 			MercyConfig config = ModContent.GetInstance<MercyConfig>();
 			MercySoundRedirect redirect = SoundRedirectFor(role, config);
+			float roleGain = RoleGain(role);
 			if (redirect == MercySoundRedirect.Silent)
 				return;
 
 			if (redirect != MercySoundRedirect.Deltarune)
 			{
 				SoundStyle redirected = RedirectedStyle(redirect);
-				SoundEngine.PlaySound(redirected with { Volume = redirected.Volume * config.BattleSoundVolume }, position);
+				SoundEngine.PlaySound(redirected with { Volume = redirected.Volume * config.BattleSoundVolume * roleGain }, position);
 				return;
 			}
 
 			if (sounds.TryGetValue(role, out var effect))
 			{
-				float vol = MathHelper.Clamp(Main.soundVolume * config.BattleSoundVolume * soundVolumes.GetValueOrDefault(role, 1f), 0f, 1f);
+				float vol = MathHelper.Clamp(Main.soundVolume * config.BattleSoundVolume * soundVolumes.GetValueOrDefault(role, 1f) * roleGain, 0f, 1f);
 				if (vol > 0f)
-					effect.Play(vol, 0f, 0f);
+					effect.Play(vol, soundPitches.GetValueOrDefault(role), 0f);
 				return;
 			}
-			SoundEngine.PlaySound(fallback with { Volume = fallback.Volume * config.BattleSoundVolume }, position);
+			SoundEngine.PlaySound(fallback with { Volume = fallback.Volume * config.BattleSoundVolume * roleGain }, position);
 		}
 
 		/// <summary>Only plays if the real sound loaded. For effects that vanilla Terraria has no good match for.</summary>
@@ -421,20 +427,21 @@ namespace MercyMode.Deltarune
 		{
 			MercyConfig config = ModContent.GetInstance<MercyConfig>();
 			MercySoundRedirect redirect = SoundRedirectFor(role, config);
+			float roleGain = RoleGain(role);
 			if (redirect == MercySoundRedirect.Silent)
 				return;
 			if (redirect != MercySoundRedirect.Deltarune)
 			{
 				SoundStyle redirected = RedirectedStyle(redirect);
-				SoundEngine.PlaySound(redirected with { Volume = redirected.Volume * config.BattleSoundVolume });
+				SoundEngine.PlaySound(redirected with { Volume = redirected.Volume * config.BattleSoundVolume * roleGain });
 				return;
 			}
 
 			if (sounds.TryGetValue(role, out var effect))
 			{
-				float vol = MathHelper.Clamp(Main.soundVolume * config.BattleSoundVolume * soundVolumes.GetValueOrDefault(role, 1f), 0f, 1f);
+				float vol = MathHelper.Clamp(Main.soundVolume * config.BattleSoundVolume * soundVolumes.GetValueOrDefault(role, 1f) * roleGain, 0f, 1f);
 				if (vol > 0f)
-					effect.Play(vol, 0f, 0f);
+					effect.Play(vol, soundPitches.GetValueOrDefault(role), 0f);
 			}
 		}
 
@@ -443,14 +450,26 @@ namespace MercyMode.Deltarune
 
 		private static MercySoundRedirect SoundRedirectFor(string role, MercyConfig config) => role switch
 		{
-			"menumove" or "select" or "cantselect" or "error" => config.MenuSoundRedirect,
-			"hurt" or "damage" or "slash" or "crit" => config.BattleSoundRedirect,
+			"menumove" or "select" or "cantselect" or "error" or "text" => config.MenuSoundRedirect,
+			"hurt" or "damage" or "slash" or "crit" or "attack" => config.BattleSoundRedirect,
 			"act" or "heal" or "spare" or "item" or "boost" => config.ActionSoundRedirect,
 			"weaponpull" => config.BattleStartSoundRedirect,
 			"mercyadd" => config.MercyGainSoundRedirect,
 			"graze" => config.GrazeSoundRedirect,
-			"battleenter" => config.BattleStartSoundRedirect,
+			"battleenter" or "weaponpull" => config.BattleStartSoundRedirect,
 			_ => MercySoundRedirect.Deltarune,
+		};
+
+		// Keep frequent one-shots quieter than Terraria's ordinary effects while retaining each
+		// GameMaker sound's own serialized volume from data.win.
+		private static float RoleGain(string role) => role switch
+		{
+			"text" => 0.25f,
+			"attack" => 0.4f,
+			"menumove" or "select" => 0.75f,
+			"weaponpull" => 0.65f,
+			"spare" or "mercyadd" or "graze" => 0.8f,
+			_ => 1f,
 		};
 
 		private static SoundStyle RedirectedStyle(MercySoundRedirect redirect) => redirect switch
