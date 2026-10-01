@@ -1,0 +1,322 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Microsoft.Xna.Framework;
+using Terraria;
+using Terraria.ID;
+using Terraria.ModLoader;
+using MercyMode.Battle.Encounters;
+
+namespace MercyMode.Battle
+{
+	/// <summary>One entry in the ACT menu.</summary>
+	public class ActOption
+	{
+		public string Name;
+		/// <summary>Short text shown on the right while the act is highlighted.</summary>
+		public string Description = "";
+		/// <summary>TP cost in Mercy Mode's 0-100 TP. 0 for normal acts.</summary>
+		public float TPCost;
+		/// <summary>Runs the act and returns the lines to show. Each string is one text box.</summary>
+		public Func<BattleSystem, List<string>> Run;
+	}
+
+	/// <summary>
+	/// An enemy turn: spawns bullets while the turn timer runs. Update is called once per tick with the tick
+	/// count since the box finished growing.
+	/// </summary>
+	public abstract class EnemyAttack
+	{
+		/// <summary>Turn length in ticks (global.turntimer).</summary>
+		public int Duration = BattleConstants.DefaultEnemyTurnTicks;
+		public abstract void Update(BattleSystem battle, int tick);
+	}
+
+	/// <summary>
+	/// Battle content for one enemy (or one multi-part boss): name, acts, text and bullet patterns.
+	/// <see cref="Npc"/> is the NPC the battle started with; <see cref="Members"/> are all the NPCs that make up
+	/// the fight (worm segments, Skeletron's hands, the Brain's Creepers...).
+	/// </summary>
+	public abstract class Encounter
+	{
+		public NPC Npc;
+		public int Turn;
+		/// <summary>How many times each act has been used, by name.</summary>
+		public readonly Dictionary<string, int> ActUses = new();
+		private int lifeMax;
+
+		public virtual string Name => Npc.GivenOrTypeName.ToUpperInvariant();
+		public virtual string EncounterText => $"* {Name} drew near!";
+		/// <summary>The line shown in the text box at the start of a player turn.</summary>
+		public abstract string FlavorText();
+		public abstract List<ActOption> Acts(BattleSystem battle);
+		public abstract EnemyAttack NextAttack(BattleSystem battle);
+
+		// ---- members and health ----
+
+		/// <summary>Every NPC that belongs to this fight. Default: the NPC and anything sharing its health.</summary>
+		public virtual IEnumerable<NPC> Members()
+		{
+			if (Npc.active)
+				yield return Npc;
+			for (int i = 0; i < Main.maxNPCs; i++)
+			{
+				NPC n = Main.npc[i];
+				if (n.active && i != Npc.whoAmI && n.realLife == Npc.whoAmI)
+					yield return n;
+			}
+		}
+
+		public bool Alive => Members().Any(m => m.active && m.life > 0);
+
+		/// <summary>Members with their own health pool (worm segments share their head's).</summary>
+		private IEnumerable<NPC> HealthPools() => Members().Where(m => m.active && (m.realLife < 0 || m.realLife == m.whoAmI));
+
+		public int Life => HealthPools().Sum(m => Math.Max(0, m.life));
+
+		public int LifeMax
+		{
+			get
+			{
+				lifeMax = Math.Max(lifeMax, HealthPools().Sum(m => m.lifeMax));
+				return Math.Max(1, lifeMax);
+			}
+		}
+
+		public float LifeRatio => Life / (float)LifeMax;
+
+		/// <summary>Contact damage the bullets are based on.</summary>
+		public virtual int Damage
+		{
+			get
+			{
+				// Capped at twice the normal damage: daytime Skeletron and other enraged bosses set 9999
+				int d = Members().Where(m => m.active)
+					.Select(m => m.defDamage > 0 ? Math.Min(m.damage, m.defDamage * 2) : m.damage)
+					.DefaultIfEmpty(0).Max();
+				return d > 0 ? d : 10;
+			}
+		}
+
+		/// <summary>The NPC that FIGHT hits. Skips invulnerable parts while something else can be hurt.</summary>
+		public virtual NPC StrikeTarget()
+		{
+			if (Npc.active && !Npc.dontTakeDamage)
+				return Npc;
+			NPC other = Members().FirstOrDefault(m => m.active && m.life > 0 && !m.dontTakeDamage);
+			return other ?? Members().FirstOrDefault(m => m.active) ?? Npc;
+		}
+
+		/// <summary>The NPC drawn on the battle screen.</summary>
+		public virtual NPC DrawNpc => Npc.active ? Npc : Members().FirstOrDefault(m => m.active);
+
+		/// <summary>Ends the fight peacefully: removes every other part, then drops the loot from one.</summary>
+		public virtual void Spare()
+		{
+			NPC keep = DrawNpc ?? Npc;
+			foreach (NPC m in Members().ToList())
+			{
+				if (m.whoAmI == keep.whoAmI || m.realLife == keep.whoAmI)
+					continue;
+				m.active = false;
+				m.life = 0;
+			}
+			MercyGlobalNPC.Spare(keep);
+		}
+
+		// ---- MERCY ----
+
+		private float mercy = -1f;
+
+		/// <summary>Kept on the encounter (a worm segment can die mid-fight) and mirrored onto the NPC's bar.</summary>
+		public float Mercy
+		{
+			get
+			{
+				if (mercy < 0f)
+					mercy = Npc.GetGlobalNPC<MercyGlobalNPC>().Mercy;
+				return mercy;
+			}
+			set
+			{
+				mercy = MathHelper.Clamp(value, 0f, 100f);
+				if (Npc.active)
+					Npc.GetGlobalNPC<MercyGlobalNPC>().Mercy = mercy;
+			}
+		}
+
+		/// <summary>Adds MERCY, halving it each time the same act is repeated. Returns what was actually gained.</summary>
+		protected float GainMercy(string actName, float amount)
+		{
+			ActUses.TryGetValue(actName, out int uses);
+			ActUses[actName] = uses + 1;
+			float before = Mercy;
+			Mercy = before + amount / (1 << Math.Min(uses, 4));
+			return Mercy - before;
+		}
+
+		/// <summary>The line Deltarune adds when an enemy becomes spareable.</summary>
+		protected string SpareableLine => $"* {Name} doesn't want to fight anymore.";
+
+		// ---- act builders ----
+
+		protected ActOption CheckAct(string description) => new()
+		{
+			Name = "Check",
+			Description = "Useless\nanalysis",
+			Run = b => new List<string> { $"* {Name} - AT {Damage} DF {Npc.defense}\n{description}" },
+		};
+
+		/// <summary>An act that shows a line and raises MERCY.</summary>
+		protected ActOption MercyAct(string name, string description, float mercy, string line) => new()
+		{
+			Name = name,
+			Description = description,
+			Run = b =>
+			{
+				float gained = GainMercy(name, mercy);
+				var lines = new List<string> { line + (gained > 0 ? "" : "\n* It didn't seem to have any effect.") };
+				if (Mercy >= 100f)
+					lines.Add(SpareableLine);
+				return lines;
+			},
+		};
+
+		/// <summary>Mercy Mode's Heal Prayer, available in every battle.</summary>
+		protected static ActOption HealPrayerAct() => new()
+		{
+			Name = "HealPrayer",
+			Description = "Heal\nyourself",
+			TPCost = MercyPlayer.HealPrayerCost,
+			Run = b =>
+			{
+				int healed = b.HealPlayer(Math.Max(20, b.Player.statLifeMax2 / 4));
+				Deltarune.DeltaruneAssets.Play("heal", SoundID.Item4);
+				return new List<string> { $"* {b.Player.name} cast HEAL PRAYER!\n* Recovered {healed} HP." };
+			},
+		};
+
+		/// <summary>Picks the attack for this turn from a list, cycling through it.</summary>
+		protected EnemyAttack Cycle(params Func<EnemyAttack>[] attacks) => attacks[Turn % attacks.Length]();
+
+		// ---- drawing ----
+
+		/// <summary>Where the enemy is drawn on the battle screen (its centre).</summary>
+		public virtual Vector2 DrawCenter => new(500, 190);
+		/// <summary>Extra rotation for the sprite on the battle screen.</summary>
+		public virtual float DrawRotation(int time) => 0f;
+
+		/// <summary>Fits the sprite in about 200x220 px: whole-number zoom for small sprites, shrink big ones.</summary>
+		public virtual float DrawScale(Rectangle frame)
+		{
+			float s = Math.Min(200f / Math.Max(1, frame.Height), 220f / Math.Max(1, frame.Width));
+			if (s >= 1f)
+				return Math.Min(3f, (float)Math.Floor(s));
+			return s;
+		}
+
+		/// <summary>Tint used for the sprite (slimes and other recoloured enemies use npc.color).</summary>
+		public virtual Color DrawColor(NPC npc)
+		{
+			// Slimes and other recoloured NPCs have a grey texture tinted by npc.color (Terraria uses GetColor).
+			// Use it opaque-ish: the sprite batch expects premultiplied colours.
+			if (npc.color != default)
+				return new Color(npc.color.R, npc.color.G, npc.color.B) * 0.9f;
+			Color c = npc.GetAlpha(Color.White);
+			return c.A == 0 ? Color.White : c;
+		}
+
+		/// <summary>True for regular enemies (shorter turns, MERCY rises faster).</summary>
+		public virtual bool IsBoss => true;
+	}
+
+	/// <summary>Decides who gets a battle and which encounter they use.</summary>
+	public static class EncounterRegistry
+	{
+		private static readonly HashSet<int> EaterTypes = new() { NPCID.EaterofWorldsHead, NPCID.EaterofWorldsBody, NPCID.EaterofWorldsTail };
+
+		/// <summary>Bosses with their own acts and patterns.</summary>
+		public static bool HasCustom(int type) => type switch
+		{
+			NPCID.EyeofCthulhu or NPCID.KingSlime or NPCID.BrainofCthulhu or NPCID.QueenBee or NPCID.SkeletronHead
+				or NPCID.Deerclops or NPCID.WallofFlesh => true,
+			_ => EaterTypes.Contains(type),
+		};
+
+		/// <summary>
+		/// The NPC a battle should be about when this one is touched or hit: worm segments map to their head, and a
+		/// boss's parts and minions (Creepers, Skeletron's hands, the Hungry, Servants, bees) map to the boss.
+		/// </summary>
+		public static NPC ResolveRoot(NPC npc)
+		{
+			NPC root = MercyMode.Root(npc);
+			switch (root.type)
+			{
+				case NPCID.Creeper:
+					return Find(NPCID.BrainofCthulhu) ?? root;
+				case NPCID.SkeletronHand:
+					return Find(NPCID.SkeletronHead) ?? root;
+				case NPCID.WallofFleshEye:
+				case NPCID.TheHungry:
+				case NPCID.TheHungryII:
+				case NPCID.LeechHead:
+				case NPCID.LeechBody:
+				case NPCID.LeechTail:
+					return Main.wofNPCIndex >= 0 && Main.npc[Main.wofNPCIndex].active ? Main.npc[Main.wofNPCIndex] : root;
+				case NPCID.ServantofCthulhu:
+					return Find(NPCID.EyeofCthulhu) ?? root;
+				case NPCID.Bee:
+				case NPCID.BeeSmall:
+					return Find(NPCID.QueenBee) ?? root;
+			}
+			return root;
+		}
+
+		private static NPC Find(int type)
+		{
+			foreach (NPC n in Main.ActiveNPCs)
+				if (n.type == type)
+					return n;
+			return null;
+		}
+
+		public static bool IsBossFight(NPC root) => root.boss || HasCustom(root.type);
+
+		/// <summary>Whether touching/hitting this (root) NPC starts a battle.</summary>
+		public static bool Eligible(NPC root)
+		{
+			if (!root.active || root.life <= 0 || root.friendly || root.townNPC || NPCID.Sets.ActsLikeTownNPC[root.type])
+				return false;
+			if (IsBossFight(root))
+				return true;
+
+			var config = ModContent.GetInstance<MercyConfig>();
+			if (config != null && !config.BattlesWithEnemies)
+				return false;
+			// A boss's fight already has its minions; leave the rest of the world alone during it
+			if (MercyMode.AnyBossAlive())
+				return false;
+			return root.damage > 0 && root.lifeMax > 5 && !root.dontTakeDamage && !root.immortal
+				&& !NPCID.Sets.CountsAsCritter[root.type] && !NPCID.Sets.ProjectileNPC[root.type];
+		}
+
+		public static Encounter Create(NPC root)
+		{
+			Encounter e = root.type switch
+			{
+				NPCID.EyeofCthulhu => new EyeOfCthulhu(),
+				NPCID.KingSlime => new KingSlime(),
+				NPCID.BrainofCthulhu => new BrainOfCthulhu(),
+				NPCID.QueenBee => new QueenBee(),
+				NPCID.SkeletronHead => new Skeletron(),
+				NPCID.Deerclops => new Deerclops(),
+				NPCID.WallofFlesh => new WallOfFlesh(),
+				_ when EaterTypes.Contains(root.type) => new EaterOfWorlds(),
+				_ when root.boss => new GenericBoss(),
+				_ => EnemyFamilies.For(root),
+			};
+			e.Npc = root;
+			return e;
+		}
+	}
+}

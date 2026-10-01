@@ -37,7 +37,8 @@ namespace MercyMode.Battle
 
 		public override void OnHitByProjectile(NPC npc, Projectile projectile, NPC.HitInfo hit, int damageDone)
 		{
-			if (projectile.owner >= 0 && projectile.owner < Main.maxPlayers)
+			// Town NPCs' shots (the Guide's arrows) also belong to the local player in singleplayer; skip them
+			if (!projectile.npcProj && projectile.owner >= 0 && projectile.owner < Main.maxPlayers)
 				BattleSystem.TryStart(npc, Main.player[projectile.owner], "hit by " + projectile.Name);
 		}
 

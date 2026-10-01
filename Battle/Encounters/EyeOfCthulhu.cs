@@ -6,26 +6,24 @@ using Terraria;
 using Terraria.GameContent;
 using Terraria.ID;
 
-namespace MercyMode.Battle.Bosses
+namespace MercyMode.Battle.Encounters
 {
-	public class EyeOfCthulhuBattle : BossBattle
+	public class EyeOfCthulhu : Encounter
 	{
 		public override string Name => "EYE OF CTHULHU";
-		public override string EncounterText => "* EYE OF CTHULHU drew near!";
 
 		// The sprite looks down; turn it to look left at the party
 		public override float DrawRotation(int time) => MathHelper.PiOver2 + (float)Math.Sin(time / 30f) * 0.08f;
 		public override Vector2 DrawCenter => new(500, 180);
-		public override float DrawScale => 1f;
+		public override float DrawScale(Rectangle frame) => 1f;
 
 		public override string FlavorText()
 		{
 			if (Mercy >= 100f)
 				return "* EYE OF CTHULHU looks tired of fighting.";
-			float hp = Npc.life / (float)Npc.lifeMax;
-			if (hp < 0.25f)
+			if (LifeRatio < 0.25f)
 				return "* EYE OF CTHULHU is crying blood.";
-			if (hp < 0.5f)
+			if (LifeRatio < 0.5f)
 				return "* EYE OF CTHULHU bares its teeth.";
 			string[] lines = {
 				"* EYE OF CTHULHU stares into your soul.",
@@ -36,84 +34,41 @@ namespace MercyMode.Battle.Bosses
 			return lines[Turn % lines.Length];
 		}
 
-		public override List<ActOption> Acts(BattleSystem battle)
+		public override List<ActOption> Acts(BattleSystem battle) => new()
 		{
-			string who = battle.Player.name;
-			return new List<ActOption>
+			CheckAct("* It watches you while you sleep. It wants a staring contest."),
+			MercyAct("Stare", "Stare\nback", 30f, ActLines.Get(NPCID.EyeofCthulhu, 0)),
+			MercyAct("EyeDrops", "Offer\neye drops", 35f, ActLines.Get(NPCID.EyeofCthulhu, 1)),
+			new()
 			{
-				new()
+				Name = "Dawn",
+				Description = "Talk about\nthe sunrise",
+				Run = b =>
 				{
-					Name = "Check",
-					Description = "Useless\nanalysis",
-					Run = b => new List<string>
-					{
-						$"* EYE OF CTHULHU - AT {Npc.damage} DF {Npc.defense}\n* It watches you while you sleep. It wants a staring contest.",
-					},
+					// Worth more near the end of the night (night lasts 32400 ticks)
+					bool late = !Main.dayTime && Main.time > 32400 * 0.7;
+					float gained = GainMercy("Dawn", late ? 50f : 25f);
+					var lines = new List<string> { ActLines.Get(NPCID.EyeofCthulhu, 2) + (gained > 0 ? "" : "\n* It didn't seem to have any effect.") };
+					if (late)
+						lines[0] += "\n* The sky is getting lighter...";
+					if (Mercy >= 100f)
+						lines.Add(SpareableLine);
+					return lines;
 				},
-				Act("Stare", "Stare\nback", 30f, ActLines.Get(NPCID.EyeofCthulhu, 0)),
-				Act("EyeDrops", "Offer\neye drops", 35f, ActLines.Get(NPCID.EyeofCthulhu, 1)),
-				new()
-				{
-					Name = "Dawn",
-					Description = "Talk about\nthe sunrise",
-					Run = b =>
-					{
-						// Worth more near the end of the night (night lasts 32400 ticks)
-						bool late = !Main.dayTime && Main.time > 32400 * 0.7;
-						float gained = GainMercy("Dawn", late ? 50f : 25f);
-						var lines = new List<string> { ActLines.Get(NPCID.EyeofCthulhu, 2) + MercyText(gained) };
-						if (late)
-							lines[0] += "\n* The sky is getting lighter...";
-						AddSpareable(lines);
-						return lines;
-					},
-				},
-				new()
-				{
-					Name = "HealPrayer",
-					Description = "Heal\nyourself",
-					TPCost = MercyPlayer.HealPrayerCost,
-					Run = b =>
-					{
-						int healed = b.HealPlayer(Math.Max(20, b.Player.statLifeMax2 / 4));
-						Deltarune.DeltaruneAssets.Play("heal", SoundID.Item4);
-						return new List<string> { $"* {who} cast HEAL PRAYER!\n* Recovered {healed} HP." };
-					},
-				},
-			};
-		}
-
-		private ActOption Act(string name, string description, float mercy, string line) => new()
-		{
-			Name = name,
-			Description = description,
-			Run = b =>
-			{
-				float gained = GainMercy(name, mercy);
-				var lines = new List<string> { line + MercyText(gained) };
-				AddSpareable(lines);
-				return lines;
 			},
+			HealPrayerAct(),
 		};
-
-		private static string MercyText(float gained) => gained > 0 ? "" : "\n* It didn't seem to have any effect.";
-
-		private void AddSpareable(List<string> lines)
-		{
-			if (Mercy >= 100f)
-				lines.Add(SpareableLine);
-		}
 
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
-			bool hard = battle.BossInSecondPhase;
+			bool hard = LifeRatio < 0.5f;
 			int pick = Turn % 4;
 			return pick switch
 			{
 				0 => new TearRain(hard),
 				1 => new ServantSwarm(hard),
 				2 => new EyeDash(hard),
-				_ => hard ? new ClosingRing() : new TearRain(false) { WithServants = true },
+				_ => hard ? new EyeRing() : new TearRain(false) { WithServants = true },
 			};
 		}
 
@@ -281,7 +236,7 @@ namespace MercyMode.Battle.Bosses
 		}
 
 		/// <summary>Phase 2: rings of tears close in on the box centre, with a gap to slip through.</summary>
-		private class ClosingRing : EnemyAttack
+		private class EyeRing : EnemyAttack
 		{
 			public override void Update(BattleSystem battle, int tick)
 			{

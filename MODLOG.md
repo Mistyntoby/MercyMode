@@ -98,5 +98,25 @@ Resolution 640x480. All sizes below in those pixels.
   vs 2800 HP; `FightDamageMultiplier` config exists. Decide on a default before adding more bosses.
 - More bosses: add a `BossBattle` subclass + `BossBattle.Create/HasBattle` entries.
 
+## Multi-monster battles (2026-09-30)
+- Flicker: `screenFade` stepped past 1.0 and back every Deltarune frame (0.9/1.0), dimming veil + enemy
+  on alternate frames. Measured from a recording (enemy region 82 vs 91). Now steps toward the target; frame-to-frame
+  change 0.013 (bg) / 0.1 (enemy idle bob).
+- `Encounter` (was BossBattle) + `EncounterRegistry`: Members (worm segments, Creepers, Skeletron hands, WoF parts,
+  Twins), combined HP, StrikeTarget skips shielded parts, group Spare. Parts/minions resolve to their boss.
+- Custom: EoC, King Slime, EoW, BoC, Queen Bee, Skeletron, Deerclops, WoF. GenericBoss for the rest.
+  `Enemies.cs`: families by aiStyle (Slime, Fighter, Flier, Caster, Worm, Generic). Config `BattlesWithEnemies`.
+- `Patterns.cs`: Rain, SideShots, AimedBursts, Bouncers, LaneDash, ClosingRing, Walls, Snake, Homing, FloorSpikes,
+  Orbiters, Swoopers, Combo. Bullets can use any NPC/projectile texture (`Shots.Npc/Proj`).
+- Facts: EoW only drops boss loot if the last segment has `boss = true` (set in `DropEoWLoot`) -> Spare sets it.
+  Town NPC shots (Guide's arrows) have the local player as owner -> check `projectile.npcProj`.
+  Slime textures are grey, tinted by `npc.color`. Daytime Skeletron sets damage 9999 -> bullets cap at 2x `defDamage`.
+  Deerclops ice spike projectile texture is a sheet of several spikes -> drawn by hand.
+  Command-spawned worms/BoC need ~20 ticks of AI to build their parts -> `/mmbattle npc` queues the start.
+- Verified in lab: every boss above + Twins (generic), Blue/Green Slime, Zombie, Demon Eye, Cave Bat, Goblin Sorcerer,
+  Giant Worm, Harpy, Antlion: battle starts, menu, enemy turn, no exceptions. EoW and BoC spares -> "has been defeated".
+  BoC FIGHT hits a Creeper first. Slime: two ACTs -> 100% MERCY -> spare.
+- `/mmbattle npc <id|name>`, `spawnnpc`, `end`, `heal`, `mercy <n>` for tests.
+
 ## Log
 - 2026-09-30: recon, decompile, numbers above. Implemented battle loop for Eye of Cthulhu, verified in lab (above).

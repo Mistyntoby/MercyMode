@@ -10,7 +10,12 @@ Configs: {
 
 		TurnBasedBattles: {
 			Label: Deltarune-style turn-based boss battles
-			Tooltip: Touching or hitting a supported boss (Eye of Cthulhu for now) opens a battle screen with FIGHT, ACT, ITEM, SPARE and DEFEND.
+			Tooltip: Touching or hitting a boss opens a battle screen with FIGHT, ACT, ITEM, SPARE and DEFEND.
+		}
+
+		BattlesWithEnemies: {
+			Label: Battles with regular enemies too
+			Tooltip: Slimes, zombies, Demon Eyes and other regular enemies also start battles when you touch or hit them. Turn off to keep battles for bosses only.
 		}
 
 		FightDamageMultiplier: {

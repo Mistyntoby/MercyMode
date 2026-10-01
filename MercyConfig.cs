@@ -10,6 +10,9 @@ namespace MercyMode
 		[DefaultValue(true)]
 		public bool TurnBasedBattles;
 
+		[DefaultValue(true)]
+		public bool BattlesWithEnemies;
+
 		[Range(0.1f, 10f)]
 		[Increment(0.1f)]
 		[DefaultValue(1f)]
