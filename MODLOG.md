@@ -226,6 +226,11 @@ Resolution 640x480. All sizes below in those pixels.
   core) but DrawNPCDirect draws them fine.
 - Composite draw order matches Main.DrawNPCs: behindTiles pass first, each pass from slot 199 down to 0 (lower
   slots on top). Ascending order put Golem's head behind its body.
+- Composite parts are drawn with IsABestiaryIconDummy set and an Immediate batch: the Empress's draw ends the batch
+  and begins one with Main.Transform (world camera) for her dyed wings unless she's a Bestiary icon, which threw her
+  body into the screen corner and broke our matrix. ForceOpaque also on Golem (head was half transparent).
+- Single-sprite enemies: DrawScale = npc.scale x 1.5 (the hero's scale), capped to fit 220x200. Was hitbox height
+  x 1.5 / frame height, which made most enemies (Eater of Souls...) too small since sprites exceed hitboxes.
 - Composite idle animation: s * (1 + 0.015 sin(t/45)) breathing, and each non-anchor part offset by sin/cos sway of
   1.8% of the boss's size, applied to the NPCs' positions for the draw (restored after) so connectors follow.
 - Widescreen / rounded-down scale: the bottom panel's black now reaches the window bottom (DrawPanel(bottom)).

@@ -88,8 +88,10 @@ namespace MercyMode.Battle
 			Vector2[] savedPosition = parts.Select(n => n.position).ToArray();
 			EnemyLight = WorldLightTint(anchor);
 
+			// Immediate, like the Bestiary: some bosses apply shaders mid-draw (the Empress's wings)
 			sb.End();
-			sb.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, local);
+			sb.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, local);
+			bool[] savedDummy = parts.Select(n => n.IsABestiaryIconDummy).ToArray();
 			DrawingEnemy = true;
 			try
 			{
@@ -101,6 +103,9 @@ namespace MercyMode.Battle
 				// to the core)
 				for (int i = 0; i < parts.Count; i++)
 				{
+					// As a Bestiary icon, NPC drawing never restarts the sprite batch with the world camera
+					// (the Empress does that for her wings, which threw her into the corner of the screen)
+					parts[i].IsABestiaryIconDummy = true;
 					if (encounter.ForceOpaque)
 						parts[i].alpha = 0;
 					if (parts[i] != anchorNpc)
@@ -117,6 +122,7 @@ namespace MercyMode.Battle
 				{
 					parts[i].alpha = savedAlpha[i];
 					parts[i].position = savedPosition[i];
+					parts[i].IsABestiaryIconDummy = savedDummy[i];
 				}
 				DrawingEnemy = false;
 				EnemyLight = Color.White;
