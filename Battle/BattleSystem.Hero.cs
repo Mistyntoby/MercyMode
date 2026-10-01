@@ -504,6 +504,9 @@ namespace MercyMode.Battle
 
 		private void AddEffect(BattleEffect e) => effects.Add(e);
 
+		/// <summary>Shakes the battle screen (obj_shake), for slams and explosions in attack patterns.</summary>
+		public void ShakeScreen(int amount) => shake = Math.Max(shake, amount);
+
 		public void ShowMercyGain(float amount)
 		{
 			if (amount <= 0f || encounter == null)

@@ -68,6 +68,8 @@ namespace MercyMode.Battle
 
 		// enemy turn
 		public readonly List<Bullet> Bullets = new();
+		private readonly List<Bullet> spawnedDuringUpdate = new();
+		private bool updatingBullets;
 		private EnemyAttack attack;
 		private float turnTimer;
 		private Vector2 soul; // top-left of spr_dodgeheart, like obj_heart's x/y
@@ -113,6 +115,9 @@ namespace MercyMode.Battle
 		private float partyLift;
 		private float musicVolumeCurrent;
 		private PlayerHeadDrawRenderTargetContent playerHeadPortrait;
+
+		/// <summary>Sets the HP the battle holds the player at (test command).</summary>
+		public void SetBattleLife(int life) => battleLife = life;
 
 		/// <summary>Heals the player during the battle. Returns how much HP was actually restored.</summary>
 		public int HealPlayer(int amount)
@@ -362,6 +367,9 @@ namespace MercyMode.Battle
 
 			time++;
 			phaseTicks++;
+			// A lethal hit (or drowning, poison...) held back by BattlePlayer.PreKill: break the SOUL first
+			if (deathPending)
+				BeginSoulDeath();
 			// Full volume from the first beat; only the end of the battle fades it (and the volume setting still applies live)
 			if (music != null && musicStarted && phase != Phase.Outro && phase != Phase.Death)
 			{
@@ -945,7 +953,12 @@ namespace MercyMode.Battle
 		public Vector2 SoulCenter => soul + new Vector2(SoulSize / 2f);
 		public void Spawn(Bullet b)
 		{
-			Bullets.Add(b);
+			// Bullets can spawn others from their OnUpdate (a slam's shockwave, a firework's burst) while the
+			// bullet list is being walked; those join after the walk
+			if (updatingBullets)
+				spawnedDuringUpdate.Add(b);
+			else
+				Bullets.Add(b);
 			Vector2 motion = b.Velocity;
 			if (motion.LengthSquared() < 0.01f)
 				motion = b.Position - Box.Center.ToVector2();
@@ -1002,22 +1015,26 @@ namespace MercyMode.Battle
 			Rectangle grazeBox = new((int)(c.X - GrazeSize / 2f), (int)(c.Y - GrazeSize / 2f), GrazeSize, GrazeSize);
 			var mp = Player.GetModPlayer<MercyPlayer>();
 
+			updatingBullets = true;
 			foreach (Bullet b in Bullets)
 			{
 				b.Update();
-				if (b.Dead || !b.Harmful)
+				// Bullets still waiting to appear (StartDelay) are invisible, so they can't hurt or be grazed yet
+				if (b.Dead || !b.Harmful || b.Waiting)
 					continue;
-				Rectangle hb = b.Hitbox;
-
-				if (inv < 0 && hb.Intersects(soulHit))
+				if (inv < 0 && b.Touches(soulHit))
 				{
 					HitSoul(b);
-					b.Dead = true; // obj_collidebullet destroys itself on hit
+					if (b.DestroyOnHit)
+						b.Dead = true; // obj_collidebullet destroys itself on hit
 					continue;
 				}
-				if (inv < 0 && hb.Intersects(grazeBox))
+				if (inv < 0 && b.Touches(grazeBox))
 					Graze(b, mp);
 			}
+			updatingBullets = false;
+			Bullets.AddRange(spawnedDuringUpdate);
+			spawnedDuringUpdate.Clear();
 			Bullets.RemoveAll(b => b.Dead);
 			if (deathPending)
 			{

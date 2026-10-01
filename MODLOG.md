@@ -134,5 +134,29 @@ Resolution 640x480. All sizes below in those pixels.
   item rise + heal stars + MAX, FIGHT thrust + slash + aqua number, MISS, spare flash/stars/streak, death dissolve,
   fly-back at the end.
 
+## Heal timing, SOUL death, outro lighting, attacks (2026-10-01)
+- Heal: the sound plays in PlayHealFx with the stars + green number (was on the key press, ~0.5 s early). Item use
+  frame 15 -> 8, potion rise 4 frames, pose 16 frames; Heal Prayer heals 4 frames into the ACT hop.
+- Death: BattlePlayer.PreKill returns false during a battle and queues Phase.Death (deferred out of the bullet loop).
+  Black over everything, SOUL alone, crack at frame 20 (snd_break1, spr_heartbreak), shatter at 50 (snd_break2,
+  6 spr_heartshards with gravity), End(killPlayer) at 95 -> Player.KillMe in the world. Music cut on the hit.
+  Terraria's other zero-HP checks (poison/drowning regen loops) call KillMe every tick -> PreKill keeps returning false.
+- Music: starts at BattleMusicVolume, no fade-in; outro still fades out.
+- Glide: hero/enemy colours blend toward Lighting.GetColor at their world spot by 1 - FlyProgress (intro start,
+  outro end); hero stays solid. World copies hidden while Active (HideDrawLayers skipping headOnlyRender, which the
+  nameplate portrait also goes through; GlobalNPC.PreDraw for encounter.DrawNpc). Outro waits for trail.Count == 0.
+- Attacks (`PatternsAdvanced.cs`): Converge (spear ring on the SOUL), Beam (telegraph line, then beam; segment
+  collision via Bullet.HitTest, DestroyOnHit false), Slam (column warning, drop, floor shockwave + debris, shake),
+  Sprinkler (fan or spiral; harmless while fading in inside the box), GapRows (zigzag gap), Fireworks (shell -> ring).
+  Bullets spawned from OnUpdate are queued until the bullet loop ends (List modified during foreach otherwise).
+  Waiting (StartDelay) bullets no longer hit. Sounds: AttackSfx roles bulletappear/bulletfire/impact/explosion
+  (Deltarune names guessed: snd_spearappear, snd_spearrise, snd_impact, snd_badexplosion; Terraria fallbacks),
+  roars on charges (ForceRoar/Roar), Item12/Item33 lasers.
+- Every custom boss got 5-6 attacks (generic boss 9) with harder phase-2 variants; enemy families got 1-2 more.
+- Test: `/mmbattle turn <n>` picks the next attack, `/mmbattle hp <n>` (then take a hit) for the SOUL death.
+  `/mmbattle heal` now also works mid-battle.
+- Built in the cloud against tModLoader's release DLLs (0 warnings, 0 errors); beam collision unit-tested.
+  NOT yet verified in game: needs the lab loop above.
+
 ## Log
 - 2026-09-30: recon, decompile, numbers above. Implemented battle loop for Eye of Cthulhu, verified in lab (above).

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
+using Terraria.Audio;
 using Terraria.GameContent;
 
 namespace MercyMode.Battle
@@ -249,6 +250,8 @@ namespace MercyMode.Battle
 		/// <summary>Always come straight down from above (a slime's hop).</summary>
 		public bool FromTopOnly;
 		public float LaneWidth = 30f;
+		/// <summary>Played as the charge launches (a boss's roar); null for the generic launch sound.</summary>
+		public SoundStyle? LaunchSound;
 
 		public LaneDash(Func<Vector2, Vector2, Bullet> make, int every = 70)
 		{
@@ -268,6 +271,7 @@ namespace MercyMode.Battle
 				? new Rectangle((int)(lane - LaneWidth / 2), box.Top, (int)LaneWidth, box.Height)
 				: new Rectangle(box.Left, (int)(lane - LaneWidth / 2), box.Width, (int)LaneWidth);
 			battle.Spawn(Shots.Warning(area, Warn));
+			AttackSfx.Appear();
 
 			Vector2 dir = vertical ? new Vector2(0, fromStart ? 1 : -1) : new Vector2(fromStart ? 1 : -1, 0);
 			Vector2 start = vertical
@@ -280,12 +284,17 @@ namespace MercyMode.Battle
 			b.OffscreenMargin = 400f;
 			int warn = Warn;
 			float speed = Speed;
+			SoundStyle? launch = LaunchSound;
 			b.OnUpdate += x =>
 			{
 				if (x.Age == warn)
 				{
 					x.Harmful = true;
 					x.Velocity = dir * speed;
+					if (launch is SoundStyle roar)
+						AttackSfx.Vanilla(roar, 0.7f);
+					else
+						AttackSfx.Fire();
 				}
 			};
 			battle.Spawn(b);
@@ -460,6 +469,8 @@ namespace MercyMode.Battle
 			float x = index % 2 == 0 ? battle.SoulCenter.X : Main.rand.NextFloat(box.Left + Width / 2, box.Right - Width / 2);
 			x = MathHelper.Clamp(x, box.Left + Width / 2, box.Right - Width / 2);
 			battle.Spawn(Shots.Warning(new Rectangle((int)(x - Width / 2), box.Top, (int)Width, box.Height), Warn, new Color(120, 200, 255)));
+			if (index % 2 == 0)
+				AttackSfx.Appear();
 			Vector2 dir = new(0, FromTop ? 1 : -1);
 			Bullet b = Make(new Vector2(x, FromTop ? box.Top - 30 : box.Bottom + 30), dir);
 			b.Velocity = Vector2.Zero;
@@ -473,6 +484,7 @@ namespace MercyMode.Battle
 				{
 					s.Harmful = true;
 					s.Velocity = dir * speed;
+					AttackSfx.Fire();
 				}
 			};
 			battle.Spawn(b);

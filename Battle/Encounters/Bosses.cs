@@ -76,12 +76,21 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			bool hard = LifeRatio < 0.5f;
+			Bullet king(Vector2 p, Vector2 d) => Shots.Npc(NPCID.KingSlime, p, Vector2.Zero, 0.35f, 1.2f, new Vector2(40, 28), rotate: false);
+			Bullet gelDrop(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(80, 140, 255), 0.6f, 1.1f);
+			Bullet shuriken(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Shuriken, p, v, 1f, 0.7f, new Vector2(10, 10), spin: 0.3f);
 			return Cycle(
 				() => new Bouncers(Gel, hard ? 18 : 26),
-				() => new LaneDash((p, d) => Shots.Npc(NPCID.KingSlime, p, Vector2.Zero, 0.35f, 1.1f, new Vector2(40, 28), rotate: false),
-					hard ? 55 : 75) { FromTopOnly = true, Speed = 8f, Warn = hard ? 26 : 34, LaneWidth = 44f },
-				() => new SideShots((p, v) => Shots.Proj(ProjectileID.Shuriken, p, v, 1f, 0.7f, new Vector2(10, 10), spin: 0.3f), hard ? 12 : 18)
-					{ Side = 0, Speed = hard ? 3.6f : 3f },
+				// It jumps and lands on you: the floor ripples out gel both ways
+				() => new Slam(king, gelDrop, hard ? 62 : 82) { Width = 48f, Shards = hard ? 3 : 2, FallSpeed = hard ? 10f : 8.5f },
+				// The ninja inside throws stars; later it surrounds you with them first
+				() => hard
+					? new Combo(BattleConstants.DefaultEnemyTurnTicks,
+						new SideShots(shuriken, 16) { Side = 0, Speed = 3.6f },
+						new Converge(shuriken, 70) { Count = 6, Speed = 4f })
+					: new SideShots(shuriken, 18) { Side = 0, Speed = 3f },
+				// Gel rains down in rows; find the gap as it drifts
+				() => new GapRows(gelDrop, hard ? 30 : 38) { Speed = hard ? 1.9f : 1.6f, GapSize = hard ? 40f : 48f },
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new Bouncers(Gel, 34),
 					new Rain((p, v) => Shots.Ball(p, v, new Color(80, 140, 255), 0.5f), hard ? 12 : 18)));
@@ -155,12 +164,22 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			bool hard = LifeRatio < 0.5f;
+			Bullet spit(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Green, 0.6f);
+			Bullet bigSpit(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(160, 255, 90), 0.9f, 1.8f);
 			return Cycle(
 				() => new Snake(Head, Body, hard ? 70 : 100) { Segments = 9, Speed = hard ? 2.8f : 2.3f },
-				() => new Rain((p, v) => Shots.Ball(p, v, Shots.Green, 0.6f), hard ? 9 : 13) { SpeedMin = 1.2f, SpeedMax = 1.8f, Wobble = 0.8f },
-				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
-					new Snake(Head, Body, 120) { Segments = 7 },
-					new Rain((p, v) => Shots.Ball(p, v, Shots.Green, 0.6f), hard ? 16 : 22) { SpeedMin = 1.2f, SpeedMax = 1.6f }));
+				// Corruption drips down in rows with a drifting gap
+				() => new GapRows(spit, hard ? 28 : 36) { Speed = hard ? 1.7f : 1.4f, GapSize = hard ? 42f : 50f },
+				// Vile spit lobbed in, bursting into a ring
+				() => new Fireworks(bigSpit, spit, hard ? 38 : 52) { Count = hard ? 10 : 8, ShardSpeed = hard ? 2f : 1.7f },
+				// Phase 2: two worms at once, one from each side
+				() => hard
+					? new Combo(BattleConstants.DefaultEnemyTurnTicks,
+						new Snake(Head, Body, 95) { Segments = 7, Side = 1, Speed = 2.6f },
+						new Snake(Head, Body, 95) { Segments = 7, Side = -1, Speed = 2.6f, FirstAt = 45 })
+					: new Combo(BattleConstants.DefaultEnemyTurnTicks,
+						new Snake(Head, Body, 120) { Segments = 7 },
+						new Rain(spit, 22) { SpeedMin = 1.2f, SpeedMax = 1.6f }));
 		}
 	}
 
@@ -218,14 +237,23 @@ namespace MercyMode.Battle.Encounters
 		{
 			bool hard = !CreepersLeft || LifeRatio < 0.5f;
 			Bullet creeper(Vector2 p, Vector2 v) => Shots.Npc(NPCID.Creeper, p, v, 0.8f, 0.7f, new Vector2(14, 14), rotate: false);
+			Bullet thought(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Red, 0.6f);
 			return Cycle(
 				() => new Orbiters(creeper, hard ? 90 : 120) { Count = hard ? 8 : 6, AngularSpeed = 0.03f },
+				// Bad thoughts close in from every side
+				() => new Converge(thought, hard ? 55 : 70) { Count = hard ? 10 : 8, Speed = hard ? 4.5f : 3.8f, Radius = 72f },
 				() => new LaneDash((p, d) => Shots.Npc(NPCID.BrainofCthulhu, p, Vector2.Zero, 0.4f, 1f, new Vector2(30, 26), rotate: false),
-					hard ? 50 : 70) { AllowVertical = true, Speed = hard ? 8f : 6.5f },
-				() => new Homing((p, v) => Shots.Ball(p, v, Shots.Red, 0.6f), hard ? 24 : 34) { Speed = hard ? 2f : 1.6f },
+					hard ? 50 : 70) { AllowVertical = true, Speed = hard ? 8f : 6.5f, LaunchSound = SoundID.ForceRoar },
+				// A psychic spiral from the middle of the box (it fades in, so it can't hit you where it starts)
+				() => new Sprinkler(thought)
+				{
+					Origin = new Vector2(BattleConstants.BoxCenterX, BattleConstants.BoxCenterY),
+					Spiral = true, Arms = hard ? 4 : 3, Every = hard ? 7 : 9, Speed = 1.8f, TurnSpeed = 0.045f, ArmTicks = 20,
+				},
+				() => new Homing(thought, hard ? 24 : 34) { Speed = hard ? 2f : 1.6f },
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new Orbiters(creeper, 140) { Count = 5 },
-					new Homing((p, v) => Shots.Ball(p, v, Shots.Red, 0.6f), 50)));
+					new Homing(thought, 50)));
 		}
 	}
 
@@ -264,9 +292,16 @@ namespace MercyMode.Battle.Encounters
 			Bullet stinger(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Stinger, p, v, 1f, 0.6f, new Vector2(8, 8), rotationOffset: MathHelper.PiOver2);
 			return Cycle(
 				() => new Homing(bee, hard ? 14 : 20) { Speed = hard ? 2.2f : 1.8f, Turn = 0.03f, SteerTicks = 70 },
-				() => new SideShots(stinger, hard ? 9 : 13) { Side = 0, Speed = 3.5f },
+				// She hovers above and sprays stingers in a sweeping fan
+				() => new Sprinkler(stinger)
+				{
+					Every = hard ? 6 : 8, Arms = hard ? 2 : 1, Speed = 3f, TurnSpeed = 0.06f, FanSpread = hard ? 0.95f : 0.8f,
+				},
 				() => new LaneDash((p, d) => Shots.Npc(NPCID.QueenBee, p, Vector2.Zero, 0.45f, 1.2f, new Vector2(40, 30), rotate: false).FaceTravel(),
-					hard ? 50 : 65) { Speed = hard ? 9f : 7.5f },
+					hard ? 50 : 65) { Speed = hard ? 9f : 7.5f, LaunchSound = SoundID.Roar },
+				() => new SideShots(stinger, hard ? 9 : 13) { Side = 0, Speed = 3.5f },
+				// Stingers hang in the air around you, then dive
+				() => new Converge(stinger, hard ? 52 : 68) { Count = hard ? 10 : 7, Speed = hard ? 4.8f : 4f, RotationOffset = MathHelper.PiOver2 },
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new Homing(bee, 30) { Speed = 1.6f },
 					new SideShots(stinger, 20) { Side = 0 }));
@@ -317,11 +352,19 @@ namespace MercyMode.Battle.Encounters
 			Bullet bone(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Bone, p, v, 1f, 0.6f, new Vector2(10, 10), spin: 0.25f);
 			return Cycle(
 				() => new LaneDash(hand, hard ? 45 : 60) { AllowVertical = true, Speed = hard ? 8f : 7f },
-				() => new LaneDash(head, hard ? 60 : 80) { AllowVertical = true, Speed = hard ? 7f : 5.5f, LaneWidth = 40f },
-				() => new Rain(bone, hard ? 8 : 12) { SpeedMin = 2f, SpeedMax = 3f, Wobble = 0f },
-				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
-					new Rain(bone, 16) { SpeedMin = 2f, SpeedMax = 2.6f, Wobble = 0f },
-					new LaneDash(hand, 80) { Speed = 7f }));
+				// The spinning-head charge
+				() => new LaneDash(head, hard ? 60 : 80) { AllowVertical = true, Speed = hard ? 7f : 5.5f, LaneWidth = 40f, LaunchSound = SoundID.Roar },
+				// A hand slams the floor and scatters bones along it
+				() => new Slam(hand, bone, hard ? 60 : 78) { Width = 40f, Shards = hard ? 3 : 2, ShardSpeed = 2.6f },
+				// Bones fall in rows with a drifting gap
+				() => new GapRows(bone, hard ? 30 : 38) { Speed = hard ? 2f : 1.7f, GapSize = hard ? 42f : 48f, Spacing = 16f },
+				() => hard
+					? new Combo(BattleConstants.DefaultEnemyTurnTicks,
+						new Converge(bone, 60) { Count = 8, Speed = 4.4f },
+						new LaneDash(hand, 90) { Speed = 7.5f })
+					: new Combo(BattleConstants.DefaultEnemyTurnTicks,
+						new Rain(bone, 16) { SpeedMin = 2f, SpeedMax = 2.6f, Wobble = 0f },
+						new LaneDash(hand, 80) { Speed = 7f }));
 		}
 	}
 
@@ -374,9 +417,15 @@ namespace MercyMode.Battle.Encounters
 			};
 			Bullet hand(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.InsanityShadowHostile, p, v, 0.6f, 0.8f, new Vector2(14, 14), rotate: true);
 			Bullet rock(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.DeerclopsRangedProjectile, p, v, 0.6f, 0.8f, new Vector2(14, 14), spin: 0.15f);
+			Bullet boulder(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.DeerclopsRangedProjectile, p, v, 1.1f, 1.2f, new Vector2(26, 26), spin: 0.08f);
+			Bullet iceShard(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Ice, 0.7f);
 			return Cycle(
 				() => new FloorSpikes(spike, hard ? 24 : 34) { Warn = hard ? 24 : 30 },
 				() => new Homing(hand, hard ? 26 : 36) { Speed = 1.5f, Turn = 0.05f, SteerTicks = 110 },
+				// A boulder crashes down and breaks into rubble along the floor
+				() => new Slam(boulder, rock, hard ? 58 : 76) { Width = 44f, Shards = hard ? 3 : 2, Debris = 4 },
+				// Frost gathers around you, then shatters inward
+				() => new Converge(iceShard, hard ? 52 : 68) { Count = hard ? 10 : 8, Speed = hard ? 4.4f : 3.8f },
 				() => new Rain(rock, hard ? 10 : 15) { SpeedMin = 2.2f, SpeedMax = 3f, Wobble = 0f },
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new FloorSpikes(spike, 45),
@@ -430,10 +479,12 @@ namespace MercyMode.Battle.Encounters
 			Bullet leechBody(Vector2 p, Vector2 v) => Shots.Npc(NPCID.LeechBody, p, v, 0.8f, 0.7f, new Vector2(10, 10), rotationOffset: BossKit.WormRotation);
 			return Cycle(
 				() => new SideShots(laser, hard ? 10 : 14) { Side = -1, Speed = 6f },
+				// Its eyes lock on and fire big beams across the box
+				() => new Beam(hard ? 46 : 62) { FixedAngle = 0f, Tilt = hard ? 0.35f : 0.2f, Width = hard ? 18f : 15f, Color = new Color(255, 80, 200), FireSound = SoundID.Item33 },
 				() => new Walls(hungry, hard ? 55 : 70) { Side = -1, Speed = hard ? 2f : 1.6f, Spacing = 18f, GapSize = 42f },
 				() => new Snake(leechHead, leechBody, hard ? 70 : 95) { Side = -1, Segments = 6, Speed = 2.6f },
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
-					new SideShots(laser, 22) { Side = -1, Speed = 6f },
+					new Beam(80) { FixedAngle = 0f, Tilt = 0.15f, Color = new Color(255, 80, 200), FireSound = SoundID.Item33 },
 					new Walls(hungry, 90) { Side = -1, Speed = 1.5f, Spacing = 18f, GapSize = 46f }));
 		}
 	}
@@ -495,11 +546,17 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			bool hard = LifeRatio < 0.5f || Main.hardMode;
+			Bullet red(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Red, 0.7f);
+			Bullet purple(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Purple, 0.6f);
 			return Cycle(
-				() => new AimedBursts((p, v) => Shots.Ball(p, v, Shots.Red, 0.7f), hard ? 30 : 45) { Count = hard ? 5 : 3, Speed = hard ? 2.6f : 2.2f },
-				() => new LaneDash(Self, hard ? 50 : 70) { AllowVertical = true, Speed = hard ? 8f : 6.5f },
-				() => new Rain((p, v) => Shots.Ball(p, v, Shots.Purple, 0.6f), hard ? 7 : 10),
-				() => new ClosingRing((p, v) => Shots.Ball(p, v, Shots.Red, 0.7f), hard ? 60 : 80),
+				() => new AimedBursts(red, hard ? 30 : 45) { Count = hard ? 5 : 3, Speed = hard ? 2.6f : 2.2f },
+				() => new LaneDash(Self, hard ? 50 : 70) { AllowVertical = true, Speed = hard ? 8f : 6.5f, LaunchSound = SoundID.Roar },
+				() => new Converge(red, hard ? 52 : 68) { Count = hard ? 10 : 8, Speed = hard ? 4.5f : 3.8f },
+				() => new Rain(purple, hard ? 7 : 10),
+				() => new Beam(hard ? 48 : 64) { Width = hard ? 16f : 14f },
+				() => new ClosingRing(red, hard ? 60 : 80),
+				() => new Sprinkler(purple) { Every = hard ? 6 : 8, Arms = hard ? 2 : 1, Speed = 2.6f, TurnSpeed = 0.055f },
+				() => new Fireworks((p, v) => Shots.Ball(p, v, Color.White, 0.9f, 1.8f), red, hard ? 40 : 54) { Count = hard ? 10 : 8 },
 				() => new Walls((p, v) => Shots.Ball(p, v, Color.White, 0.7f), hard ? 55 : 75) { Side = 0 });
 		}
 	}
