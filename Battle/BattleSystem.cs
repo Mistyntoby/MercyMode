@@ -421,12 +421,12 @@ namespace MercyMode.Battle
 			}
 			// Damp the panel toward its target instead of stepping 30 pixels per frame.
 			float panelTarget = panelDir > 0 ? PanelHeight : panelDir < 0 ? 0f : panel;
-			panel = MathHelper.Lerp(panel, panelTarget, 0.32f);
+			panel = MathHelper.Lerp(panel, panelTarget, 0.5f);
 			if (Math.Abs(panelTarget - panel) < 0.75f)
 				panel = panelTarget;
 			panel = MathHelper.Clamp(panel, 0f, PanelHeight);
 			float liftTarget = phase is Phase.Menu or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect ? 32f : 0f;
-			partyLift = MathHelper.Lerp(partyLift, liftTarget, 0.3f);
+			partyLift = MathHelper.Lerp(partyLift, liftTarget, 0.5f);
 			if (Math.Abs(liftTarget - partyLift) < 0.5f)
 				partyLift = liftTarget;
 			selectedBarPhase += 2f;
