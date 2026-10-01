@@ -166,10 +166,10 @@ namespace MercyMode.Battle.Encounters
 		public override bool DrawWithTerraria => true;
 		// Frozen mid fade-in, back segments were see-through
 		public override bool ForceOpaque => true;
-		// Its head just right of the bullet box at the hero's scale, the body coming out of the screen's right edge
+		// Its head clear of the bullet box (which ends at x 395) at the hero's scale, the body coming out of the screen's right edge
 		public override bool LeadWithDrawNpc => true;
 		public override float LeadScale => 1.2f;
-		public override Vector2 DrawCenter => new(440f, 170f);
+		public override Vector2 DrawCenter => new(490f, 170f);
 		public override bool SwayParts => false;
 		public override IEnumerable<NPC> DrawParts() => BossKit.WormChain(DrawNpc, 9);
 		public override void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking) =>
