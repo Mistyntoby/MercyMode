@@ -426,7 +426,7 @@ namespace MercyMode.Battle
 				panel = panelTarget;
 			panel = MathHelper.Clamp(panel, 0f, PanelHeight);
 			float liftTarget = phase is Phase.Menu or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect ? 32f : 0f;
-			partyLift = MathHelper.Lerp(partyLift, liftTarget, 0.42f);
+			partyLift = MathHelper.Lerp(partyLift, liftTarget, 0.3f);
 			if (Math.Abs(liftTarget - partyLift) < 0.5f)
 				partyLift = liftTarget;
 			selectedBarPhase += 2f;
@@ -1466,50 +1466,62 @@ namespace MercyMode.Battle
 		{
 			Rectangle r = PartyBox;
 			bool raised = partyLift > 1f;
+			float buttonsY = ScreenHeight - panel + 5f;
 			if (raised)
 			{
-				// Deltarune's thin cyan nameplate frame with one fast-fading bar on each side of the buttons.
-				float pulse = 0.72f + 0.18f * (0.5f + 0.5f * (float)Math.Sin(selectedBarPhase / 12f));
-				DrDraw.Rect(r.X, r.Y - 2, r.Width, 2, KrisCyan * pulse);
-				DrDraw.Rect(r.X, r.Y, 1, r.Height + 32, KrisCyan * 0.8f);
-				DrDraw.Rect(r.Right - 1, r.Y, 1, r.Height + 32, KrisCyan * 0.8f);
-				DrDraw.Rect(r.X + 1, r.Y, r.Width - 2, r.Height + 32, Color.Black);
-				float progress = (selectedBarPhase / 11f) % 1f;
-				float travel = progress * 10f;
-				float alpha = 0.55f * (1f - progress);
-				float buttonY = r.Y + r.Height + 4f;
-				DrDraw.Rect(r.X + 1 + travel, buttonY, 2, 29, KrisCyan * alpha);
-				DrDraw.Rect(r.Right - 3 - travel, buttonY, 2, 29, KrisCyan * alpha);
+				// scr_selectionmatrix: fixed cyan rule above the buttons with sine-eased columns.
+				DrDraw.Rect(r.X, buttonsY - 5f, r.Width, 2f, KrisCyan);
+				for (int i = 0; i < 12; i++)
+				{
+					float angle = selectedBarPhase + i * 10f * MathHelper.Pi;
+					float wave = (float)Math.Sin(angle / 60f);
+					float alpha = Math.Max(0f, (float)Math.Sin(angle / 60f));
+					DrDraw.Rect(r.X, buttonsY - 8f, 2f, 36f, KrisCyan * alpha);
+					DrDraw.Rect(r.Right + 1f, buttonsY - 8f, 2f, 36f, KrisCyan * alpha);
+					if (Math.Cos(angle / 60f) < 0f)
+					{
+						float leftX = r.X + 30f - wave * 30f;
+						float rightX = r.Right - 30f + wave * 30f;
+						DrDraw.Rect(leftX, buttonsY - 5f, 2f, 33f, KrisCyan * alpha);
+						DrDraw.Rect(rightX, buttonsY - 5f, 2f, 33f, KrisCyan * alpha);
+					}
+				}
+				DrDraw.Rect(r.X, r.Y - 2f, 1f, buttonsY - r.Y + 3f, KrisCyan * 0.8f);
+				DrDraw.Rect(r.Right - 1f, r.Y - 2f, 1f, buttonsY - r.Y + 3f, KrisCyan * 0.8f);
+				DrDraw.Rect(r.X + 1, r.Y, r.Width - 2, buttonsY - r.Y, Color.Black);
 			}
 
 			// The player's own head, tinted Deltarune cyan and raised slightly within the panel.
 			if (playerHeadPortrait?.IsReady == true)
 			{
-				DrDraw.Sb.Draw(playerHeadPortrait.GetTarget(), new Vector2(r.X + 20, r.Y + 17), null,
-					new Color(110, 220, 255), 0f, new Vector2(42f), 0.5f, SpriteEffects.None, 0f);
+				DrDraw.Sb.Draw(playerHeadPortrait.GetTarget(), new Vector2(r.X + 20, r.Y + 15), null,
+					new Color(110, 220, 255), 0f, new Vector2(42f), 0.68f, SpriteEffects.None, 0f);
 			}
 			else
 			{
 				DrDraw.HeartShapeAt(r.X + 10, r.Y + 5, 17, new Color(64, 220, 255));
 			}
 			DrDraw.Text(Player.name.ToUpperInvariant(), r.X + 32, r.Y + 10, Color.White, DrDraw.SmallFont);
-			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + 20, Color.White))
-				DrDraw.Text("HP", r.X + 108, r.Y + 15, Color.White, DrDraw.SmallFont);
+			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + 22, Color.White))
+				DrDraw.Text("HP", r.X + 108, r.Y + 19, Color.White, DrDraw.SmallFont);
 			float ratio = MathHelper.Clamp(Player.statLife / (float)Player.statLifeMax2, 0f, 1f);
 			bool choosing = phase == Phase.Menu || phase == Phase.EnemySelect || phase == Phase.ActSelect || phase == Phase.ItemSelect;
 			const int hpBarX = 130;
 			const int hpBarWidth = 74;
-			DrDraw.Rect(r.X + hpBarX, r.Y + 14, hpBarWidth, 8, new Color(128, 0, 0));
-			DrDraw.Rect(r.X + hpBarX, r.Y + 14, (float)Math.Ceiling(ratio * hpBarWidth), 8, KrisCyan);
+			DrDraw.Rect(r.X + hpBarX, r.Y + 19, hpBarWidth, 8, new Color(128, 0, 0));
+			DrDraw.Rect(r.X + hpBarX, r.Y + 19, (float)Math.Ceiling(ratio * hpBarWidth), 8, KrisCyan);
 			string hp = $"{Player.statLife}/{Player.statLifeMax2}";
 			Color hpColor = ratio <= 0.25f ? new Color(255, 255, 0) : Color.White;
-			DrDraw.Text(hp, r.X + 205 - DrDraw.Measure(hp, DrDraw.SmallFont), r.Y - 1, hpColor, DrDraw.SmallFont);
+			const float hpNumberScale = 0.55f;
+			float hpTextWidth = DrDraw.Measure(hp, DrDraw.BigFont) * hpNumberScale;
+			DrDraw.Text(hp, r.X + hpBarX + (hpBarWidth - hpTextWidth) / 2f, r.Y - 1f,
+				hpColor, DrDraw.BigFont, hpNumberScale);
 
 			if (!choosing && partyLift < 1f)
 				return;
 			string[] names = { "spr_btfight", "spr_btact", "spr_btitem", "spr_btspare", "spr_btdefend" };
 			string[] labels = { "FIGHT", "ACT", "ITEM", "SPARE", "DEFEND" };
-			float by = ScreenHeight - panel + 5; // 485 - bp
+			float by = buttonsY; // 485 - bp; moves together with the bottom panel during transitions
 			for (int i = 0; i < 5; i++)
 			{
 				bool selected = (int)menuChoice == i && phase == Phase.Menu || (int)pendingChoice == i && phase != Phase.Menu && phase != Phase.ItemSelect
