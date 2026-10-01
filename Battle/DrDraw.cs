@@ -116,7 +116,12 @@ namespace MercyMode.Battle
 		{
 			DrFont f = DeltaruneAssets.Font(font);
 			if (f == null)
+			{
+				// No fonts on a dedicated server (the headless lab): a fixed width per character
+				if (Main.dedServ)
+					return text.Length * (font == BigFont ? 16f : 8f);
 				return FontAssets.MouseText.Value.MeasureString(text).X * FallbackScale(font);
+			}
 			float w = 0;
 			foreach (char c in text)
 				if (f.Glyphs.TryGetValue(c, out var g))

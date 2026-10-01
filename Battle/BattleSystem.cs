@@ -94,7 +94,6 @@ namespace MercyMode.Battle
 		private float boltX; // frames since the bar appeared (boltx)
 		private float fightFade;
 		private int slashTimer = -1;
-		private int enemyShake;
 		private float enemyAttackEnergy;
 		private Vector2 enemyAttackDirection;
 		private int patternSoundCooldown;
@@ -159,7 +158,8 @@ namespace MercyMode.Battle
 		private void Start(NPC root, string reason)
 		{
 			boss = root;
-			encounter = EncounterRegistry.Create(root);
+			// The enemy, plus nearby ones (a squad, during an event) for regular fights; the first is the target
+			SetUpEnemies(root);
 			time = 0;
 			battleOver = false;
 			defending = false;
@@ -168,8 +168,6 @@ namespace MercyMode.Battle
 			boxAfterimages.Clear();
 			messages.Clear();
 			effects.Clear();
-			enemyOverride = null;
-			enemySnap = default;
 			SetHeroPose(HeroPose.Idle);
 			hurtTimer = -1;
 			shake = 0;
@@ -180,8 +178,7 @@ namespace MercyMode.Battle
 			fightWeapon = null;
 			heroRecoil = 0f;
 			// The party and the enemy fly in from where they stood in the world
-			CaptureWorldPositions(root);
-			enemyWorldRotation = root.rotation;
+			CaptureWorldPositions();
 			tpBarX = -40f;
 			tpBarIn = -1f;
 			panel = 0;
@@ -191,7 +188,6 @@ namespace MercyMode.Battle
 			screenFade = 0;
 			arenaBlend = 0f;
 			slashTimer = -1;
-			enemyShake = 0;
 			enemyAttackEnergy = 0f;
 			enemyAttackDirection = Vector2.Zero;
 			patternSoundCooldown = 0;
@@ -228,7 +224,7 @@ namespace MercyMode.Battle
 			if (bossMusic)
 				AmbienceMute.BoostMusic(ModContent.GetInstance<MercyConfig>()?.BossMusicBoost ?? 1.6f);
 
-			SetText(encounter.EncounterText);
+			SetText(OpeningText());
 			SetPhase(Phase.Intro);
 			Mod.Logger.Info($"Battle started with {boss.FullName} as {encounter.GetType().Name} ({encounter.Life}/{encounter.LifeMax} HP) by {reason}");
 		}
@@ -262,6 +258,8 @@ namespace MercyMode.Battle
 			phase = Phase.None;
 			encounter = null;
 			boss = null;
+			enemies.Clear();
+			SetTarget(null);
 
 			if (killPlayer)
 			{
@@ -313,6 +311,8 @@ namespace MercyMode.Battle
 				phase = Phase.None;
 				encounter = null;
 				boss = null;
+				enemies.Clear();
+				SetTarget(null);
 				Bullets.Clear();
 			}
 		}
@@ -386,8 +386,11 @@ namespace MercyMode.Battle
 				End();
 				return;
 			}
-			// Enemy gone without us ending the battle (despawned, killed some other way)
-			if (!encounter.Alive && phase != Phase.Outro && phase != Phase.Message && phase != Phase.FightBar && phase != Phase.FightResult && phase != Phase.Death)
+			// Enemies gone without us ending the battle (despawned, killed some other way)
+			foreach (BattleEnemy en in enemies)
+				if (!en.Out && !en.E.Alive && !(en == targetEnemy && phase is Phase.FightBar or Phase.FightResult))
+					en.Out = true;
+			if (LivingEnemies.Count == 0 && phase != Phase.Outro && phase != Phase.Message && phase != Phase.FightBar && phase != Phase.FightResult && phase != Phase.Death)
 			{
 				battleOver = true;
 				StartOutro();
@@ -426,8 +429,9 @@ namespace MercyMode.Battle
 			}
 			if (grazeTimer > 0)
 				grazeTimer--;
-			if (enemyShake > 0)
-				enemyShake--;
+			foreach (BattleEnemy en in enemies)
+				if (en.Shake > 0)
+					en.Shake--;
 			if (patternSoundCooldown > 0)
 				patternSoundCooldown--;
 			if (slashTimer >= 0 && ++slashTimer > 20)
@@ -456,7 +460,6 @@ namespace MercyMode.Battle
 		private float tpBarX = -40f;
 		/// <summary>Frames since the TP bar started sliding in, or -1 before it does.</summary>
 		private float tpBarIn = -1f;
-		private float enemyWorldRotation;
 
 		/// <summary>Every tick: Deltarune's per-frame HUD motion, stepped in half frames so it moves at 60 fps.</summary>
 		private void UpdateHudFrame()
@@ -587,6 +590,7 @@ namespace MercyMode.Battle
 			if (heroPose == HeroPose.Defend)
 				SetHeroPose(HeroPose.Idle);
 			tpPreview = 0;
+			RetargetIfNeeded();
 			if (!keepText)
 				SetText(encounter.FlavorText());
 			SetPhase(Phase.Menu);
@@ -619,8 +623,7 @@ namespace MercyMode.Battle
 				case Choice.Spare:
 					Sfx("select");
 					pendingChoice = menuChoice;
-					listIndex = 0;
-					SetPhase(Phase.EnemySelect);
+					OpenEnemySelect();
 					break;
 				case Choice.Item:
 					if (HealingItems().Count == 0)
@@ -639,8 +642,29 @@ namespace MercyMode.Battle
 			}
 		}
 
+		/// <summary>The enemy list, with the cursor on the current target.</summary>
+		private void OpenEnemySelect()
+		{
+			RetargetIfNeeded();
+			listIndex = Math.Max(0, LivingEnemies.IndexOf(targetEnemy));
+			SetPhase(Phase.EnemySelect);
+		}
+
 		private void UpdateEnemySelect()
 		{
+			List<BattleEnemy> living = LivingEnemies;
+			if (living.Count > 1)
+			{
+				int before = listIndex;
+				if (Pressed(Keys.Down))
+					listIndex = (listIndex + 1) % living.Count;
+				if (Pressed(Keys.Up))
+					listIndex = (listIndex + living.Count - 1) % living.Count;
+				listIndex = Math.Clamp(listIndex, 0, living.Count - 1);
+				if (listIndex != before)
+					Sfx("menumove");
+				SetTarget(living[listIndex]);
+			}
 			if (Cancel)
 			{
 				if (pendingChoice == Choice.Fight)
@@ -683,7 +707,7 @@ namespace MercyMode.Battle
 			if (Cancel)
 			{
 				tpPreview = 0;
-				SetPhase(Phase.EnemySelect);
+				OpenEnemySelect();
 				return;
 			}
 			if (!Confirm)
@@ -804,11 +828,22 @@ namespace MercyMode.Battle
 			string spared = $"* {Player.name} spared {encounter.Name}!";
 			if (encounter.Mercy >= 100f)
 			{
-				battleOver = true;
+				BattleEnemy who = targetEnemy;
+				who.Out = true;
 				PlayEnemySpared();
 				encounter.Spare();
-				SetHeroPose(HeroPose.Victory);
-				ShowMessages(new[] { spared }, StartOutro);
+				if (LivingEnemies.Count == 0)
+				{
+					battleOver = true;
+					SetHeroPose(HeroPose.Victory);
+					ShowMessages(new[] { spared }, StartOutro);
+					return;
+				}
+				// Others are still fighting: the squad reacts, then it's their turn
+				string squad = OnEnemySpared(who);
+				RetargetIfNeeded();
+				SetHeroPose(HeroPose.Act);
+				ShowMessages(squad != null ? new[] { spared, squad } : new[] { spared }, StartEnemyTurn);
 				return;
 			}
 			SetHeroPose(HeroPose.Act);
@@ -857,8 +892,8 @@ namespace MercyMode.Battle
 			boxAfterimages.Clear();
 			enemyAttackEnergy = 0f;
 			enemyAttackDirection = Vector2.Zero;
-			attack = encounter.NextAttack(this);
-			encounter.Turn++;
+			RetargetIfNeeded();
+			attack = BuildEnemyTurn();
 			turnTimer = attack.Duration;
 			boxTimer = 0;
 			text = "";
@@ -901,6 +936,7 @@ namespace MercyMode.Battle
 		public Vector2 SoulCenter => soul + new Vector2(SoulSize / 2f);
 		public void Spawn(Bullet b)
 		{
+			b.Owner ??= spawnOwner;
 			// Bullets can spawn others from their OnUpdate (a slam's shockwave, a firework's burst) while the
 			// bullet list is being walked; those join after the walk
 			if (updatingBullets)
@@ -1029,14 +1065,15 @@ namespace MercyMode.Battle
 
 		private void HitSoul(Bullet b)
 		{
-			int damage = Math.Max(1, (int)Math.Round(encounter.Damage * b.DamageMult));
+			Encounter by = b.Owner ?? encounter;
+			int damage = Math.Max(1, (int)Math.Round((b.Owner?.Damage ?? turnDamage) * b.DamageMult));
 			Player.immune = false;
 			Player.immuneTime = 0;
 			HurtingPlayer = true;
 			double dealt;
 			try
 			{
-				dealt = Player.Hurt(PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral($"{Player.name} was defeated by {boss.GivenOrTypeName}.")),
+				dealt = Player.Hurt(PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral($"{Player.name} was defeated by {by.Name}.")),
 					damage, 0, knockback: 0f);
 			}
 			finally
@@ -1122,7 +1159,7 @@ namespace MercyMode.Battle
 			if (music != null)
 				music.Volume *= 0.9f;
 			// Wait for the last afterimages to fade on their own, so the trail never just vanishes
-			if (panel <= 0 && screenFade <= 0f && phaseTicks >= GlideTicks && trail.Count == 0)
+			if (panel <= 0 && screenFade <= 0f && phaseTicks >= GlideTicks && trail.Count == 0 && enemies.All(e => e.Trail.Count == 0))
 				End();
 		}
 
@@ -1246,7 +1283,18 @@ namespace MercyMode.Battle
 			tiled((float)Math.Round(-200 - siner2), (float)Math.Round(-210 - siner2), screenFade);
 		}
 
+		/// <summary>Every enemy in the battle, each at its own spot (back row first, so the front one overlaps).</summary>
 		private void DrawEnemy(SpriteBatch sb, Matrix m)
+		{
+			foreach (BattleEnemy en in enemies.OrderBy(e => e.E.ScreenCenter.Y))
+			{
+				if (!en.Living && en.Override == null)
+					continue; // spared or defeated, and its animation is over
+				WithEnemy(en, () => DrawOneEnemy(sb, m));
+			}
+		}
+
+		private void DrawOneEnemy(SpriteBatch sb, Matrix m)
 		{
 			if (enemyOverride != null)
 			{
@@ -1289,10 +1337,10 @@ namespace MercyMode.Battle
 			Color worldLight = WorldLightTint(npc.Center);
 			Color baseColor = Tint(encounter.DrawColor(npc), worldLight);
 			// Afterimages left behind while gliding, fading out
-			foreach (var t in trail)
+			foreach (EnemyTrail t in focus.Trail)
 			{
-				float a = 0.5f * (1f - t.Age / (float)TrailLife);
-				DrDraw.Sb.Draw(tex, t.EnemyPos, frame, baseColor * a, rotation, frame.Size() / 2f, t.EnemyScale, SpriteEffects.None, 0f);
+				float a = 0.5f * (1f - t.Age / TrailLife);
+				DrDraw.Sb.Draw(tex, t.Pos, frame, baseColor * a, rotation, frame.Size() / 2f, t.Scale, SpriteEffects.None, 0f);
 			}
 			Vector2 pos = EnemyPosNow + new Vector2(0, (float)Math.Sin(time / 20f) * 4f * glide);
 			pos -= enemyAttackDirection * (attackMotion * 3f);
@@ -1301,7 +1349,8 @@ namespace MercyMode.Battle
 			if (enemyShake > 0)
 				pos.X += (enemyShake % 4 < 2 ? 1 : -1) * enemyShake / 2f;
 			float alpha = 1f;
-			bool selecting = phase == Phase.EnemySelect || phase == Phase.ActSelect;
+			// Only the enemy being targeted flashes
+			bool selecting = (phase == Phase.EnemySelect || phase == Phase.ActSelect) && focus == targetEnemy;
 			Color color = Tint(encounter.DrawColor(npc), worldLight) * alpha;
 			DrDraw.Sb.Draw(tex, pos, frame, color, rotation, frame.Size() / 2f, spriteScale, SpriteEffects.None, 0f);
 			enemySnap = new EnemySnapshot
@@ -1548,7 +1597,7 @@ namespace MercyMode.Battle
 						DrDraw.Outline(bx, buttonsY, 31, 32, selected ? new Color(255, 255, 0) : Orange, 2);
 						DrDraw.Text(labels[i].Substring(0, 1), bx + 10, buttonsY + 8, selected ? new Color(255, 255, 0) : Orange, DrDraw.SmallFont);
 					}
-					if (i == (int)Choice.Spare && encounter.Mercy >= 100f)
+					if (i == (int)Choice.Spare && LivingEnemies.Any(e => e.E.Mercy >= 100f))
 						DrDraw.Sprite(names[i], 2, bx, buttonsY, Color.White, 1f, 0f, 0.4f + (float)Math.Sin(time / 12f) * 0.4f);
 				}
 			}
@@ -1592,23 +1641,28 @@ namespace MercyMode.Battle
 
 		private void DrawEnemyList(float y)
 		{
-			DrawHeartCursor(55, y + 10);
-			bool spareable = encounter.Mercy >= 100f;
-			DrDraw.Text(encounter.Name, 80, y, spareable ? new Color(255, 255, 0) : Color.White);
+			List<BattleEnemy> living = LivingEnemies;
+			int cursor = Math.Clamp(listIndex, 0, Math.Max(0, living.Count - 1));
+			DrawHeartCursor(55, y + 10 + cursor * 30);
 
-			// HP and MERCY columns like Deltarune's enemy list
-			Color headerGray = new(128, 128, 128);
+			// HP and MERCY columns like Deltarune's enemy list, one row per enemy
 			DrDraw.Text("HP", 424, y - 14, Color.White, DrDraw.SmallFont);
 			DrDraw.Text("MERCY", 524, y - 14, Color.White, DrDraw.SmallFont);
-			float hp = MathHelper.Clamp(encounter.LifeRatio, 0f, 1f);
-			DrDraw.Rect(420, y + 5, 81, 16, new Color(128, 0, 0));
-			DrDraw.Rect(420, y + 5, (float)Math.Ceiling(hp * 81), 16, new Color(0, 255, 0));
-			DrDraw.Text($"{(int)Math.Ceiling(hp * 100)}%", 424, y + 5, Color.White, DrDraw.SmallFont);
-			float mercy = MathHelper.Clamp(encounter.Mercy / 100f, 0f, 1f);
-			DrDraw.Rect(520, y + 5, 81, 16, new Color(255, 80, 32));
-			DrDraw.Rect(520, y + 5, (float)Math.Ceiling(mercy * 81), 16, new Color(255, 255, 0));
-			DrDraw.Text($"{(int)encounter.Mercy}%", 524, y + 5, new Color(128, 0, 0), DrDraw.SmallFont);
-			_ = headerGray;
+			for (int i = 0; i < living.Count; i++)
+			{
+				Encounter e = living[i].E;
+				float rowY = y + i * 30;
+				bool spareable = e.Mercy >= 100f;
+				DrDraw.Text(e.Name, 80, rowY, spareable ? new Color(255, 255, 0) : Color.White);
+				float hp = MathHelper.Clamp(e.LifeRatio, 0f, 1f);
+				DrDraw.Rect(420, rowY + 5, 81, 16, new Color(128, 0, 0));
+				DrDraw.Rect(420, rowY + 5, (float)Math.Ceiling(hp * 81), 16, new Color(0, 255, 0));
+				DrDraw.Text($"{(int)Math.Ceiling(hp * 100)}%", 424, rowY + 5, Color.White, DrDraw.SmallFont);
+				float mercy = MathHelper.Clamp(e.Mercy / 100f, 0f, 1f);
+				DrDraw.Rect(520, rowY + 5, 81, 16, new Color(255, 80, 32));
+				DrDraw.Rect(520, rowY + 5, (float)Math.Ceiling(mercy * 81), 16, new Color(255, 255, 0));
+				DrDraw.Text($"{(int)e.Mercy}%", 524, rowY + 5, new Color(128, 0, 0), DrDraw.SmallFont);
+			}
 		}
 
 		private void DrawGrid(float y, List<(string name, bool greyed)> entries)

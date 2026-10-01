@@ -28,9 +28,12 @@ namespace MercyMode
 		[DefaultValue(true)]
 		public bool BattlesWithEnemies;
 
-		/// <summary>Regular enemies start battles during invasions, moon events, eclipses, the Old One's Army and the pillars.</summary>
-		[DefaultValue(false)]
-		public bool BattlesDuringEvents;
+		/// <summary>
+		/// Enemies start battles during invasions, moon events, eclipses and the Old One's Army: a squad of that army at a
+		/// time. (Renamed from BattlesDuringEvents, which defaulted to off, so saved configs pick up the new default.)
+		/// </summary>
+		[DefaultValue(true)]
+		public bool EventBattles;
 
 		/// <summary>Boss battles play the boss's own Terraria music; off = Rude Buster for every battle.</summary>
 		[DefaultValue(true)]

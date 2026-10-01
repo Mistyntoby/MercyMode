@@ -31,7 +31,8 @@ Set-Location "C:\Program Files (x86)\Steam\steamapps\common\tModLoader"
 dotnet tModLoader.dll -tmlsavedirectory "%USERPROFILE%\tml-lab" -skipselect "YourCharacter:MercyLab"
 ```
 
-- There is no automated test project or test command in this repository. The verified test loop is to build, update the lab `.tmod` using the copy command above, launch the lab, then use the in-game chat command `/mmbattle kit` and `/mmbattle` (or `/mmbattle npc <id|name>`) to test. `/mmbattle` starts the Eye of Cthulhu battle; use `/mmbattle end` to end a test battle.
+- Headless lab (automated battle tests, no window): `tools/lab/lab.sh test [scenario,...|all]` on Linux or `.\tools\lab\lab.ps1 test` on Windows. It builds, runs scripted battles on a throwaway dedicated server and exits 0 when every scenario passes. It covers battle rules, not drawing or sound. Scenarios live in `Lab/LabSystem.cs`; see MODLOG "Headless lab". `lab.ps1 client` opens the windowed lab below.
+- Apart from the headless lab there is no test project. The verified test loop is to build, update the lab `.tmod` using the copy command above, launch the lab, then use the in-game chat command `/mmbattle kit` and `/mmbattle` (or `/mmbattle npc <id|name>`) to test. `/mmbattle` starts the Eye of Cthulhu battle; use `/mmbattle end` to end a test battle.
 - `MODLOG.md` contains further lab setup, test commands, and recorded manual verification details. The recorded commands assume the named local tModLoader install, lab folder, character, and world still exist.
 
 ## 3. Project structure
@@ -54,11 +55,14 @@ dotnet tModLoader.dll -tmlsavedirectory "%USERPROFILE%\tml-lab" -skipselect "You
   - `Encounters/Enemies.cs` — regular-enemy encounter families and generic boss encounter.
   - `Patterns.cs` — reusable bullet-pattern generators.
   - `Bullet.cs`, `BattleEffects.cs`, `BattleConstants.cs`, `DrDraw.cs` — battle projectile/effect models, constants, and rendering helpers.
+  - `BattleSystem.Enemies.cs` — enemy squads: gathering, formation, targeting, combined enemy turns, squad morale.
+  - `Encounters/Armies.cs` — event armies (goblins, pirates, moons, Martians...).
   - `BattleCommand.cs` — `/mmbattle` developer/test commands.
 - `Deltarune/` — local Deltarune asset discovery/loading, `/drassets`, and GameMaker `data.win` reader.
   - `DeltaruneAssets.cs` — discovers a local install and loads sprites, fonts, sounds, and music with fallbacks.
   - `DataWin.cs` — binary asset reader; its file header records the UndertaleModTool/GPL-3.0 basis.
   - `AssetsCommand.cs` — `/drassets` status and reload command.
+- `Lab/LabSystem.cs`, `tools/lab/` — headless lab runner and launch scripts.
 - `Localization/en-US_Mods.MercyMode.hjson` — English localization strings.
 - `MODLOG.md` — project design/technical notes, decompile-derived gameplay values, lab instructions, verified scenarios, and known balance decisions.
 - `MercyMode.txt` — local Claude Code transcript; intentionally ignored by Git and should not be committed.

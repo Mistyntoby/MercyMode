@@ -37,6 +37,8 @@ namespace MercyMode.Battle
 
 		/// <summary>Multiplies the boss's damage for this bullet.</summary>
 		public float DamageMult = 1f;
+		/// <summary>The enemy whose attack this is (its damage and name), when known.</summary>
+		public Encounter Owner;
 		public float GrazePoints = BattleConstants.DefaultGrazePoints;
 		public float TimePoints = BattleConstants.DefaultTimePoints;
 		public bool Grazed;

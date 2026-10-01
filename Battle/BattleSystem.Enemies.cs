@@ -1,0 +1,248 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Microsoft.Xna.Framework;
+using Terraria;
+using Terraria.ModLoader;
+using MercyMode.Battle.Encounters;
+
+namespace MercyMode.Battle
+{
+	/// <summary>
+	/// Battles with up to three enemies, like Deltarune's. A regular enemy pulls nearby ones in (an army's squad
+	/// during an event); each has its own HP, MERCY, ACTs and spot on screen. FIGHT, ACT and SPARE pick a target;
+	/// the battle is won when none are left. Bosses still fight alone.
+	/// </summary>
+	public partial class BattleSystem
+	{
+		/// <summary>One enemy in the battle and everything the battle screen keeps about it.</summary>
+		private sealed class BattleEnemy
+		{
+			public Encounter E;
+			// where it stood in the world, for the glide in and out
+			public Vector2 WorldScreen;
+			public float WorldScale, WorldRotation;
+			// the battle screen
+			public EnemySnapshot Snap;
+			public BattleEffect Override; // spare / death animation
+			public int Shake;
+			public readonly List<EnemyTrail> Trail = new();
+			/// <summary>Spared or defeated: no longer targeted or attacking (its animation may still be playing).</summary>
+			public bool Out;
+			public bool Living => !Out && E.Alive;
+		}
+
+		private struct EnemyTrail
+		{
+			public Vector2 Pos;
+			public float Scale, Age;
+		}
+
+		/// <summary>The most enemies one battle pulls in, and how close (in pixels) they must be.</summary>
+		private const int MaxEnemies = 3;
+		private const float GatherRange = 640f;
+
+		private readonly List<BattleEnemy> enemies = new();
+		/// <summary>The enemy FIGHT, ACT and SPARE are aimed at; <see cref="encounter"/> is its encounter.</summary>
+		private BattleEnemy targetEnemy;
+		/// <summary>The enemy the per-enemy fields below refer to: the target, or the one being drawn or stepped.</summary>
+		private BattleEnemy focus;
+
+		// Per-enemy state, through whichever enemy has the focus
+		private EnemySnapshot enemySnap { get => focus?.Snap ?? default; set { if (focus != null) focus.Snap = value; } }
+		private BattleEffect enemyOverride { get => focus?.Override; set { if (focus != null) focus.Override = value; } }
+		private int enemyShake { get => focus?.Shake ?? 0; set { if (focus != null) focus.Shake = value; } }
+		private Vector2 enemyWorldScreen => focus?.WorldScreen ?? Vector2.Zero;
+		private float enemyWorldScale => focus?.WorldScale ?? 1f;
+		private float enemyWorldRotation => focus?.WorldRotation ?? 0f;
+
+		private List<BattleEnemy> LivingEnemies => enemies.Where(e => e.Living).ToList();
+		/// <summary>Every encounter in this battle (test commands).</summary>
+		public IEnumerable<Encounter> Encounters => enemies.Select(e => e.E);
+
+		private void SetTarget(BattleEnemy e)
+		{
+			targetEnemy = e;
+			focus = e;
+			encounter = e?.E;
+		}
+
+		/// <summary>Points the per-enemy fields (and <see cref="encounter"/>) at another enemy for a moment.</summary>
+		private void WithEnemy(BattleEnemy e, Action action)
+		{
+			BattleEnemy savedFocus = focus;
+			Encounter savedEncounter = encounter;
+			focus = e;
+			encounter = e.E;
+			try
+			{
+				action();
+			}
+			finally
+			{
+				focus = savedFocus;
+				encounter = savedEncounter;
+			}
+		}
+
+		/// <summary>Keeps the target on someone still fighting.</summary>
+		private void RetargetIfNeeded()
+		{
+			if (targetEnemy != null && targetEnemy.Living)
+				return;
+			BattleEnemy next = LivingEnemies.FirstOrDefault();
+			if (next != null)
+				SetTarget(next);
+		}
+
+		/// <summary>The enemies a battle with <paramref name="root"/> is fought against: it, plus nearby ones for regular fights.</summary>
+		private List<NPC> GatherEnemies(NPC root)
+		{
+			var list = new List<NPC> { root };
+			if (EncounterRegistry.IsBossFight(root))
+				return list;
+			ArmyKind army = Armies.ArmyOf(root);
+			var found = new List<NPC>();
+			foreach (NPC n in Main.ActiveNPCs)
+			{
+				NPC r = EncounterRegistry.ResolveRoot(n);
+				if (r == root || list.Contains(r) || found.Contains(r) || EncounterRegistry.IsBossFight(r) || !EncounterRegistry.Eligible(r))
+					continue;
+				if (r.DistanceSQ(Player.Center) > GatherRange * GatherRange)
+					continue;
+				// During an event, a squad is made of the same army
+				if (army != ArmyKind.None && Armies.ArmyOf(r) != army)
+					continue;
+				found.Add(r);
+			}
+			list.AddRange(found.OrderBy(r => r.DistanceSQ(Player.Center)).Take(MaxEnemies - 1));
+			return list;
+		}
+
+		/// <summary>Battle-screen spots for 1-3 enemies (a staggered column on the right, like Deltarune's) and their size limits.</summary>
+		private static (Vector2 center, Vector2 area)[] Formation(int count) => count switch
+		{
+			2 => new[] { (new Vector2(470f, 135f), new Vector2(160f, 120f)), (new Vector2(545f, 235f), new Vector2(160f, 120f)) },
+			3 => new[]
+			{
+				(new Vector2(455f, 100f), new Vector2(130f, 95f)),
+				(new Vector2(550f, 180f), new Vector2(130f, 95f)),
+				(new Vector2(455f, 262f), new Vector2(130f, 95f)),
+			},
+			_ => new[] { ((Vector2)default, (Vector2)default) },
+		};
+
+		private void SetUpEnemies(NPC root)
+		{
+			enemies.Clear();
+			List<NPC> npcs = GatherEnemies(root);
+			var spots = Formation(npcs.Count);
+			for (int i = 0; i < npcs.Count; i++)
+			{
+				Encounter e = EncounterRegistry.Create(npcs[i]);
+				if (npcs.Count > 1)
+				{
+					e.Slot = spots[i].center;
+					e.SlotArea = spots[i].area;
+				}
+				enemies.Add(new BattleEnemy { E = e });
+			}
+			SetTarget(enemies[0]);
+		}
+
+		/// <summary>The line the battle opens with: the enemy's own, or a group's.</summary>
+		private string OpeningText()
+		{
+			if (enemies.Count == 1)
+				return encounter.EncounterText;
+			return encounter.GroupEncounterText(enemies.Count - 1);
+		}
+
+		// ---- squads ----
+
+		/// <summary>After an enemy is spared: the rest of an army's squad loses heart.</summary>
+		private string OnEnemySpared(BattleEnemy spared)
+		{
+			if (spared.E is not ArmyEnemy army)
+				return null;
+			bool any = false;
+			foreach (BattleEnemy e in LivingEnemies)
+			{
+				if (e.E is ArmyEnemy other && other.Kind == army.Kind)
+				{
+					other.Mercy += ArmyEnemy.MoraleOnSpare;
+					any = true;
+				}
+			}
+			return any ? army.SquadSparedLine : null;
+		}
+
+		/// <summary>After an enemy is defeated: the rest of an army's squad gets angry and attacks harder.</summary>
+		private void OnEnemyDefeated(BattleEnemy defeated)
+		{
+			if (defeated.E is not ArmyEnemy army)
+				return;
+			foreach (BattleEnemy e in LivingEnemies)
+				if (e.E is ArmyEnemy other && other.Kind == army.Kind)
+					other.Enraged = true;
+		}
+
+		// ---- enemy turns ----
+
+		/// <summary>Who spawned the bullets being made right now (for their damage).</summary>
+		private Encounter spawnOwner;
+		/// <summary>Damage for bullets with no known owner this turn (spawned by other bullets).</summary>
+		private int turnDamage;
+
+		/// <summary>Runs one enemy's attack, tagging its bullets as its own.</summary>
+		private sealed class OwnedAttack : EnemyAttack
+		{
+			private readonly BattleEnemy owner;
+			private readonly EnemyAttack inner;
+
+			public OwnedAttack(BattleEnemy owner, EnemyAttack inner)
+			{
+				this.owner = owner;
+				this.inner = inner;
+				Duration = inner.Duration;
+				FullScreen = inner.FullScreen;
+			}
+
+			public override void Update(BattleSystem battle, int tick)
+			{
+				battle.spawnOwner = owner.E;
+				try
+				{
+					// The attack sees its own enemy as the battle's encounter (where bullets come from, its HP...)
+					battle.WithEnemy(owner, () => inner.Update(battle, tick));
+				}
+				finally
+				{
+					battle.spawnOwner = null;
+				}
+			}
+		}
+
+		/// <summary>This turn's attack: every enemy's if there are two, two random ones if there are three.</summary>
+		private EnemyAttack BuildEnemyTurn()
+		{
+			List<BattleEnemy> living = LivingEnemies;
+			List<BattleEnemy> attackers = living.Count <= 2 ? living : living.OrderBy(_ => Main.rand.Next()).Take(2).ToList();
+			if (attackers.Count == 0)
+				attackers = new List<BattleEnemy> { targetEnemy };
+			turnDamage = attackers.Max(a => a.E.Damage);
+
+			var parts = new List<EnemyAttack>();
+			foreach (BattleEnemy a in attackers)
+			{
+				EnemyAttack part = null;
+				WithEnemy(a, () => part = a.E.NextAttack(this));
+				a.E.Turn++;
+				parts.Add(new OwnedAttack(a, part));
+			}
+			if (parts.Count == 1)
+				return parts[0];
+			return new Combo(parts.Max(p => p.Duration), parts.ToArray()) { FullScreen = parts.Any(p => p.FullScreen) };
+		}
+	}
+}

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.GameContent;
@@ -12,7 +14,7 @@ namespace MercyMode.Battle
 	{
 		public override CommandType Type => CommandType.Chat;
 		public override string Command => "mmbattle";
-		public override string Usage => "/mmbattle [npc <id|name> | spawn [dx dy] | spawnnpc <id|name> | end | clear | heal | hp <n> | mercy <n> | kit | night | tp <0-100> | bosshp <n> | turn <n>]";
+		public override string Usage => "/mmbattle [npc <id|name> | group <n> <name> | group <name>, <name>, ... | spawn [dx dy] | spawnnpc <id|name> | end | clear | heal | hp <n> | mercy <n> | kit | night | tp <0-100> | bosshp <n> | turn <n>]";
 		public override string Description => "Start Mercy Mode battles for testing (no arguments: Eye of Cthulhu)";
 
 		public override void Action(CommandCaller caller, string input, string[] args)
@@ -90,8 +92,9 @@ namespace MercyMode.Battle
 					return;
 				case "end":
 					if (BattleSystem.Active)
-						foreach (NPC m in BattleSystem.Instance.Encounter.Members())
-							m.active = false;
+						foreach (Encounter e in BattleSystem.Instance.Encounters.ToList())
+							foreach (NPC m in e.Members())
+								m.active = false;
 					caller.Reply("* Battle ended.", MercyMode.Gray);
 					return;
 			}
@@ -104,6 +107,37 @@ namespace MercyMode.Battle
 			if (!MercyMode.IsSingleplayer)
 			{
 				caller.Reply("* Singleplayer only.", MercyMode.Gray);
+				return;
+			}
+
+			if (cmd == "group" && args.Length >= 2)
+			{
+				// "/mmbattle group 3 zombie" or a mixed squad: "/mmbattle group goblin peon, goblin archer, goblin sorcerer"
+				var types = new List<int>();
+				if (int.TryParse(args[1], out int count) && args.Length >= 3)
+				{
+					int t = ParseNpc(string.Join(" ", args, 2, args.Length - 2));
+					for (int i = 0; i < Math.Clamp(count, 1, 3); i++)
+						types.Add(t);
+				}
+				else
+				{
+					foreach (string name in string.Join(" ", args, 1, args.Length - 1).Split(','))
+						types.Add(ParseNpc(name.Trim()));
+				}
+				if (types.Count == 0 || types.Any(t => t <= 0))
+				{
+					caller.Reply("* No NPC with that id or name.", MercyMode.Gray);
+					return;
+				}
+				NPC first = null;
+				for (int i = 0; i < types.Count && i < 3; i++)
+				{
+					NPC n = SpawnNear(player, types[i], 160 + i * 70, -40 - (i % 2) * 50);
+					first ??= n;
+				}
+				BattleSystem.QueueStart(first, 20);
+				caller.Reply($"* Spawned {types.Count} enemies, starting the battle...", MercyMode.TextWhite);
 				return;
 			}
 
