@@ -1523,8 +1523,8 @@ namespace MercyMode.Battle
 			// The original outer frame tracks the nameplate; black fill is exactly 34 px tall,
 			// so its lower edge covers the button row only as the box drops into the bullet phase.
 			DrDraw.Rect(r.X, r.Y - 3f, r.Width, 3f, KrisCyan * selectionAlpha);
-			DrDraw.Rect(r.X, r.Y - 2f, 1f, r.Height + 3f, KrisCyan * selectionAlpha);
-			DrDraw.Rect(r.Right - 1f, r.Y - 2f, 1f, r.Height + 3f, KrisCyan * selectionAlpha);
+			DrDraw.Rect(r.X, r.Y - 2f, 1f, r.Height, KrisCyan * selectionAlpha);
+			DrDraw.Rect(r.Right - 1f, r.Y - 2f, 1f, r.Height, KrisCyan * selectionAlpha);
 			DrDraw.Rect(r.X + 1f, r.Y, r.Width - 2f, 34f, Color.Black);
 
 			// The player's own head, enlarged and shifted left to leave clear space before the name.
