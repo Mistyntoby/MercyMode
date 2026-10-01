@@ -24,6 +24,8 @@ namespace MercyMode.Deltarune
 			caller.Reply("* " + DeltaruneAssets.StatusMessage, MercyMode.TextWhite);
 			foreach (var role in DeltaruneAssets.SoundRoles.Keys)
 				caller.Reply($"   {role}: {(DeltaruneAssets.HasSound(role) ? "real" : "vanilla fallback")}", MercyMode.Gray);
+			caller.Reply($"* Battle sprites: {DeltaruneAssets.LoadedSpriteCount}/{DeltaruneAssets.SpriteNames.Length}, fonts: " +
+				$"{DeltaruneAssets.LoadedFontCount}/{DeltaruneAssets.FontNames.Length}, battle music: {(DeltaruneAssets.BattleMusic != null ? "yes" : "no")}", MercyMode.Gray);
 			if (!string.IsNullOrEmpty(DeltaruneAssets.DumpPath))
 				caller.Reply("* Full asset name list: " + DeltaruneAssets.DumpPath, MercyMode.Gray);
 		}
