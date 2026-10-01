@@ -26,7 +26,7 @@ namespace MercyMode.Battle
 		private const float HeroX = 80, HeroY = 140, HeroHeight = 74;
 		/// <summary>Bottom-centre of the character on the battle screen.</summary>
 		private static readonly Vector2 HeroFeet = new(116, 216);
-		private const float HeroScale = 1.5f;
+		private const float HeroScale = BattleCharacterScale;
 		/// <summary>scr_moveheart: the SOUL leaves from (kris.x + 10, kris.y + 40).</summary>
 		private static readonly Vector2 HeroHeart = new(HeroX + 10, HeroY + 40);
 
@@ -84,6 +84,8 @@ namespace MercyMode.Battle
 				shake--;
 				shakeSign = -shakeSign;
 			}
+			enemyAttackEnergy = Math.Max(0f, enemyAttackEnergy - 0.055f);
+			enemyAttackDirection = Vector2.Lerp(enemyAttackDirection, Vector2.Zero, 0.12f);
 
 			// ACT returns to idle after actreturnframes (10 at 0.5 per frame = 20 frames)
 			if (heroPose == HeroPose.Act && heroTimer >= 20)
@@ -117,6 +119,15 @@ namespace MercyMode.Battle
 			foreach (var e in effects)
 				e.Frame();
 			effects.RemoveAll(e => e.Done);
+			for (int i = boxAfterimages.Count - 1; i >= 0; i--)
+			{
+				BoxAfterimage image = boxAfterimages[i];
+				image.Age++;
+				if (image.Age > 18)
+					boxAfterimages.RemoveAt(i);
+				else
+					boxAfterimages[i] = image;
+			}
 			if (enemyOverride != null)
 			{
 				enemyOverride.Frame();
@@ -240,7 +251,8 @@ namespace MercyMode.Battle
 			if (hurtTimer >= 0)
 				hurtShift = -20 + Math.Min(2, hurtTimer / 2) * 10;
 
-			DrawPlayerPose(sb, m, p, HeroFeetNow + new Vector2(hurtShift, bob), HeroScaleNow, pose, heroTimer, 0f);
+			float outroFade = phase == Phase.Outro ? 1f - FlyProgress() : 0f;
+			DrawPlayerPose(sb, m, p, HeroFeetNow + new Vector2(hurtShift, bob), HeroScaleNow, pose, heroTimer, outroFade);
 		}
 
 		/// <summary>How far through a weapon swing a pose is (0 = start, 1 = end), or -1 for no weapon.</summary>
@@ -283,7 +295,7 @@ namespace MercyMode.Battle
 			Vector2 manualOrigin = Vector2.Zero;
 			float manualThrust = 0f;
 
-			if (swing >= 0f && weapon != null && shadow == 0f)
+			if (swing >= 0f && weapon != null && shadow < 0.95f)
 			{
 				p.inventory[oldSlot] = weapon;
 				p.itemAnimationMax = 30;
@@ -322,7 +334,7 @@ namespace MercyMode.Battle
 						break;
 					case HeroPose.ItemReady:
 					case HeroPose.Item:
-						if (usedItemType > 0 && (pose == HeroPose.ItemReady || timer <= 15) && shadow == 0f)
+						if (usedItemType > 0 && (pose == HeroPose.ItemReady || timer <= 15) && shadow < 0.95f)
 						{
 							// Arm raised, holding the item up; it's used up at 15 frames
 							float armRot = MathHelper.Pi;
@@ -375,13 +387,13 @@ namespace MercyMode.Battle
 					if (pose == HeroPose.Item || pose == HeroPose.ItemReady)
 					{
 						// Potion held up by its bottom, rising as it's used
-						DrDraw.Sb.Draw(tex, hand - new Vector2(0, manualThrust), src, Color.White, 0f, new Vector2(src.Width / 2f, src.Height), scale * 0.75f, SpriteEffects.None, 0f);
+						DrDraw.Sb.Draw(tex, hand - new Vector2(0, manualThrust), src, Color.White * (1f - shadow), 0f, new Vector2(src.Width / 2f, src.Height), scale * 0.75f, SpriteEffects.None, 0f);
 					}
 					else
 					{
 						// Blade sprites point up-right (-45 degrees); turn them to follow the arm, handle in the hand
 						Vector2 along = manualRotation.ToRotationVector2();
-						DrDraw.Sb.Draw(tex, hand + along * manualThrust, src, Color.White, manualRotation + MathHelper.PiOver4,
+						DrDraw.Sb.Draw(tex, hand + along * manualThrust, src, Color.White * (1f - shadow), manualRotation + MathHelper.PiOver4,
 							new Vector2(0, src.Height), scale * 0.85f, SpriteEffects.None, 0f);
 					}
 				}

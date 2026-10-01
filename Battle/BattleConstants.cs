@@ -12,6 +12,8 @@ namespace MercyMode.Battle
 
 		public const int ScreenWidth = 640;
 		public const int ScreenHeight = 480;
+		/// <summary>Scale used to draw the Terraria player on the battle screen.</summary>
+		public const float BattleCharacterScale = 1.5f;
 
 		// ---- SOUL (obj_heart) ----
 		/// <summary>global.sp = 4 px per frame.</summary>
