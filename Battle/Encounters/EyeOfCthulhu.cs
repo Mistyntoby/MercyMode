@@ -62,7 +62,7 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			bool hard = LifeRatio < 0.5f;
-			int pick = Turn % 7;
+			int pick = Turn % 8;
 			return pick switch
 			{
 				0 => new TearRain(hard),
@@ -76,6 +76,9 @@ namespace MercyMode.Battle.Encounters
 				4 => new Converge(EyeTear, hard ? 50 : 66) { Count = hard ? 10 : 8, Speed = hard ? 4.6f : 3.8f },
 				5 => hard ? new Combo(BattleConstants.DefaultEnemyTurnTicks, new EyeRing(), new ServantSwarm(false))
 					: new TearRain(false) { WithServants = true },
+				// Servants line up over the SOUL and dive at it, trailing blood
+				7 => new Diver((p, v) => Shots.Npc(NPCID.ServantofCthulhu, p, v, 1f, 0.8f, new Vector2(14, 14), rotate: false)
+					.Dripping(new Color(200, 30, 40)), hard ? 22 : 32) { DiveSpeed = hard ? 8.5f : 7f },
 				// Phase 2's full-screen frenzy: its gaze slashes across everything while it cries blood
 				_ => hard
 					? new Combo(BattleConstants.FullScreenTurnTicks,

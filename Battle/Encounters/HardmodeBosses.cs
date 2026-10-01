@@ -70,9 +70,9 @@ namespace MercyMode.Battle.Encounters
 			Bullet queen(Vector2 p, Vector2 d) => Shots.Npc(NPCID.QueenSlimeBoss, p, Vector2.Zero, 0.3f, 1.2f, new Vector2(44, 32), rotate: false);
 			Bullet flier(Vector2 p, Vector2 v) => Shots.Npc(NPCID.QueenSlimeMinionPurple, p, v, 0.9f, 0.8f, new Vector2(14, 12), rotate: false).FaceTravel();
 			return Cycle(
-				() => new Bouncers(gem, Hard ? 18 : 24),
-				// She leaps and lands on you; crystal gel ripples out along the floor
-				() => new Slam(queen, blueGem, Hard ? 58 : 76) { Width = 50f, Shards = Hard ? 3 : 2, FallSpeed = 10f },
+				() => new Bouncers((p, v) => gem(p, v).Sparkly(Crystal, 8), Hard ? 18 : 24).WithSoul(SoulMode.Blue),
+				// She leaps and lands on you; crystal gel ripples out along the floor (blue SOUL: hop it)
+				() => new Slam(queen, blueGem, Hard ? 58 : 76) { Width = 50f, Shards = Hard ? 3 : 2, FallSpeed = 10f }.WithSoul(SoulMode.Blue),
 				() => new Converge(gem, Hard ? 50 : 64) { Count = Hard ? 10 : 8, Speed = Hard ? 4.6f : 4f },
 				() => new Swoopers(flier, Hard ? 16 : 22) { Speed = Hard ? 2.8f : 2.3f },
 				() => new GapRows(blueGem, Hard ? 28 : 34) { Speed = Hard ? 2f : 1.7f, GapSize = 44f },
@@ -106,10 +106,13 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			Bullet laser(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.EyeLaser, p, v, 1f, 0.7f, new Vector2(10, 6), rotationOffset: MathHelper.PiOver2);
-			Bullet flame(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(120, 255, 60), 0.6f, 1.2f);
+			Bullet flame(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(120, 255, 60), 0.6f, 1.2f).Fiery(6);
 			Bullet spaz(Vector2 p, Vector2 d) => Shots.Npc(NPCID.Spazmatism, p, Vector2.Zero, 0.35f, 1.2f, new Vector2(30, 30), rotate: false);
 			var red = new Color(255, 60, 60);
 			return Cycle(
+				// Yellow SOUL: Retinazer hangs back and fires; shoot it down (and its shots)
+				() => new Gunships((p, v) => Shots.Npc(NPCID.Retinazer, p, v, 0.28f, 1f, new Vector2(24, 24), rotate: false), laser, Hard ? 50 : 66)
+					{ Toughness = Hard ? 5 : 4, FireEvery = Hard ? 36 : 48, ShotSpeed = 3f },
 				// Retinazer locks on and fires
 				() => new Beam(Hard ? 36 : 48) { Width = 10f, Warn = Hard ? 32 : 40, Active = 16, Color = red, FireSound = SoundID.Item33 },
 				// Spazmatism's flamethrower sweeps from above
@@ -151,6 +154,8 @@ namespace MercyMode.Battle.Encounters
 			Bullet probe(Vector2 p, Vector2 v) => Shots.Npc(NPCID.Probe, p, v, 0.8f, 0.7f, new Vector2(14, 14), rotate: false);
 			return Cycle(
 				() => new Snake(head, body, Hard ? 70 : 95) { Segments = 12, SegmentLag = 5, Speed = Hard ? 3f : 2.5f },
+				// Yellow SOUL: probes drop off and hover in, firing; shoot them down
+				() => new Gunships(probe, laser, Hard ? 40 : 54) { Toughness = 3, FireEvery = Hard ? 40 : 52, ShotSpeed = 2.8f },
 				// Every segment fires down at once
 				() => new Rain(laser, Hard ? 7 : 10) { SpeedMin = 2.6f, SpeedMax = 3.4f, Wobble = 0f },
 				() => new Homing(probe, Hard ? 24 : 34) { Speed = 1.8f, Turn = 0.045f, SteerTicks = 100 },
@@ -237,10 +242,13 @@ namespace MercyMode.Battle.Encounters
 		{
 			Bullet saw(Vector2 p, Vector2 d) => Shots.Npc(NPCID.PrimeSaw, p, Vector2.Zero, 0.7f, 1.1f, new Vector2(24, 24), rotate: false).Spin(0.4f);
 			Bullet head(Vector2 p, Vector2 d) => Shots.Npc(NPCID.SkeletronPrime, p, Vector2.Zero, 0.5f, 1.2f, new Vector2(34, 34), rotate: false).Spin(0.35f);
-			Bullet rocket(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.RocketSkeleton, p, v, 1f, 0.9f, new Vector2(10, 10), rotationOffset: MathHelper.PiOver2);
-			Bullet bomb(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.BombSkeletronPrime, p, v, 1f, 0.9f, new Vector2(14, 14), spin: 0.2f);
-			Bullet spark(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(255, 170, 60), 0.6f);
+			Bullet rocket(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.RocketSkeleton, p, v, 1f, 0.9f, new Vector2(10, 10), rotationOffset: MathHelper.PiOver2).Smoking();
+			Bullet bomb(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.BombSkeletronPrime, p, v, 1f, 0.9f, new Vector2(14, 14), spin: 0.2f).Smoking(4);
+			Bullet spark(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(255, 170, 60), 0.6f).Fiery(8);
 			return Cycle(
+				// Yellow SOUL: its cannon arms hover in and fire rockets; shoot them down
+				() => new Gunships((p, v) => Shots.Npc(NPCID.PrimeCannon, p, v, 0.7f, 1f, new Vector2(22, 22), rotate: false), rocket, Hard ? 48 : 62)
+					{ Toughness = Hard ? 5 : 4, FireEvery = Hard ? 44 : 56, ShotSpeed = 2.2f },
 				() => new LaneDash(saw, Hard ? 44 : 58) { AllowVertical = true, Speed = Hard ? 9f : 7.5f },
 				() => new Homing(rocket, Hard ? 26 : 36) { Speed = 2f, Turn = 0.04f, SteerTicks = 80 },
 				() => new Beam(Hard ? 40 : 52) { Width = 9f, Warn = 36, Active = 14, Color = new Color(255, 60, 60), FireSound = SoundID.Item33 },
@@ -276,6 +284,8 @@ namespace MercyMode.Battle.Encounters
 			Bullet tentacle(Vector2 p, Vector2 v) => Shots.Npc(NPCID.PlanterasTentacle, p, v, 0.8f, 0.8f, new Vector2(14, 14), rotate: false);
 			Bullet bite(Vector2 p, Vector2 d) => Shots.Npc(NPCID.Plantera, p, Vector2.Zero, 0.35f, 1.2f, new Vector2(40, 40), rotate: false);
 			return Cycle(
+				// Green SOUL: seeds fly in from every side; block them with the shield
+				() => new ShieldSpears(seed, Hard ? 14 : 20) { Speed = Hard ? 3f : 2.5f },
 				() => new AimedBursts(seed, Hard ? 22 : 32) { Count = Hard ? 5 : 3, Speed = 2.8f, Spread = 0.3f },
 				() => new Bouncers(thorn, Hard ? 26 : 34) { Bounce = 1f },
 				() => new Converge(poison, Hard ? 50 : 66) { Count = Hard ? 10 : 8, Speed = Hard ? 4.4f : 3.8f, RotationOffset = MathHelper.PiOver2 },
@@ -335,14 +345,16 @@ namespace MercyMode.Battle.Encounters
 		{
 			Bullet fist(Vector2 p, Vector2 d) => Shots.Npc(NPCID.GolemFistLeft, p, Vector2.Zero, 0.8f, 1.1f, new Vector2(26, 22), rotate: false).FaceTravel();
 			Bullet golem(Vector2 p, Vector2 d) => Shots.Npc(NPCID.Golem, p, Vector2.Zero, 0.3f, 1.2f, new Vector2(50, 40), rotate: false);
-			Bullet fireball(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Fireball, p, v, 1f, 0.8f, new Vector2(10, 10), spin: 0.15f);
+			Bullet fireball(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Fireball, p, v, 1f, 0.8f, new Vector2(10, 10), spin: 0.15f).Fiery();
 			Bullet stone(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(200, 140, 70), 0.7f, 1.2f);
 			var orange = new Color(255, 160, 40);
 			return Cycle(
 				// Rocket punches across the box
 				() => new LaneDash(fist, Hard ? 40 : 54) { Speed = Hard ? 10f : 8.5f, LaneWidth = 34f },
 				// A ground pound: stone shockwaves along the floor
-				() => new Slam(golem, stone, Hard ? 60 : 76) { Width = 56f, Shards = 3, Debris = 4, FallSpeed = 11f },
+				() => new Slam(golem, stone, Hard ? 60 : 76) { Width = 56f, Shards = 3, Debris = 4, FallSpeed = 11f }.WithSoul(SoulMode.Blue),
+				// Blue SOUL: the temple's traps, stone pillars sliding through to jump and duck
+				() => new BoneWalls(Hard ? 28 : 36) { Speed = Hard ? 3.4f : 2.8f, Color = new Color(200, 140, 70) },
 				// Eye beams
 				() => new Beam(Hard ? 38 : 50) { Width = 12f, Color = orange, FireSound = SoundID.Item33 },
 				() => new Rain(fireball, Hard ? 9 : 13) { SpeedMin = 2.2f, SpeedMax = 3f, Wobble = 0f },
@@ -454,7 +466,7 @@ namespace MercyMode.Battle.Encounters
 
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
-			Bullet fire(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.CultistBossFireBall, p, v, 0.8f, 0.8f, new Vector2(12, 12), rotate: false);
+			Bullet fire(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.CultistBossFireBall, p, v, 0.8f, 0.8f, new Vector2(12, 12), rotate: false).Fiery();
 			Bullet ice(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(160, 230, 255), 0.7f, 1.3f);
 			Bullet light(Vector2 p, Vector2 v) => Shots.Npc(NPCID.AncientLight, p, v, 0.8f, 0.7f, new Vector2(12, 12), rotate: false);
 			Bullet dragonHead(Vector2 p, Vector2 v) => Shots.Npc(NPCID.CultistDragonHead, p, v, 0.45f, 1f, new Vector2(18, 18), rotationOffset: BossKit.WormRotation);
@@ -469,6 +481,9 @@ namespace MercyMode.Battle.Encounters
 				() => new Homing(light, Hard ? 20 : 28) { Speed = 1.9f, Turn = 0.045f, SteerTicks = 90 },
 				// The phantasm dragon
 				() => new Snake(dragonHead, dragonBody, Hard ? 80 : 110) { Segments = 10, Speed = 2.8f },
+				// Its clones blink in around the box and cast
+				() => new Blinker((p, v) => Shots.Npc(NPCID.CultistBossClone, p, v, 0.5f, 1f, new Vector2(20, 30), rotate: false), fire, Hard ? 26 : 36)
+					{ Shots = Hard ? 3 : 2, ShotSpeed = 2.8f, Glow = new Color(120, 230, 255) },
 				() => Hard
 					? FullScreen(new Slashes(60) { Color = cyan, PerBurst = 3 }, new Homing(light, 40) { Speed = 1.8f, FirstAt = 40 })
 					: new Combo(TurnTicks, new AimedBursts(fire, 46) { Count = 3 }, new Homing(light, 44) { Speed = 1.7f }));

@@ -9,6 +9,7 @@
 #   TML_DIR   tModLoader install (has tModLoader.dll)       default: $HOME/tml/install
 #   LAB_DIR   lab saves (Mods, Worlds, results)             default: $HOME/mercylab
 #   LAB_PORT  server port                                   default: 7778
+#   LAB_SPEED game ticks per real tick in the test         default: 8
 #
 # The headless test turns a dedicated server into a stand-in single-player game (see Lab/LabSystem.cs). It needs
 # no Terraria art or sound, so drawing isn't tested, but every battle rule is.
@@ -43,7 +44,7 @@ case "$mode" in
 		rm -f "$LAB_DIR/lab-results.txt"
 		echo "== lab: $scenarios"
 		set +e
-		MERCYMODE_LAB="$scenarios" MERCYMODE_LAB_OUT="$LAB_DIR" timeout 1800 dotnet tModLoader.dll "${args[@]}" < /dev/null > "$LAB_DIR/server.out" 2>&1
+		MERCYMODE_LAB="$scenarios" MERCYMODE_LAB_OUT="$LAB_DIR" MERCYMODE_LAB_SPEED="${LAB_SPEED:-8}" timeout 1800 dotnet tModLoader.dll "${args[@]}" < /dev/null > "$LAB_DIR/server.out" 2>&1
 		code=$?
 		set -e
 		grep "^\[LAB\]" "$LAB_DIR/server.out" | sed 's/^\[LAB\] //' || true

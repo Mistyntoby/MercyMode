@@ -14,6 +14,8 @@ namespace MercyMode.Battle
 	public abstract class BattleEffect
 	{
 		public bool Done;
+		/// <summary>Drawn with the bullets, over the box (attack sparks, smoke), instead of under it.</summary>
+		public virtual bool WithBullets => false;
 		public abstract void Step(float dt);
 		public abstract void Draw();
 	}

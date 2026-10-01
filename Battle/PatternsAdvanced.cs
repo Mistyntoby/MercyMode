@@ -91,6 +91,7 @@ namespace MercyMode.Battle
 						x.Alpha = 1f;
 						x.Color = baseColor;
 						x.Velocity = Vector2.Normalize(target - x.Position) * speed;
+						x.Trail = 3;
 						if (leader)
 							AttackSfx.Fire();
 					}
@@ -400,6 +401,7 @@ namespace MercyMode.Battle
 				{
 					b.Harmful = true;
 					b.Velocity = new Vector2(0f, fall);
+					b.Trail = 4;
 				}
 				if (!landed && b.Age > warn && b.Position.Y + b.Velocity.Y >= floor)
 				{
@@ -409,6 +411,8 @@ namespace MercyMode.Battle
 					b.Lifetime = b.Age + 14; // rests a moment, then goes
 					AttackSfx.Impact();
 					battle.ShakeScreen(5);
+					battle.AddEffect(new Shockwave(new Vector2(x, box.Bottom - 4f), Color.White * 0.8f, 36f));
+					Sparks.FloorDust(battle, new Vector2(x, box.Bottom - 4f), new Color(220, 210, 190), 10);
 					for (int i = 0; i < shards; i++)
 					{
 						float y = box.Bottom - 8f;
@@ -590,6 +594,8 @@ namespace MercyMode.Battle
 				{
 					x.Dead = true;
 					AttackSfx.Explosion();
+					battle.AddEffect(new Shockwave(x.Position, shellColor, 30f));
+					Sparks.Burst(battle, x.Position, 6, shellColor, 2.4f);
 					for (int i = 0; i < count; i++)
 						battle.Spawn(MakeShard(x.Position, (spin + MathHelper.TwoPi * i / count).ToRotationVector2() * shardSpeed));
 				}

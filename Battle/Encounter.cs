@@ -34,6 +34,8 @@ namespace MercyMode.Battle
 		/// Roaring Knight's attacks. Patterns built on <see cref="BattleSystem.Box"/> fill the arena.
 		/// </summary>
 		public bool FullScreen;
+		/// <summary>How the SOUL moves during this attack (red: freely).</summary>
+		public SoulMode Soul;
 		public abstract void Update(BattleSystem battle, int tick);
 	}
 
@@ -46,6 +48,8 @@ namespace MercyMode.Battle
 	{
 		public NPC Npc;
 		public int Turn;
+		/// <summary>A boss's one-time all-out turn at low HP: announced, then used.</summary>
+		public bool DesperationAnnounced, DesperationUsed;
 		/// <summary>How many times each act has been used, by name.</summary>
 		public readonly Dictionary<string, int> ActUses = new();
 		private int lifeMax;

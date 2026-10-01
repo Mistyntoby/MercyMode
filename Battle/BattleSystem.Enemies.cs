@@ -193,12 +193,53 @@ namespace MercyMode.Battle
 		private Encounter spawnOwner;
 		/// <summary>Damage for bullets with no known owner this turn (spawned by other bullets).</summary>
 		private int turnDamage;
+		private float spawnDamageScale = 1f;
+
+		/// <summary>Bosses go all out once, below this much health.</summary>
+		private const float DesperationLife = 0.3f;
+
+		/// <summary>The boss about to go all out (it gets a line first), or null.</summary>
+		private BattleEnemy DesperateBoss()
+		{
+			List<BattleEnemy> living = LivingEnemies;
+			if (living.Count != 1 || !living[0].E.IsBoss || living[0].E.DesperationUsed || living[0].E.LifeRatio >= DesperationLife)
+				return null;
+			return living[0];
+		}
+
+		/// <summary>
+		/// The all-out turn: two of the boss's attacks at once, each a little gentler (0.75x damage), longer. A
+		/// full-screen attack stays on its own.
+		/// </summary>
+		private EnemyAttack BuildDesperationTurn(BattleEnemy boss)
+		{
+			boss.E.DesperationUsed = true;
+			EnemyAttack first = null, second = null;
+			WithEnemy(boss, () => first = boss.E.NextAttack(this));
+			boss.E.Turn++;
+			WithEnemy(boss, () => second = boss.E.NextAttack(this));
+			boss.E.Turn++;
+			turnDamage = boss.E.Damage;
+			ShakeScreen(6);
+			AttackSfx.Vanilla(Terraria.ID.SoundID.Roar, 0.8f);
+			AddEffect(new Shockwave(boss.E.ScreenCenter, new Color(255, 60, 60), 90f));
+			if (first.FullScreen || second.FullScreen)
+			{
+				EnemyAttack big = first.FullScreen ? first : second;
+				return new OwnedAttack(boss, big);
+			}
+			int length = (int)(Math.Max(first.Duration, second.Duration) * 1.25f);
+			return new Combo(length, new OwnedAttack(boss, first) { DamageScale = 0.75f }, new OwnedAttack(boss, second) { DamageScale = 0.75f });
+		}
 
 		/// <summary>Runs one enemy's attack, tagging its bullets as its own.</summary>
 		private sealed class OwnedAttack : EnemyAttack
 		{
 			private readonly BattleEnemy owner;
 			private readonly EnemyAttack inner;
+			internal EnemyAttack Inner => inner;
+			/// <summary>Multiplies the damage of every bullet this attack makes.</summary>
+			public float DamageScale = 1f;
 
 			public OwnedAttack(BattleEnemy owner, EnemyAttack inner)
 			{
@@ -206,11 +247,13 @@ namespace MercyMode.Battle
 				this.inner = inner;
 				Duration = inner.Duration;
 				FullScreen = inner.FullScreen;
+				Soul = inner.Soul;
 			}
 
 			public override void Update(BattleSystem battle, int tick)
 			{
 				battle.spawnOwner = owner.E;
+				battle.spawnDamageScale = DamageScale;
 				try
 				{
 					// The attack sees its own enemy as the battle's encounter (where bullets come from, its HP...)
@@ -219,6 +262,7 @@ namespace MercyMode.Battle
 				finally
 				{
 					battle.spawnOwner = null;
+					battle.spawnDamageScale = 1f;
 				}
 			}
 		}
@@ -226,6 +270,13 @@ namespace MercyMode.Battle
 		/// <summary>This turn's attack: every enemy's if there are two, two random ones if there are three.</summary>
 		private EnemyAttack BuildEnemyTurn()
 		{
+			if (LabForcedAttack != null)
+			{
+				turnDamage = targetEnemy.E.Damage;
+				return new OwnedAttack(targetEnemy, LabForcedAttack());
+			}
+			if (DesperateBoss() is BattleEnemy boss && boss.E.DesperationAnnounced)
+				return BuildDesperationTurn(boss);
 			List<BattleEnemy> living = LivingEnemies;
 			List<BattleEnemy> attackers = living.Count <= 2 ? living : living.OrderBy(_ => Main.rand.Next()).Take(2).ToList();
 			if (attackers.Count == 0)

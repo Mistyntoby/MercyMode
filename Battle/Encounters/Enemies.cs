@@ -105,9 +105,13 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle) => Cycle(
 			() => new Bouncers((p, v) => Shots.Ball(p, v, Gel, 0.7f, 1.2f), Hard ? 20 : 28).Lasting(TurnTicks),
 			// It hops up and lands on you, splashing gel along the floor
+			// Blue SOUL: hop over the gel it splashes along the floor
 			() => new Slam((p, d) => Self(p, d, 34f, 1f), (p, v) => Shots.Ball(p, v, Gel, 0.6f), Hard ? 60 : 75)
-				{ Width = 40f, Shards = 1, Debris = 2 }.Lasting(TurnTicks),
-			() => new ClosingRing((p, v) => Shots.Ball(p, v, Gel, 0.6f), Hard ? 55 : 75) { Count = 12, Speed = 1f }.Lasting(TurnTicks));
+				{ Width = 40f, Shards = 1, Debris = 2 }.WithSoul(SoulMode.Blue).Lasting(TurnTicks),
+			() => new ClosingRing((p, v) => Shots.Ball(p, v, Gel, 0.6f), Hard ? 55 : 75) { Count = 12, Speed = 1f }.Lasting(TurnTicks),
+			// Gel blobs lobbed in that splash where they land
+			() => new Lobs((p, v) => Shots.Ball(p, v, Gel, 0.7f, 1.6f), Hard ? 26 : 34)
+				{ MakeSplash = (p, v) => Shots.Ball(p, v, Gel, 0.5f, 0.9f), Splash = 1 }.Lasting(TurnTicks));
 	}
 
 	public class FighterEnemy : EnemyEncounter
@@ -127,7 +131,9 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle) => Cycle(
 			() => new Walls((p, v) => Self(p, v, 18f, 0.8f), Hard ? 55 : 75) { Spacing = 22f, GapSize = 44f, Speed = Hard ? 2f : 1.5f }.Lasting(TurnTicks),
 			() => new LaneDash((p, d) => Self(p, d, 34f, 1f), Hard ? 45 : 60) { Speed = 6.5f }.Lasting(TurnTicks),
-			() => new SideShots((p, v) => Shots.Ball(p, v, Color.LightGray, 0.7f), Hard ? 12 : 18) { Side = 0, Speed = 3f }.Lasting(TurnTicks));
+			() => new SideShots((p, v) => Shots.Ball(p, v, Color.LightGray, 0.7f), Hard ? 12 : 18) { Side = 0, Speed = 3f }.Lasting(TurnTicks),
+			// The horde shambles in along the floor; jump over them (blue SOUL)
+			() => new Walkers((p, v) => Self(p, v, 24f, 0.9f), Hard ? 26 : 36) { Speed = Hard ? 1.7f : 1.3f }.WithSoul(SoulMode.Blue).Lasting(TurnTicks));
 	}
 
 	public class FlierEnemy : EnemyEncounter
@@ -147,7 +153,9 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle) => Cycle(
 			() => new Swoopers((p, v) => Self(p, v, 24f, 0.8f), Hard ? 18 : 26) { Speed = Hard ? 2.6f : 2.1f }.Lasting(TurnTicks),
 			() => new AimedBursts((p, v) => Shots.Ball(p, v, Shots.Red, 0.7f), Hard ? 30 : 42) { Count = Hard ? 4 : 3 }.Lasting(TurnTicks),
-			() => new Converge((p, v) => Self(p, v, 18f, 0.7f), Hard ? 70 : 90) { Count = Hard ? 6 : 5, Speed = 3.6f, Radius = 70f }.Lasting(TurnTicks));
+			() => new Converge((p, v) => Self(p, v, 18f, 0.7f), Hard ? 70 : 90) { Count = Hard ? 6 : 5, Speed = 3.6f, Radius = 70f }.Lasting(TurnTicks),
+			// It lines up over you, then dives
+			() => new Diver((p, v) => Self(p, v, 24f, 1f), Hard ? 28 : 40) { DiveSpeed = Hard ? 8.5f : 7f }.Lasting(TurnTicks));
 	}
 
 	public class CasterEnemy : EnemyEncounter
@@ -169,7 +177,10 @@ namespace MercyMode.Battle.Encounters
 			() => new ClosingRing((p, v) => Shots.Ball(p, v, Shots.Purple, 0.7f), Hard ? 50 : 70) { Count = 14 }.Lasting(TurnTicks),
 			// Magic orbs gather around you, then strike
 			() => new Converge((p, v) => Shots.Ball(p, v, Shots.Purple, 0.7f), Hard ? 60 : 80) { Count = Hard ? 8 : 6, Speed = 3.6f }.Lasting(TurnTicks),
-			() => new Beam(Hard ? 70 : 90) { Width = 12f, Color = Shots.Purple, FireSound = SoundID.Item8 }.Lasting(TurnTicks));
+			() => new Beam(Hard ? 70 : 90) { Width = 12f, Color = Shots.Purple, FireSound = SoundID.Item8 }.Lasting(TurnTicks),
+			// Teleports around the box, casting from a new spot each time
+			() => new Blinker((p, v) => Self(p, v, 26f, 1f), (p, v) => Shots.Ball(p, v, Shots.Purple, 0.8f), Hard ? 34 : 48)
+				{ Shots = Hard ? 5 : 3 }.Lasting(TurnTicks));
 	}
 
 	public class WormEnemy : EnemyEncounter
@@ -200,7 +211,9 @@ namespace MercyMode.Battle.Encounters
 			() => new Snake(Head, (p, v) => Shots.Ball(p, v, Shots.Brown, 0.8f, 1.2f), Hard ? 70 : 95) { Segments = 7 }.Lasting(TurnTicks),
 			() => new Rain((p, v) => Shots.Ball(p, v, Shots.Brown, 0.6f), Hard ? 10 : 14) { Wobble = 0.2f }.Lasting(TurnTicks),
 			// Dirt falls from the ceiling in rows; follow the gap
-			() => new GapRows((p, v) => Shots.Ball(p, v, Shots.Brown, 0.6f), Hard ? 34 : 42) { Speed = 1.5f, GapSize = 50f }.Lasting(TurnTicks));
+			() => new GapRows((p, v) => Shots.Ball(p, v, Shots.Brown, 0.6f), Hard ? 34 : 42) { Speed = 1.5f, GapSize = 50f }.Lasting(TurnTicks),
+			// It bursts up out of the floor where you stand
+			() => new FloorSpikes((p, d) => Head(p, d).Trailing(4), Hard ? 30 : 42) { Width = 26f, Speed = 7f }.Lasting(TurnTicks));
 	}
 
 	public class WaterEnemy : EnemyEncounter
@@ -221,7 +234,11 @@ namespace MercyMode.Battle.Encounters
 			// Bubbles rise from below
 			() => new Rain((p, v) => Shots.Ball(p, v, new Color(120, 200, 255), 0.6f), Hard ? 9 : 13) { FromBelow = true, Wobble = 0.8f, SpeedMin = 1.2f, SpeedMax = 1.8f }.Lasting(TurnTicks),
 			() => new Swoopers((p, v) => Self(p, v, 22f, 0.8f), Hard ? 20 : 28) { Speed = 2.4f, Amplitude = 25f }.Lasting(TurnTicks),
-			() => new LaneDash((p, d) => Self(p, d, 30f, 1f), Hard ? 50 : 65) { Speed = 7f }.Lasting(TurnTicks));
+			() => new LaneDash((p, d) => Self(p, d, 30f, 1f), Hard ? 50 : 65) { Speed = 7f }.Lasting(TurnTicks),
+			// A whirlpool pulls bubbles round and in while more rise from below
+			() => new Combo(TurnTicks,
+				new Orbiters((p, v) => Shots.Ball(p, v, new Color(120, 200, 255), 0.6f), Hard ? 70 : 95) { Count = Hard ? 8 : 6, AngularSpeed = 0.035f },
+				new Rain((p, v) => Shots.Ball(p, v, new Color(170, 230, 255), 0.5f, 0.8f), Hard ? 18 : 26) { FromBelow = true, Wobble = 0.6f, SpeedMin = 1f, SpeedMax = 1.5f }));
 	}
 
 	public class SpiderEnemy : EnemyEncounter
@@ -243,7 +260,9 @@ namespace MercyMode.Battle.Encounters
 			() => new LaneDash((p, d) => Self(p, d, 28f, 1f), Hard ? 45 : 60) { FromTopOnly = true, Speed = 8f, LaneWidth = 30f }.Lasting(TurnTicks),
 			// Web strands to slip between
 			() => new GapRows((p, v) => Shots.Ball(p, v, Color.White, 0.6f, 0.9f), Hard ? 32 : 40) { Speed = 1.6f, GapSize = 46f, Spacing = 12f }.Lasting(TurnTicks),
-			() => new Converge((p, v) => Shots.Ball(p, v, new Color(200, 255, 120), 0.7f), Hard ? 60 : 80) { Count = 6, Speed = 3.6f }.Lasting(TurnTicks));
+			() => new Converge((p, v) => Shots.Ball(p, v, new Color(200, 255, 120), 0.7f), Hard ? 60 : 80) { Count = 6, Speed = 3.6f }.Lasting(TurnTicks),
+			// Purple SOUL: caught in its web, spiders scuttle along the strings
+			() => new StringRunners((p, v) => Self(p, v, 22f, 0.9f), Hard ? 20 : 28) { Speed = Hard ? 3f : 2.5f }.Lasting(TurnTicks));
 	}
 
 	public class MimicEnemy : EnemyEncounter
@@ -265,7 +284,10 @@ namespace MercyMode.Battle.Encounters
 			() => new Slam((p, d) => Self(p, d, 34f, 1.1f), (p, v) => Shots.Ball(p, v, new Color(255, 215, 80), 0.6f), Hard ? 55 : 70)
 				{ Width = 40f, Shards = 2, Debris = 3 }.Lasting(TurnTicks),
 			() => new Bouncers((p, v) => Self(p, v, 24f, 0.9f), Hard ? 24 : 32).Lasting(TurnTicks),
-			() => new Rain((p, v) => Shots.Ball(p, v, new Color(255, 215, 80), 0.6f), Hard ? 8 : 12) { Wobble = 0f }.Lasting(TurnTicks));
+			() => new Rain((p, v) => Shots.Ball(p, v, new Color(255, 215, 80), 0.6f), Hard ? 8 : 12) { Wobble = 0f }.Lasting(TurnTicks),
+			// The lid comes down: find the gap in its teeth
+			() => new Jaws((p, v) => Shots.Ball(p, v, Color.White, 0.9f, 1.4f), Hard ? 70 : 90).Lasting(TurnTicks),
+			() => new Lobs((p, v) => Shots.Ball(p, v, new Color(255, 215, 80), 0.7f, 1.3f), Hard ? 14 : 20) { Volley = 2, Splash = 0 }.Lasting(TurnTicks));
 	}
 
 	public class ChargerEnemy : EnemyEncounter
@@ -285,7 +307,9 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle) => Cycle(
 			() => new LaneDash((p, d) => Self(p, d, 34f, 1.1f), Hard ? 36 : 48) { Speed = 9f, Warn = 28, LaneWidth = 34f }.Lasting(TurnTicks),
 			() => new Walls((p, v) => Self(p, v, 18f, 0.8f), Hard ? 55 : 70) { Side = 0, Speed = 2.6f, Spacing = 22f, GapSize = 46f }.Lasting(TurnTicks),
-			() => new LaneDash((p, d) => Self(p, d, 30f, 1f), Hard ? 44 : 58) { AllowVertical = true, Speed = 8f }.Lasting(TurnTicks));
+			() => new LaneDash((p, d) => Self(p, d, 30f, 1f), Hard ? 44 : 58) { AllowVertical = true, Speed = 8f }.Lasting(TurnTicks),
+			// Stampede: charges one after another, lanes overlapping
+			() => new LaneDash((p, d) => Self(p, d, 30f, 1f), Hard ? 18 : 24) { Speed = 9.5f, Warn = 30, LaneWidth = 28f, StopBeforeEnd = 70 }.Lasting(TurnTicks));
 	}
 
 	public class SpiritEnemy : EnemyEncounter
@@ -305,7 +329,9 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle) => Cycle(
 			() => new Homing((p, v) => Self(p, v, 22f, 0.8f), Hard ? 26 : 36) { Speed = 1.7f, Turn = 0.05f }.Lasting(TurnTicks),
 			() => new Orbiters((p, v) => Shots.Ball(p, v, new Color(170, 200, 255), 0.7f), Hard ? 80 : 110) { Count = Hard ? 8 : 6 }.Lasting(TurnTicks),
-			() => new Converge((p, v) => Shots.Ball(p, v, new Color(170, 200, 255), 0.7f), Hard ? 60 : 80) { Count = 7, Speed = 3.6f }.Lasting(TurnTicks));
+			() => new Converge((p, v) => Shots.Ball(p, v, new Color(170, 200, 255), 0.7f), Hard ? 60 : 80) { Count = 7, Speed = 3.6f }.Lasting(TurnTicks),
+			// Wisps that fade in and out of existence (they can only hurt while they're there)
+			() => new Rain((p, v) => Shots.Ball(p, v, new Color(170, 200, 255), 0.7f, 1.3f).Phasing(44), Hard ? 7 : 10) { Wobble = 0.6f, SpeedMin = 1.2f, SpeedMax = 1.8f }.Lasting(TurnTicks));
 	}
 
 	public class BladeEnemy : EnemyEncounter
@@ -325,7 +351,9 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle) => Cycle(
 			() => new LaneDash((p, d) => Self(p, d, 30f, 1f).Spin(0.4f), Hard ? 40 : 54) { AllowVertical = true, Speed = 8.5f }.Lasting(TurnTicks),
 			() => new Beam(Hard ? 40 : 54) { Width = 10f, Warn = 34, Active = 12, Color = new Color(200, 220, 255), FireSound = SoundID.Item71 }.Lasting(TurnTicks),
-			() => new Converge((p, v) => Self(p, v, 20f, 0.8f), Hard ? 70 : 90) { Count = 5, Speed = 4f, RotationOffset = MathHelper.PiOver4 }.Lasting(TurnTicks));
+			() => new Converge((p, v) => Self(p, v, 20f, 0.8f), Hard ? 70 : 90) { Count = 5, Speed = 4f, RotationOffset = MathHelper.PiOver4 }.Lasting(TurnTicks),
+			// Sword dance: quick crossing cuts through the box
+			() => new Slashes(Hard ? 48 : 62) { PerBurst = 2, Width = 12f, Stagger = 8, FirstAt = 10, Color = new Color(200, 220, 255) }.Lasting(TurnTicks));
 	}
 
 	public class SnapperEnemy : EnemyEncounter
@@ -345,7 +373,9 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle) => Cycle(
 			() => new AimedBursts((p, v) => Shots.Ball(p, v, new Color(180, 140, 80), 0.7f), Hard ? 28 : 40) { Count = 3, Speed = 2.6f }.Lasting(TurnTicks),
 			() => new LaneDash((p, d) => Self(p, d, 30f, 1.1f), Hard ? 40 : 52) { AllowVertical = true, Speed = 9f, Warn = 26 }.Lasting(TurnTicks),
-			() => new Rain((p, v) => Shots.Ball(p, v, new Color(220, 190, 120), 0.6f), Hard ? 9 : 13) { Wobble = 0.3f }.Lasting(TurnTicks));
+			() => new Rain((p, v) => Shots.Ball(p, v, new Color(220, 190, 120), 0.6f), Hard ? 9 : 13) { Wobble = 0.3f }.Lasting(TurnTicks),
+			// CHOMP
+			() => new Jaws((p, v) => Shots.Ball(p, v, new Color(240, 240, 220), 1f, 1.4f), Hard ? 64 : 84) { GapSize = Hard ? 34f : 40f }.Lasting(TurnTicks));
 	}
 
 	public class GenericEnemy : EnemyEncounter
@@ -367,6 +397,8 @@ namespace MercyMode.Battle.Encounters
 			() => new Rain((p, v) => Shots.Ball(p, v, Color.White, 0.6f), Hard ? 9 : 13).Lasting(TurnTicks),
 			() => new SideShots((p, v) => Shots.Ball(p, v, Shots.Red, 0.7f), Hard ? 12 : 18) { Side = 0 }.Lasting(TurnTicks),
 			() => new Fireworks((p, v) => Shots.Ball(p, v, Color.White, 0.8f, 1.6f), (p, v) => Shots.Ball(p, v, Shots.Red, 0.6f), Hard ? 50 : 65)
-				{ Count = Hard ? 8 : 6 }.Lasting(TurnTicks));
+				{ Count = Hard ? 8 : 6 }.Lasting(TurnTicks),
+			() => new Ricochet((p, v) => Shots.Ball(p, v, Shots.Red, 0.7f), Hard ? 26 : 36).Lasting(TurnTicks),
+			() => new Splitter((p, v) => Shots.Ball(p, v, Color.White, 0.8f, 1.6f), (p, v) => Shots.Ball(p, v, Shots.Red, 0.6f), Hard ? 36 : 50).Lasting(TurnTicks));
 	}
 }

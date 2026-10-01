@@ -40,9 +40,17 @@ namespace MercyMode.Lab
 		private int currentTicks, passed, failed, updates;
 		private bool setUp;
 		private Phase lastPhase;
-		private const int ScenarioTimeout = 60 * 240;
+		private const int ScenarioTimeout = 60 * 60 * 20;
 
 		private static BattleSystem B => BattleSystem.Instance;
+
+		/// <summary>Full health, in the world and in the battle's own copy of it.</summary>
+		private static void Heal()
+		{
+			P.statLife = P.statLifeMax2;
+			if (BattleSystem.Active)
+				B.SetBattleLife(P.statLife);
+		}
 		private static Player P => Main.player[0];
 
 		public override void Load()
@@ -52,6 +60,8 @@ namespace MercyMode.Lab
 			Main.OnTickForThirdPartySoftwareOnly += ServerTick;
 			// The server drops every player without a network client each tick; the lab's player has none
 			On_Netplay.UpdateConnectedClients += _ => { };
+			// The stand-in player has no save file: a death mustn't try to write one (it crashes the server)
+			On_Player.SavePlayer += (_, _, _) => { };
 			StandInTextures();
 		}
 
@@ -73,31 +83,38 @@ namespace MercyMode.Lab
 				setUp = true;
 				Setup();
 			}
-			// The lab is the keyboard: keys for this tick, then the next step of the script, then the game's update
-			Main.oldKeyState = Main.keyState;
-			Main.keyState = new KeyboardState(down.ToArray());
-			Main.hasFocus = true;
-			Main.gameMenu = false;
-			// A 1080p screen centred on the player, for the battle's world-to-screen math
-			Main.screenWidth = 1920;
-			Main.screenHeight = 1080;
-			Main.screenPosition = P.Center - new Vector2(960f, 540f);
-			P.statLifeMax = 500;
-			Step();
-			try
+			// Faster than real time when asked (MERCYMODE_LAB_SPEED game ticks per server tick): nothing here waits on
+			// a clock, so the battles play out the same, just sooner
+			for (int i = 0; i < Speed; i++)
 			{
-				// Main.DoUpdate is what Main.Update runs, minus the catch that would hide a crash from the lab
-				doUpdate ??= typeof(Main).GetMethod("DoUpdate", BindingFlags.Instance | BindingFlags.NonPublic);
-				doUpdate.Invoke(Main.instance, new object[] { new GameTime() });
-				updates++;
-			}
-			catch (Exception e)
-			{
-				Log("CRASH in the game update: " + (e is TargetInvocationException t ? t.InnerException : e));
-				failed++;
-				Finish();
+				// The lab is the keyboard: keys for this tick, then the next step of the script, then the game's update
+				Main.oldKeyState = Main.keyState;
+				Main.keyState = new KeyboardState(down.ToArray());
+				Main.hasFocus = true;
+				Main.gameMenu = false;
+				// A 1080p screen centred on the player, for the battle's world-to-screen math
+				Main.screenWidth = 1920;
+				Main.screenHeight = 1080;
+				Main.screenPosition = P.Center - new Vector2(960f, 540f);
+				P.statLifeMax = 500;
+				Step();
+				try
+				{
+					// Main.DoUpdate is what Main.Update runs, minus the catch that would hide a crash from the lab
+					doUpdate ??= typeof(Main).GetMethod("DoUpdate", BindingFlags.Instance | BindingFlags.NonPublic);
+					doUpdate.Invoke(Main.instance, new object[] { new GameTime() });
+					updates++;
+				}
+				catch (Exception e)
+				{
+					Log("CRASH in the game update: " + (e is TargetInvocationException t ? t.InnerException : e));
+					failed++;
+					Finish();
+				}
 			}
 		}
+
+		private static readonly int Speed = Math.Clamp(int.TryParse(Environment.GetEnvironmentVariable("MERCYMODE_LAB_SPEED"), out int sp) ? sp : 1, 1, 32);
 
 		/// <summary>
 		/// The server has no textures, but battle code reads sprite sizes (bullet hitboxes, frames). Every texture
@@ -154,6 +171,14 @@ namespace MercyMode.Lab
 				("act-second-target", ActSecondTarget),
 				("boss-fights-alone", BossAlone),
 				("single-enemy", SingleEnemy),
+				("soul-blue", SoulBlue),
+				("soul-green", SoulGreen),
+				("soul-purple", SoulPurple),
+				("soul-yellow", SoulYellow),
+				("desperation", Desperation),
+				("attacks-enemies", AttacksEnemies),
+				("attacks-armies", AttacksArmies),
+				("attacks-bosses", AttacksBosses),
 				("boss-kill", () => BossKill(NPCID.EyeofCthulhu)),
 				("boss-kill-king-slime", () => BossKill(NPCID.KingSlime)),
 				("boss-spare", BossSpare),
@@ -647,6 +672,326 @@ namespace MercyMode.Lab
 			{
 				P.inventory[0] = saved;
 			}
+		}
+
+		// ================================================================== attack sweeps
+
+		private static int lastStartFailed;
+
+		/// <summary>Like StartWith, but a battle that never starts is reported (some bosses can't spawn here) instead of failing.</summary>
+		private IEnumerable TryStartWith(params int[] types)
+		{
+			lastStartFailed = 0;
+			NPC first = null;
+			for (int i = 0; i < types.Length; i++)
+			{
+				int idx = NPC.NewNPC(P.GetSource_FromThis(), (int)P.Center.X + 160 + i * 70, (int)P.Center.Y - 40 - (i % 2) * 50, types[i]);
+				first ??= Main.npc[idx];
+			}
+			BattleSystem.QueueStart(first, 20);
+			int t = 0;
+			while (!BattleSystem.Active)
+			{
+				if (++t > 60 * 8)
+				{
+					lastStartFailed = 1;
+					yield break;
+				}
+				yield return null;
+			}
+		}
+
+		/// <summary>
+		/// Plays one enemy's turns 0..count-1 (DEFEND each time, healed every tick) and checks every attack runs:
+		/// spawns something, doesn't crash, and hands the turn back.
+		/// </summary>
+		private IEnumerable SweepAttacks(string label, int count, params int[] types)
+		{
+			yield return TryStartWith(types);
+			if (lastStartFailed != 0)
+			{
+				Log($"  SKIP {label}: the battle didn't start here");
+				foreach (NPC n in Main.npc)
+					if (n.active && !n.townNPC)
+						n.active = false;
+				yield break;
+			}
+			Encounter e = B.LabTarget;
+			var seen = new List<string>();
+			for (int i = 0; i < count; i++)
+			{
+				yield return Menu();
+				if (!BattleSystem.Active)
+					break;
+				e.Turn = i;
+				Heal();
+				// Keep the boss away from its desperation turn: this sweeps its normal attacks
+				e.DesperationUsed = true;
+				yield return Choose(4);
+				yield return Until(() => B.LabPhase is Phase.EnemyTurn or Phase.None or Phase.Outro, "the enemy turn");
+				string name = B.LabAttack is Combo ? "Combo" : B.LabAttack?.GetType().Name ?? "?";
+				SoulMode mode = B.SoulMode;
+				int most = 0, ticks = 0;
+				while (B.LabPhase == Phase.EnemyTurn)
+				{
+					Heal();
+					most = Math.Max(most, B.Bullets.Count);
+					ticks++;
+					Check(ticks < 60 * 40, $"{label} attack {i} ({name}) never ended");
+					yield return null;
+				}
+				Check(B.LabPhase != Phase.Death, $"{label} attack {i} killed the player at full health: {B.LabDeath}");
+				seen.Add($"{i}:{name}{(mode != SoulMode.Red ? "/" + mode : "")}({most})");
+				Check(most > 0, $"{label} attack {i} ({name}) spawned nothing");
+			}
+			Log($"  {label} [{e.GetType().Name}]: {string.Join(" ", seen)}");
+			foreach (NPC n in Main.npc)
+				if (n.active && !n.townNPC)
+					n.active = false;
+			yield return Until(() => !BattleSystem.Active, "the battle ending", 60 * 30);
+		}
+
+		private IEnumerable AttacksEnemies()
+		{
+			var families = new (string, int)[]
+			{
+				("slime", NPCID.BlueSlime), ("fighter", NPCID.Zombie), ("flier", NPCID.DemonEye), ("caster", NPCID.DarkCaster),
+				("worm", NPCID.GiantWormHead), ("water", NPCID.Piranha), ("spider", NPCID.Herpling), ("mimic", NPCID.Mimic),
+				("charger", NPCID.Unicorn), ("spirit", NPCID.CursedSkull), ("blade", NPCID.EnchantedSword), ("snapper", NPCID.Antlion),
+				("generic", NPCID.Harpy),
+			};
+			foreach (var (label, type) in families)
+				yield return SweepAttacks(label, 7, type);
+		}
+
+		private IEnumerable AttacksArmies()
+		{
+			var soldiers = new (string, int)[]
+			{
+				("goblin peon", NPCID.GoblinPeon), ("goblin archer", NPCID.GoblinArcher), ("goblin sorcerer", NPCID.GoblinSorcerer),
+				("pirate", NPCID.PirateDeckhand), ("frost legion", NPCID.SnowmanGangsta), ("martian", NPCID.GrayGrunt),
+				("pumpkin moon", NPCID.Scarecrow1), ("frost moon", NPCID.ZombieElf), ("old one's army", NPCID.DD2GoblinT1),
+				("eclipse", NPCID.SwampThing),
+			};
+			foreach (var (label, type) in soldiers)
+				yield return SweepAttacks(label, 6, type);
+		}
+
+		private IEnumerable AttacksBosses()
+		{
+			var bosses = new (string, int[])[]
+			{
+				("eye of cthulhu", new int[] { NPCID.EyeofCthulhu }), ("king slime", new int[] { NPCID.KingSlime }),
+				("eater of worlds", new int[] { NPCID.EaterofWorldsHead }), ("brain of cthulhu", new int[] { NPCID.BrainofCthulhu }),
+				("queen bee", new int[] { NPCID.QueenBee }), ("skeletron", new int[] { NPCID.SkeletronHead }), ("deerclops", new int[] { NPCID.Deerclops }),
+				("wall of flesh", new int[] { NPCID.WallofFlesh }), ("queen slime", new int[] { NPCID.QueenSlimeBoss }),
+				("twins", new int[] { NPCID.Retinazer, NPCID.Spazmatism }), ("destroyer", new int[] { NPCID.TheDestroyer }),
+				("skeletron prime", new int[] { NPCID.SkeletronPrime }), ("plantera", new int[] { NPCID.Plantera }), ("golem", new int[] { NPCID.Golem }),
+				("duke fishron", new int[] { NPCID.DukeFishron }), ("empress", new int[] { NPCID.HallowBoss }), ("cultist", new int[] { NPCID.CultistBoss }),
+				("moon lord", new int[] { NPCID.MoonLordCore }),
+			};
+			foreach (var (label, types) in bosses)
+				yield return SweepAttacks(label, 9, types);
+		}
+
+		// ================================================================== SOUL modes
+
+		/// <summary>Starts a zombie battle whose enemy turns all run one attack, and goes to the first enemy turn.</summary>
+		private IEnumerable ForcedTurn(Func<EnemyAttack> attack)
+		{
+			BattleSystem.LabForcedAttack = attack;
+			yield return StartWith(NPCID.Zombie);
+			yield return Menu();
+			yield return Choose(4);
+			yield return Until(() => B.LabPhase == Phase.EnemyTurn, "the enemy turn");
+		}
+
+		private IEnumerable EndForced()
+		{
+			BattleSystem.LabForcedAttack = null;
+			foreach (NPC n in Main.npc)
+				if (n.active && !n.townNPC)
+					n.active = false;
+			yield return Until(() => !BattleSystem.Active, "the battle ending", 60 * 30);
+		}
+
+		private IEnumerable SoulBlue()
+		{
+			try
+			{
+				yield return ForcedTurn(() => new BoneWalls(40));
+				Check(B.SoulMode == SoulMode.Blue, $"mode is {B.SoulMode}");
+				float floor = B.Box.Bottom - BattleConstants.BoxClampHigh;
+				yield return Wait(30);
+				Check(Math.Abs(B.LabSoul.Y - floor) < 1f, $"the blue SOUL isn't on the floor ({B.LabSoul.Y} vs {floor})");
+				down.Add(Keys.Up);
+				yield return Wait(18);
+				float peak = B.LabSoul.Y;
+				down.Remove(Keys.Up);
+				Check(peak < floor - 30f, $"the jump only got to {floor - peak:0} px");
+				yield return Wait(70);
+				Check(Math.Abs(B.LabSoul.Y - floor) < 1f, "the blue SOUL didn't land again");
+				// A tap of Up jumps lower than holding it
+				down.Add(Keys.Up);
+				yield return Wait(2);
+				down.Remove(Keys.Up);
+				float lowPeak = floor;
+				for (int i = 0; i < 40; i++)
+				{
+					lowPeak = Math.Min(lowPeak, B.LabSoul.Y);
+					yield return null;
+				}
+				Log($"  held jump {floor - peak:0} px, tapped jump {floor - lowPeak:0} px");
+				Check(floor - lowPeak < floor - peak, "a tap jumped as high as a hold");
+			}
+			finally
+			{
+				BattleSystem.LabForcedAttack = null;
+			}
+			yield return EndForced();
+		}
+
+		private IEnumerable SoulGreen()
+		{
+			try
+			{
+				yield return ForcedTurn(() => new ShieldSpears((p, v) => Shots.Ball(p, v, Color.White), 18) { TricksterEvery = 0 });
+				Check(B.SoulMode == SoulMode.Green, $"mode is {B.SoulMode}");
+				Vector2 centre = B.LabSoul + new Vector2(BattleConstants.SoulSize / 2f);
+				Check(Vector2.Distance(centre, B.Box.Center.ToVector2()) < 2f, "the green SOUL isn't in the middle");
+				yield return Press(Keys.Right);
+				Check(B.LabShieldDir == 1, $"shield faces {B.LabShieldDir}, expected right");
+				B.LabBlocks = 0;
+				int hp = P.statLife;
+				// Turn the shield to the nearest spear, like a player would
+				while (B.LabPhase == Phase.EnemyTurn)
+				{
+					Bullet near = B.Bullets.Where(b => b.Harmful && !b.Waiting).OrderBy(b => Vector2.DistanceSquared(b.Position, centre)).FirstOrDefault();
+					down.Clear();
+					if (near != null)
+					{
+						Vector2 d = near.Position - centre;
+						down.Add(Math.Abs(d.X) > Math.Abs(d.Y) ? (d.X > 0 ? Keys.Right : Keys.Left) : (d.Y > 0 ? Keys.Down : Keys.Up));
+					}
+					yield return null;
+					down.Clear();
+					yield return null;
+				}
+				Log($"  blocked {B.LabBlocks} spears, HP {hp} -> {P.statLife}");
+				Check(B.LabBlocks >= 5, "the shield blocked almost nothing");
+			}
+			finally
+			{
+				BattleSystem.LabForcedAttack = null;
+			}
+			yield return EndForced();
+		}
+
+		private IEnumerable SoulPurple()
+		{
+			try
+			{
+				yield return ForcedTurn(() => new StringRunners((p, v) => Shots.Ball(p, v, Color.White), 40));
+				Check(B.SoulMode == SoulMode.Purple, $"mode is {B.SoulMode}");
+				float OnString(int i) => B.PurpleStringY(i) - BattleConstants.SoulSize / 2f;
+				yield return Wait(20);
+				Check(Math.Abs(B.LabSoul.Y - OnString(1)) < 1f, "the purple SOUL isn't on the middle string");
+				yield return Press(Keys.Down);
+				yield return Wait(12);
+				Check(Math.Abs(B.LabSoul.Y - OnString(2)) < 1f, "Down didn't move it to the bottom string");
+				yield return Press(Keys.Down);
+				yield return Wait(12);
+				Check(Math.Abs(B.LabSoul.Y - OnString(2)) < 1f, "it left the strings");
+				yield return Press(Keys.Up);
+				yield return Wait(4);
+				yield return Press(Keys.Up);
+				yield return Wait(12);
+				Check(Math.Abs(B.LabSoul.Y - OnString(0)) < 1f, "Up didn't move it to the top string");
+				float x0 = B.LabSoul.X;
+				down.Add(Keys.Left);
+				yield return Wait(10);
+				down.Clear();
+				Check(B.LabSoul.X < x0 - 5f, "it can't slide along the string");
+			}
+			finally
+			{
+				BattleSystem.LabForcedAttack = null;
+			}
+			yield return EndForced();
+		}
+
+		private IEnumerable SoulYellow()
+		{
+			try
+			{
+				yield return ForcedTurn(() => new Gunships((p, v) => Shots.Ball(p, v, Color.Gray, 1f, 2.4f), (p, v) => Shots.Ball(p, v, Color.Red), 40) { Toughness = 3 });
+				Check(B.SoulMode == SoulMode.Yellow, $"mode is {B.SoulMode}");
+				B.LabBroken = 0;
+				int bigShots = 0, t = 0;
+				// Line up with the nearest ship and tap Z; every so often hold for a big shot
+				while (B.LabPhase == Phase.EnemyTurn)
+				{
+					t++;
+					Bullet ship = B.Bullets.Where(b => b.Toughness > 0 && !b.Dead).OrderBy(b => b.Position.X).FirstOrDefault();
+					down.Remove(Keys.Up);
+					down.Remove(Keys.Down);
+					if (ship != null)
+					{
+						float dy = ship.Position.Y - (B.LabSoul.Y + 10f);
+						if (Math.Abs(dy) > 3f)
+							down.Add(dy > 0 ? Keys.Down : Keys.Up);
+					}
+					bool charging = t % 160 >= 100;
+					if (charging)
+						down.Add(Keys.Z);
+					else if (t % 160 == 0)
+						bigShots++;
+					else if (t % 8 == 0)
+						down.Add(Keys.Z);
+					else
+						down.Remove(Keys.Z);
+					yield return null;
+				}
+				down.Clear();
+				Log($"  broke {B.LabBroken} bullets");
+				Check(B.LabBroken >= 2, "the yellow SOUL's shots broke nothing");
+			}
+			finally
+			{
+				BattleSystem.LabForcedAttack = null;
+			}
+			yield return EndForced();
+		}
+
+		private IEnumerable Desperation()
+		{
+			yield return StartWith(NPCID.EyeofCthulhu);
+			yield return Menu();
+			Encounter eoc = B.LabTarget;
+			foreach (NPC m in eoc.Members())
+				m.life = (int)(m.lifeMax * 0.2f);
+			yield return Choose(4);
+			yield return Until(() => B.LabPhase == Phase.Message || B.LabPhase == Phase.EnemyIntro, "the turn after DEFEND", skipText: false);
+			Check(B.LabText.Contains("everything"), $"no desperation line, got \"{B.LabText}\"");
+			yield return Until(() => B.LabPhase == Phase.EnemyTurn, "the all-out turn");
+			Check(eoc.DesperationUsed, "the all-out turn wasn't used");
+			Log($"  all-out turn: {B.LabAttack?.GetType().Name}");
+			int most = 0;
+			while (B.LabPhase == Phase.EnemyTurn)
+			{
+				Heal();
+				most = Math.Max(most, B.Bullets.Count);
+				yield return null;
+			}
+			Check(most > 0, "the all-out turn spawned nothing");
+			// It only happens once
+			yield return Menu();
+			yield return Choose(4);
+			yield return Until(() => B.LabPhase is Phase.EnemyIntro or Phase.EnemyTurn or Phase.Message, "the next turn", skipText: false);
+			Check(B.LabPhase != Phase.Message || !B.LabText.Contains("everything"), "it went all out twice");
+			foreach (NPC m in eoc.Members().ToList())
+				m.active = false;
+			yield return Until(() => !BattleSystem.Active, "the battle ending", 60 * 30);
 		}
 
 		private IEnumerable SingleEnemy()
