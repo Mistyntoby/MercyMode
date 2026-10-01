@@ -18,6 +18,19 @@ namespace MercyMode
 		Silent,
 	}
 
+	/// <summary>Your colour in multiplayer battles (your battle UI, and your box and SOUL on the others' screens).</summary>
+	public enum PartyColorChoice
+	{
+		Automatic,
+		Cyan,
+		Magenta,
+		Green,
+		Yellow,
+		Orange,
+		Blue,
+		White,
+	}
+
 	public class MercyConfig : ModConfig
 	{
 		public override ConfigScope Mode => ConfigScope.ClientSide;
@@ -27,6 +40,10 @@ namespace MercyMode
 
 		[DefaultValue(true)]
 		public bool BattlesWithEnemies;
+
+		/// <summary>Automatic: by the order players joined the server (the first is Kris cyan).</summary>
+		[DefaultValue(PartyColorChoice.Automatic)]
+		public PartyColorChoice PartyColor;
 
 		/// <summary>
 		/// Enemies start battles during invasions, moon events, eclipses and the Old One's Army: a squad of that army at a

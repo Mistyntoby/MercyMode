@@ -58,7 +58,7 @@ dotnet tModLoader.dll -tmlsavedirectory "C:\Users\Nico\tml-lab" -skipselect "nic
   - `BattleSystem.Enemies.cs` — enemy squads: gathering, formation, targeting, combined enemy turns, squad morale.
   - `Encounters/Armies.cs` — event armies (goblins, pirates, moons, Martians...).
   - `BattleCommand.cs` — `/mmbattle` developer/test commands.
-  - `Net/BattleNet.cs`, `BattleSystem.Net.cs` — multiplayer party battles (packets, server bookkeeping, waiting, allies).
+  - `Net/BattleNet.cs`, `Net/NetSystems.cs`, `BattleSystem.Net.cs` — multiplayer party battles (server round: choose, act in order, shared bullet box; colours; join prompt; outside view).
 - `Deltarune/` — local Deltarune asset discovery/loading, `/drassets`, and GameMaker `data.win` reader.
   - `DeltaruneAssets.cs` — discovers a local install and loads sprites, fonts, sounds, and music with fallbacks.
   - `DataWin.cs` — binary asset reader; its file header records the UndertaleModTool/GPL-3.0 basis.

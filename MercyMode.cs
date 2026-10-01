@@ -13,12 +13,14 @@ namespace MercyMode
 		public static ModKeybind ActKey;
 		public static ModKeybind SpareKey;
 		public static ModKeybind HealPrayerKey;
+		public static ModKeybind JoinBattleKey;
 
 		public override void Load()
 		{
 			ActKey = KeybindLoader.RegisterKeybind(this, "Act", "F");
 			SpareKey = KeybindLoader.RegisterKeybind(this, "Spare", "G");
 			HealPrayerKey = KeybindLoader.RegisterKeybind(this, "HealPrayer", "V");
+			JoinBattleKey = KeybindLoader.RegisterKeybind(this, "JoinBattle", "J");
 		}
 
 		public override void Unload()
@@ -26,6 +28,7 @@ namespace MercyMode
 			ActKey = null;
 			SpareKey = null;
 			HealPrayerKey = null;
+			JoinBattleKey = null;
 		}
 
 		// Chat colors, Deltarune-ish

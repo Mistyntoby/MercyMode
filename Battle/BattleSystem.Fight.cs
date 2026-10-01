@@ -487,9 +487,6 @@ namespace MercyMode.Battle
 			Mod.Logger.Debug("FIGHT bolt fizzled: " + why);
 		}
 
-		/// <summary>The colour of damage the hero deals: merge_color(c_aqua, c_white, 0.5). Crits are gold.</summary>
-		private static readonly Color HeroDamageColor = new(128, 255, 255);
-		private static readonly Color HeroCritColor = new(255, 220, 64);
 
 		private void ResolveHit(PendingHit hit)
 		{
