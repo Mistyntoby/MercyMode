@@ -529,7 +529,15 @@ namespace MercyMode.Battle
 		private void DrawEffects()
 		{
 			foreach (var e in effects)
-				e.Draw();
+				if (!e.WithBullets)
+					e.Draw();
+		}
+
+		private void DrawBulletEffects()
+		{
+			foreach (var e in effects)
+				if (e.WithBullets)
+					e.Draw();
 		}
 
 		/// <summary>obj_shake flips side every Deltarune frame; between frames it swings through the middle.</summary>
@@ -546,7 +554,7 @@ namespace MercyMode.Battle
 
 		// ---- effects ----
 
-		private void AddEffect(BattleEffect e) => effects.Add(e);
+		public void AddEffect(BattleEffect e) => effects.Add(e);
 
 		/// <summary>Shakes the battle screen (obj_shake), for slams and explosions in attack patterns.</summary>
 		public void ShakeScreen(float amount) => shake = Math.Max(shake, amount);

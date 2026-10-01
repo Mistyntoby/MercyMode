@@ -896,12 +896,21 @@ namespace MercyMode.Battle
 				StartOutro();
 				return;
 			}
+			// A boss at the end of its rope says so, then goes all out
+			if (DesperateBoss() is BattleEnemy desperate && !desperate.E.DesperationAnnounced)
+			{
+				desperate.E.DesperationAnnounced = true;
+				ShakeScreen(3);
+				ShowMessages(new[] { $"* {desperate.E.Name} is fighting with everything it has left!" }, StartEnemyTurn);
+				return;
+			}
 			Bullets.Clear();
 			boxAfterimages.Clear();
 			enemyAttackEnergy = 0f;
 			enemyAttackDirection = Vector2.Zero;
 			RetargetIfNeeded();
 			attack = BuildEnemyTurn();
+			BeginSoulMode(attack.Soul);
 			turnTimer = attack.Duration;
 			boxTimer = 0;
 			text = "";
@@ -945,6 +954,7 @@ namespace MercyMode.Battle
 		public void Spawn(Bullet b)
 		{
 			b.Owner ??= spawnOwner;
+			b.DamageMult *= spawnDamageScale;
 			// Bullets can spawn others from their OnUpdate (a slam's shockwave, a firework's burst) while the
 			// bullet list is being walked; those join after the walk
 			if (updatingBullets)
@@ -989,7 +999,13 @@ namespace MercyMode.Battle
 			boxTimer = Math.Min(BoxGrowTicks, boxTimer + 1);
 			CaptureBoxAfterimage();
 			// obj_moveheart: flytime 8 frames, image_alpha += 0.334 per frame
-			soul = Vector2.Lerp(soulFrom, SoulRestPosition, Math.Min(1f, phaseTicks / (8f * TicksPerFrame)));
+			soul = Vector2.Lerp(soulFrom, SoulStart, Math.Min(1f, phaseTicks / (8f * TicksPerFrame)));
+			// A SOUL mode other than red announces itself as the SOUL lands: a ring in its colour and a chime
+			if (soulMode != SoulMode.Red && phaseTicks == 8 * TicksPerFrame)
+			{
+				AddEffect(new Shockwave(SoulStart + new Vector2(SoulSize / 2f), soulMode.Color(), 34f));
+				AttackSfx.Vanilla(Terraria.ID.SoundID.Item35, 0.5f, 0.4f);
+			}
 			soulAlpha = Math.Min(1f, phaseTicks / (float)TicksPerFrame * 0.334f);
 			if (boxTimer >= BoxGrowTicks)
 				SetPhase(Phase.EnemyTurn);
@@ -999,6 +1015,7 @@ namespace MercyMode.Battle
 		{
 			attack.Update(this, phaseTicks);
 			MoveSoul();
+			UpdateYellowShots();
 
 			// obj_heart: global.inv -= 1 every frame
 			inv--;
@@ -1013,6 +1030,8 @@ namespace MercyMode.Battle
 				b.Update();
 				// Bullets still waiting to appear (StartDelay) are invisible, so they can't hurt or be grazed yet
 				if (b.Dead || !b.Harmful || b.Waiting)
+					continue;
+				if (ShieldBlocks(b))
 					continue;
 				if (inv < 0 && b.Touches(soulHit))
 				{
@@ -1046,6 +1065,8 @@ namespace MercyMode.Battle
 		/// <summary>obj_heart Step: 4 px per frame, half while X is held, kept inside the box.</summary>
 		private void MoveSoul()
 		{
+			if (MoveSoulMode())
+				return;
 			float px = 0, py = 0;
 			float speed = SoulSpeed;
 			if (Held(Keys.Right)) px = speed;
@@ -1411,6 +1432,7 @@ namespace MercyMode.Battle
 
 			foreach (Bullet b in Bullets)
 				b.Draw();
+			DrawBulletEffects();
 
 			// SOUL (spr_dodgeheart flips frames while invincible) and the graze flash
 			int frame = inv > 0 ? (inv / SoulBlinkTicks) % 2 : 0;
@@ -1419,8 +1441,8 @@ namespace MercyMode.Battle
 			if (soulHome)
 			{
 			}
-			else if (!DrDraw.Sprite("spr_dodgeheart", frame, soul.X, soul.Y, Color.White, 1f, 0f, phase == Phase.EnemyIntro ? soulAlpha : 1f))
-				DrDraw.HeartShapeAt(soul.X + 2, soul.Y + 2, 16, frame == 1 ? new Color(128, 0, 0) : Color.Red);
+			else
+				DrawSoulMode(frame, phase == Phase.EnemyIntro ? soulAlpha : 1f);
 
 			if (grazeTimer > 0)
 			{

@@ -321,6 +321,37 @@ Resolution 640x480. All sizes below in those pixels.
 - Bugs the lab caught on the way: none in battle rules; server-only crashes (texture sizes, view matrix, fonts) now
   have fallbacks (`Main.dedServ`).
 
+## SOUL modes, new attacks, effects (2026-10-01)
+- `EnemyAttack.Soul` (`.WithSoul(mode)`), `Battle/BattleSystem.Soul.cs`. A `Combo` shares its parts' mode (green only when all
+  parts are green, since the shield SOUL can't dodge).
+  - Yellow is Deltarune's own (chapter 2, `scr_miscbattle_config` soul mode data + `obj_yheart_shot` in the DELTAModKit
+    decompile): Z fires right at 8 px/tick, max 3 shots; release after holding 10-39 ticks also fires; hold 40 ticks and
+    release for a big shot (4 px/tick, +0.1/tick, 4 damage, pierces). Sprites `spr_yellowheart` (frame 2 = charged),
+    `spr_yheart_shot`, `spr_yheart_bigshot`; sounds `snd_heartshot_dr_b`, `snd_chargeshot_charge/_fire`. Shots break
+    bullets (`Bullet.Toughness`, default 1, or 3 for big ones), +0.8 TP each.
+  - Blue / green / purple are Undertale's (Deltarune has none of them), from how Undertale plays, not decompiled:
+    blue gravity 0.18, jump 4.8 (cut to 1.5 on release), max fall 7: a held jump is ~54 px, a tap ~15 px; `SlamSoul()`
+    throws it down. Green: fixed at the box centre, arrows turn a 30x6 shield 19 px out that destroys bullets (+0.6 TP).
+    Purple: 3 strings at 1/4, 2/4, 3/4 of the box; Up/Down hop, Left/Right slide.
+  - Who uses them: blue for King Slime / Queen Slime bounces and slams, Skeletron (bone walls + slam), Deerclops (spikes,
+    boulder), Golem (slam, stone pillars), slimes' slam, zombies' horde, goblin/frost legion/Old One's Army marchers.
+    Green: Queen Bee (stingers), Plantera (seeds). Purple: Brain of Cthulhu (Creepers on strings), spiders.
+    Yellow: Twins (Retinazer), Destroyer (probes), Skeletron Prime (cannons), Martians (drones).
+- New patterns (`PatternsSpecial.cs`): ShieldSpears (with tricksters that jump sides), StringRunners, BoneWalls,
+  Gunships, Ricochet, Splitter, Lobs (ballistic, floor marker, splash), Diver, Blinker, Walkers, Jaws, `Phasing()`.
+  Every family and army got a signature attack; EoC servants dive, EoW Eaters dive, WoF's mouth (Jaws), Cultist clones.
+- Boss desperation: below 30% HP (one enemy left) a boss says "is fighting with everything it has left!" and its next
+  turn is two of its attacks at once, 1.25x as long, bullets at 0.75x damage; once per battle.
+- Effects (`AttackEffects.cs`, drawn with the bullets over the box): `Bullet.Trail` afterimages (dashes, slams, dives,
+  homing, converging), `Sparks`, `Shockwave` rings, `Puff` smoke; emitters `.Smoking()` (rockets, cannonballs, bombs),
+  `.Fiery()`, `.Sparkly(color)`, `.Dripping(color)`. Slams kick up dust and a ring; fireworks/splitters burst with a ring;
+  bouncers puff on the floor; warnings fill in with a solid edge; a SOUL mode change rings and chimes.
+- Fixed: `RepeatingAttack` never ran on tick 0 (the turn's first Update is tick 1), so every pattern started one interval
+  late and attacks that spawn only once (spirits' Orbiters) spawned nothing. Found by the lab sweep.
+- Lab: `soul-blue/green/purple/yellow`, `desperation`, and `attacks-enemies/armies/bosses` (every attack of every family,
+  army and boss: spawns something, ends, no crash). `LAB_SPEED` runs the game faster than real time (default 8).
+
 ## Log
 - 2026-09-30: recon, decompile, numbers above. Implemented battle loop for Eye of Cthulhu, verified in lab (above).
 - 2026-10-01: enemy squads (up to 3 per battle), armies with squad morale, spares count toward events; headless lab.
+- 2026-10-01: SOUL modes (Deltarune yellow; Undertale blue/green/purple), new patterns and effects, boss desperation; lab sweeps of every attack.

@@ -74,6 +74,9 @@ namespace MercyMode.Deltarune
 			["item"] = new[] { "snd_item" },
 			["boost"] = new[] { "snd_boost" },
 			["mercyadd"] = new[] { "snd_mercyadd" },
+			// the yellow SOUL (chapter 2)
+			["chargeshot"] = new[] { "snd_chargeshot_charge" },
+			["chargefire"] = new[] { "snd_chargeshot_fire" },
 			// attack patterns
 			["bulletappear"] = new[] { "snd_spearappear" },
 			["bulletfire"] = new[] { "snd_spearrise" },
@@ -95,6 +98,7 @@ namespace MercyMode.Deltarune
 			"spr_ponman_eyebullet", "spr_smallbullet", "spr_healsparkle", "spr_sparestar",
 			"bg_battleback1", "spr_battlemsg", "spr_heartoutline", "spr_heartoutline2", "spr_sparestar_anim", "spr_lightfairy",
 			"spr_heartbreak", "spr_heartshards", "spr_headkris",
+			"spr_yellowheart", "spr_yheart_shot", "spr_yheart_bigshot",
 		};
 
 		public static readonly string[] FontNames = { "fnt_mainbig", "fnt_main", "fnt_small" };

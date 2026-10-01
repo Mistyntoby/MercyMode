@@ -43,6 +43,16 @@ namespace MercyMode.Battle
 		public float TimePoints = BattleConstants.DefaultTimePoints;
 		public bool Grazed;
 
+		/// <summary>Yellow SOUL shots it takes to break (0 = 1 for small bullets, 3 for big ones).</summary>
+		public int Toughness;
+		/// <summary>Ticks left of a white flash (it was shot).</summary>
+		public int Flash;
+		/// <summary>Afterimages left behind while it moves (0 = none).</summary>
+		public int Trail;
+		private Vector2[] trailPos;
+		private float[] trailRot;
+		private int trailCount, trailHead;
+
 		/// <summary>False for warnings and effects that can't hurt or be grazed.</summary>
 		public bool Harmful = true;
 		/// <summary>Disappears when it hits the SOUL (false for beams, which keep firing).</summary>
@@ -78,6 +88,19 @@ namespace MercyMode.Battle
 				return;
 			}
 			OnUpdate?.Invoke(this);
+			if (Flash > 0)
+				Flash--;
+			if (Trail > 0 && Age % 2 == 0 && Velocity.LengthSquared() > 1f)
+			{
+				trailPos ??= new Vector2[Trail];
+				trailRot ??= new float[Trail];
+				trailPos[trailHead] = Position;
+				trailRot[trailHead] = Rotation;
+				trailHead = (trailHead + 1) % Trail;
+				trailCount = Math.Min(Trail, trailCount + 1);
+			}
+			else if (Trail > 0 && trailCount > 0 && Age % 2 == 0)
+				trailCount--; // stopped: the afterimages catch up
 			Velocity += Acceleration;
 			Position += Velocity;
 			Age++;
@@ -99,20 +122,32 @@ namespace MercyMode.Battle
 				OnDraw(this);
 				return;
 			}
+			// Afterimages, oldest faintest
+			for (int k = 0; k < trailCount; k++)
+			{
+				int idx = ((trailHead - 1 - k) % Trail + Trail) % Trail;
+				DrawAt(trailPos[idx], trailRot[idx], 0.45f * (1f - (k + 1f) / (trailCount + 1f)), false);
+			}
+			DrawAt(Position, Rotation, 1f, Flash > 0);
+		}
+
+		private void DrawAt(Vector2 pos, float rotation, float alphaMul, bool white)
+		{
 			var effects = FlipX ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+			Color color = (white ? Color.Lerp(Color, Color.White, 0.75f) : Color) * Alpha * alphaMul;
 			if (Sprite != null && DeltaruneAssets.Sprite(Sprite) is DrSprite s)
 			{
-				DrDraw.Sb.Draw(s.Frame(Frame), Position, null, Color * Alpha, Rotation, s.Origin, Scale, effects, 0f);
+				DrDraw.Sb.Draw(s.Frame(Frame), pos, null, color, rotation, s.Origin, Scale, effects, 0f);
 				return;
 			}
 			if (Texture != null)
 			{
 				Rectangle src = Source ?? Texture.Bounds;
-				DrDraw.Sb.Draw(Texture, Position, src, Color * Alpha, Rotation, src.Size() / 2f, Scale, effects, 0f);
+				DrDraw.Sb.Draw(Texture, pos, src, color, rotation, src.Size() / 2f, Scale, effects, 0f);
 				return;
 			}
 			// Fallback: a white diamond-ish square the size of the hitbox
-			DrDraw.Rect(Position.X - HitSize.X / 2f, Position.Y - HitSize.Y / 2f, HitSize.X, HitSize.Y, Color * Alpha);
+			DrDraw.Rect(pos.X - HitSize.X / 2f, pos.Y - HitSize.Y / 2f, HitSize.X, HitSize.Y, color);
 		}
 	}
 }

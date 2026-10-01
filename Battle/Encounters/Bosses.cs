@@ -80,9 +80,13 @@ namespace MercyMode.Battle.Encounters
 			Bullet gelDrop(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(80, 140, 255), 0.6f, 1.1f);
 			Bullet shuriken(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Shuriken, p, v, 1f, 0.7f, new Vector2(10, 10), spin: 0.3f);
 			return Cycle(
-				() => new Bouncers(Gel, hard ? 18 : 26),
+				// Blue SOUL for the bouncy attacks: hop the gel
+				() => new Bouncers(Gel, hard ? 18 : 26).WithSoul(SoulMode.Blue),
 				// It jumps and lands on you: the floor ripples out gel both ways
-				() => new Slam(king, gelDrop, hard ? 62 : 82) { Width = 48f, Shards = hard ? 3 : 2, FallSpeed = hard ? 10f : 8.5f },
+				() => new Slam(king, gelDrop, hard ? 62 : 82) { Width = 48f, Shards = hard ? 3 : 2, FallSpeed = hard ? 10f : 8.5f }.WithSoul(SoulMode.Blue),
+				// Its slimes hop in from both sides; jump them
+				() => new Walkers((p, v) => Shots.Npc(NPCID.BlueSlime, p, v, 0.8f, 0.8f, new Vector2(16, 12), rotate: false), hard ? 22 : 30)
+					{ Speed = 1.5f, HopSpeed = 3.6f }.WithSoul(SoulMode.Blue),
 				// The ninja inside throws stars; later it surrounds you with them first
 				() => hard
 					? new Combo(BattleConstants.DefaultEnemyTurnTicks,
@@ -165,8 +169,10 @@ namespace MercyMode.Battle.Encounters
 		{
 			bool hard = LifeRatio < 0.5f;
 			Bullet spit(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Green, 0.6f);
-			Bullet bigSpit(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(160, 255, 90), 0.9f, 1.8f);
+			Bullet bigSpit(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(160, 255, 90), 0.9f, 1.8f).Dripping(Shots.Green);
 			return Cycle(
+				// Eaters of Souls dive from above
+				() => new Diver((p, v) => Shots.Npc(NPCID.EaterofSouls, p, v, 0.8f, 0.8f, new Vector2(16, 16), rotate: false), hard ? 26 : 36),
 				() => new Snake(Head, Body, hard ? 70 : 100) { Segments = 9, Speed = hard ? 2.8f : 2.3f },
 				// Corruption drips down in rows with a drifting gap
 				() => new GapRows(spit, hard ? 28 : 36) { Speed = hard ? 1.7f : 1.4f, GapSize = hard ? 42f : 50f },
@@ -239,6 +245,10 @@ namespace MercyMode.Battle.Encounters
 			Bullet creeper(Vector2 p, Vector2 v) => Shots.Npc(NPCID.Creeper, p, v, 0.8f, 0.7f, new Vector2(14, 14), rotate: false);
 			Bullet thought(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Red, 0.6f);
 			return Cycle(
+				// Purple SOUL: caught in its mind, Creepers crawl the strings while thoughts drift down
+				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
+					new StringRunners(creeper, hard ? 20 : 28) { Speed = hard ? 3f : 2.5f },
+					new Rain((p, v) => thought(p, v).Sparkly(Shots.Red), hard ? 26 : 36) { SpeedMin = 1.2f, SpeedMax = 1.6f }),
 				() => new Orbiters(creeper, hard ? 90 : 120) { Count = hard ? 8 : 6, AngularSpeed = 0.03f },
 				// Bad thoughts close in from every side
 				() => new Converge(thought, hard ? 55 : 70) { Count = hard ? 10 : 8, Speed = hard ? 4.5f : 3.8f, Radius = 72f },
@@ -292,6 +302,8 @@ namespace MercyMode.Battle.Encounters
 			Bullet stinger(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Stinger, p, v, 1f, 0.6f, new Vector2(8, 8), rotationOffset: MathHelper.PiOver2);
 			return Cycle(
 				() => new Homing(bee, hard ? 14 : 20) { Speed = hard ? 2.2f : 1.8f, Turn = 0.03f, SteerTicks = 70 },
+				// Green SOUL: stingers from every side; turn the shield to block them
+				() => new ShieldSpears(stinger, hard ? 16 : 22) { Speed = hard ? 2.8f : 2.3f },
 				// She hovers above and sprays stingers in a sweeping fan
 				() => new Sprinkler(stinger)
 				{
@@ -381,8 +393,10 @@ namespace MercyMode.Battle.Encounters
 				() => new LaneDash(hand, hard ? 45 : 60) { AllowVertical = true, Speed = hard ? 8f : 7f },
 				// The spinning-head charge
 				() => new LaneDash(head, hard ? 60 : 80) { AllowVertical = true, Speed = hard ? 7f : 5.5f, LaneWidth = 40f, LaunchSound = SoundID.Roar },
-				// A hand slams the floor and scatters bones along it
-				() => new Slam(hand, bone, hard ? 60 : 78) { Width = 40f, Shards = hard ? 3 : 2, ShardSpeed = 2.6f },
+				// A hand slams the floor and scatters bones along it (blue SOUL: jump them)
+				() => new Slam(hand, bone, hard ? 60 : 78) { Width = 40f, Shards = hard ? 3 : 2, ShardSpeed = 2.6f }.WithSoul(SoulMode.Blue),
+				// Blue SOUL: thrown to the floor, then walls of bones to jump over and duck under
+				() => new BoneWalls(hard ? 26 : 34) { Speed = hard ? 3.2f : 2.6f, Color = new Color(235, 225, 200) },
 				// Bones fall in rows with a drifting gap
 				() => new GapRows(bone, hard ? 30 : 38) { Speed = hard ? 2f : 1.7f, GapSize = hard ? 42f : 48f, Spacing = 16f },
 				() => hard
@@ -487,10 +501,10 @@ namespace MercyMode.Battle.Encounters
 			Bullet boulder(Vector2 p, Vector2 v) => Rubble(p, v, 1.8f, 1.2f, new Vector2(26, 26));
 			Bullet iceShard(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Ice, 0.7f);
 			return Cycle(
-				() => new FloorSpikes(spike, hard ? 24 : 34) { Warn = hard ? 24 : 30 },
+				() => new FloorSpikes(spike, hard ? 24 : 34) { Warn = hard ? 24 : 30 }.WithSoul(SoulMode.Blue),
 				() => new Homing(hand, hard ? 26 : 36) { Speed = 1.5f, Turn = 0.05f, SteerTicks = 110 },
 				// A boulder crashes down and breaks into rubble along the floor
-				() => new Slam(boulder, rock, hard ? 58 : 76) { Width = 44f, Shards = hard ? 3 : 2, Debris = 4 },
+				() => new Slam(boulder, rock, hard ? 58 : 76) { Width = 44f, Shards = hard ? 3 : 2, Debris = 4 }.WithSoul(SoulMode.Blue),
 				// Frost gathers around you, then shatters inward
 				() => new Converge(iceShard, hard ? 52 : 68) { Count = hard ? 10 : 8, Speed = hard ? 4.4f : 3.8f },
 				() => new Rain(rock, hard ? 10 : 15) { SpeedMin = 2.2f, SpeedMax = 3f, Wobble = 0f },
@@ -556,6 +570,8 @@ namespace MercyMode.Battle.Encounters
 				() => new Beam(hard ? 46 : 62) { FixedAngle = 0f, Tilt = hard ? 0.35f : 0.2f, Width = hard ? 18f : 15f, Color = new Color(255, 80, 200), FireSound = SoundID.Item33 },
 				() => new Walls(hungry, hard ? 55 : 70) { Side = -1, Speed = hard ? 2f : 1.6f, Spacing = 18f, GapSize = 42f },
 				() => new Snake(leechHead, leechBody, hard ? 70 : 95) { Side = -1, Segments = 6, Speed = 2.6f },
+				// Its mouth: teeth snap shut over the box, leaving one gap
+				() => new Jaws((p, v) => Shots.Ball(p, v, new Color(255, 220, 220), 1f, 1.5f), hard ? 66 : 86) { GapSize = hard ? 34f : 40f },
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new Beam(80) { FixedAngle = 0f, Tilt = 0.15f, Color = new Color(255, 80, 200), FireSound = SoundID.Item33 },
 					new Walls(hungry, 90) { Side = -1, Speed = 1.5f, Spacing = 18f, GapSize = 46f }),

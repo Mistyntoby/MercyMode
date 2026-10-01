@@ -12,7 +12,8 @@ param(
 	[string]$TmlDir = "C:\Program Files (x86)\Steam\steamapps\common\tModLoader",
 	[string]$LabDir = "$env:USERPROFILE\tml-lab",
 	[string]$HeadlessDir = "$env:USERPROFILE\tml-lab-headless",
-	[int]$Port = 7778
+	[int]$Port = 7778,
+	[int]$Speed = 8
 )
 $ErrorActionPreference = "Stop"
 $source = Resolve-Path "$PSScriptRoot\..\.."
@@ -45,10 +46,11 @@ switch ($Mode) {
 		Remove-Item "$HeadlessDir\lab-results.txt" -ErrorAction SilentlyContinue
 		$env:MERCYMODE_LAB = $Scenarios
 		$env:MERCYMODE_LAB_OUT = $HeadlessDir
+		$env:MERCYMODE_LAB_SPEED = $Speed
 		try {
 			dotnet tModLoader.dll -server -nosteam -tmlsavedirectory $HeadlessDir -autocreate 1 -world "$HeadlessDir\Worlds\MercyLab.wld" -worldname MercyLab -port $Port -players 8 *> "$HeadlessDir\server.out"
 		} finally {
-			Remove-Item Env:MERCYMODE_LAB, Env:MERCYMODE_LAB_OUT -ErrorAction SilentlyContinue
+			Remove-Item Env:MERCYMODE_LAB, Env:MERCYMODE_LAB_OUT, Env:MERCYMODE_LAB_SPEED -ErrorAction SilentlyContinue
 		}
 		if (Test-Path "$HeadlessDir\lab-results.txt") { Get-Content "$HeadlessDir\lab-results.txt" }
 		else { Get-Content "$HeadlessDir\server.out" -Tail 30 }

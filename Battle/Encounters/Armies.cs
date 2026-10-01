@@ -171,21 +171,31 @@ namespace MercyMode.Battle.Encounters
 				case ArmyKind.Goblins:
 				{
 					Bullet arrow(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.WoodenArrowHostile, p, v, 1f, 0.8f, new Vector2(8, 8), rotationOffset: MathHelper.PiOver2);
-					Bullet chaos(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(190, 90, 255), 0.8f, 1.4f);
+					Bullet chaos(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(190, 90, 255), 0.8f, 1.4f).Sparkly(new Color(190, 90, 255));
 					if (Npc.type == NPCID.GoblinArcher)
-						return new SideShots(arrow, Hard ? 12 : 18) { Side = 0, Speed = 3.6f }.Lasting(t);
+						return Pick(
+							() => new SideShots(arrow, Hard ? 12 : 18) { Side = 0, Speed = 3.6f }.Lasting(t),
+							// A volley lobbed high that comes down around you
+							() => new Lobs(arrow, Hard ? 26 : 34) { Volley = 3, Splash = 0, Flight = 50 }.Lasting(t));
 					if (Npc.type == NPCID.GoblinSorcerer)
-						return new Homing(chaos, Hard ? 26 : 36) { Speed = 1.7f }.Lasting(t);
+						return Pick(
+							() => new Homing(chaos, Hard ? 26 : 36) { Speed = 1.7f }.Lasting(t),
+							// Teleports around the box between spells, like it does in Terraria
+							() => new Blinker(self, chaos, Hard ? 32 : 44) { Shots = Hard ? 3 : 1, ShotSpeed = 2.4f }.Lasting(t));
 					return Pick(
+						// The warband charges along the ground; jump them (blue SOUL)
+						() => new Walkers(small, Hard ? 26 : 34) { Speed = Hard ? 1.9f : 1.5f }.WithSoul(SoulMode.Blue).Lasting(t),
 						() => new LaneDash(self, Hard ? 44 : 58) { Speed = 7.5f, LaunchSound = SoundID.Item1 }.Lasting(t),
 						() => new Converge((p, v) => ball(p, v, new Color(160, 160, 160)), Hard ? 60 : 78) { Count = 6, Speed = 3.6f }.Lasting(t),
 						() => new Walls(small, Hard ? 60 : 75) { Side = 0, Speed = 2f, Spacing = 22f, GapSize = 46f }.Lasting(t));
 				}
 				case ArmyKind.Pirates:
 				{
-					Bullet cannonball(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.CannonballHostile, p, v, 1f, 1f, new Vector2(14, 14), rotate: false);
+					Bullet cannonball(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.CannonballHostile, p, v, 1f, 1f, new Vector2(14, 14), rotate: false).Smoking(4);
 					Bullet shot(Vector2 p, Vector2 v) => ball(p, v, new Color(255, 220, 140));
 					return Pick(
+						// Cannon fire from the ship: lobbed balls that burst along the deck
+						() => new Lobs(cannonball, Hard ? 22 : 30) { MakeSplash = shot, Splash = 1, Flight = 60 }.Lasting(t),
 						() => new Bouncers(cannonball, Hard ? 28 : 36).Lasting(t),
 						() => new SideShots(shot, Hard ? 10 : 15) { Side = 0, Speed = 4f }.Lasting(t),
 						() => new LaneDash(self, Hard ? 44 : 58) { AllowVertical = true, Speed = 8f }.Lasting(t),
@@ -195,6 +205,9 @@ namespace MercyMode.Battle.Encounters
 				{
 					Bullet snowball(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.SnowBallHostile, p, v, 1f, 0.7f, new Vector2(10, 10), rotate: false);
 					return Pick(
+						// Snowmen march in; jump them (blue SOUL)
+						() => new Walkers(small, Hard ? 26 : 34) { Speed = 1.5f, HopSpeed = 2.8f }.WithSoul(SoulMode.Blue).Lasting(t),
+						() => new Lobs(snowball, Hard ? 16 : 22) { Volley = 2, Splash = 0 }.Lasting(t),
 						() => new Rain(snowball, Hard ? 9 : 13) { Wobble = 0.3f }.Lasting(t),
 						() => new AimedBursts(snowball, Hard ? 28 : 40) { Count = 3, Speed = 2.6f }.Lasting(t),
 						() => new LaneDash(self, Hard ? 44 : 58) { Speed = 8f }.Lasting(t));
@@ -203,6 +216,10 @@ namespace MercyMode.Battle.Encounters
 				{
 					var green = new Color(120, 255, 140);
 					return Pick(
+						// Yellow SOUL: drones hover in and fire; shoot them down
+						() => new Gunships((p, v) => Shots.Npc(NPCID.MartianDrone, p, v, 0.8f, 1f, new Vector2(18, 16), rotate: false),
+							(p, v) => ball(p, v, green), Hard ? 44 : 58) { Toughness = 3, FireEvery = Hard ? 40 : 52, ShotSpeed = 2.6f }.Lasting(t),
+						() => new Blinker(self, (p, v) => ball(p, v, green), Hard ? 34 : 46) { Glow = green }.Lasting(t),
 						() => new Beam(Hard ? 44 : 58) { Width = 9f, Warn = 34, Active = 12, Color = green, FireSound = SoundID.Item12 }.Lasting(t),
 						() => new AimedBursts((p, v) => ball(p, v, green), Hard ? 26 : 38) { Count = 3, Speed = 3f }.Lasting(t),
 						() => new Homing((p, v) => ball(p, v, new Color(200, 120, 255)), Hard ? 30 : 42) { Speed = 1.8f }.Lasting(t),
@@ -212,6 +229,9 @@ namespace MercyMode.Battle.Encounters
 				{
 					var orange = new Color(255, 150, 40);
 					return Pick(
+						// Flaming pumpkins that split in mid-air
+						() => new Splitter((p, v) => Shots.Ball(p, v, orange, 0.9f, 1.8f).Fiery(), (p, v) => ball(p, v, orange), Hard ? 34 : 46) { Count = Hard ? 7 : 5 }.Lasting(t),
+						() => new Diver(self, Hard ? 30 : 42).Lasting(t),
 						() => new Rain((p, v) => ball(p, v, orange), Hard ? 8 : 12) { Wobble = 0.4f }.Lasting(t),
 						() => new LaneDash(self, Hard ? 40 : 54) { AllowVertical = true, Speed = 8.5f }.Lasting(t),
 						() => new Homing(small, Hard ? 26 : 36) { Speed = 1.8f }.Lasting(t),
@@ -221,6 +241,8 @@ namespace MercyMode.Battle.Encounters
 				{
 					var ice = new Color(170, 230, 255);
 					return Pick(
+						// Ornaments that bounce around the box
+						() => new Ricochet((p, v) => Shots.Ball(p, v, Main.hslToRgb(Main.rand.NextFloat(), 0.8f, 0.6f), 0.7f, 1.3f).Sparkly(ice, 9), Hard ? 22 : 30) { Bounces = 3 }.Lasting(t),
 						() => new Sprinkler((p, v) => ball(p, v, ice)) { Every = Hard ? 6 : 9, Speed = 2.4f, TurnSpeed = 0.06f }.Lasting(t),
 						() => new SideShots((p, v) => ball(p, v, new Color(255, 80, 80)), Hard ? 11 : 16) { Side = 0, Speed = 3.6f }.Lasting(t),
 						() => new Slam(self, (p, v) => ball(p, v, ice), Hard ? 58 : 74) { Width = 40f, Shards = 2 }.Lasting(t),
@@ -230,6 +252,8 @@ namespace MercyMode.Battle.Encounters
 				{
 					var ether = new Color(255, 120, 220);
 					return Pick(
+						// The army marches on the crystal; jump them (blue SOUL)
+						() => new Walkers(small, Hard ? 24 : 32) { Speed = 1.7f }.WithSoul(SoulMode.Blue).Lasting(t),
 						() => new Fireworks((p, v) => Shots.Ball(p, v, Color.White, 0.9f, 1.6f), (p, v) => ball(p, v, ether), Hard ? 44 : 58) { Count = 7 }.Lasting(t),
 						() => new SideShots((p, v) => ball(p, v, new Color(255, 200, 120)), Hard ? 11 : 16) { Side = 0, Speed = 4f }.Lasting(t),
 						() => new LaneDash(self, Hard ? 42 : 56) { Speed = 8f }.Lasting(t),
@@ -239,6 +263,8 @@ namespace MercyMode.Battle.Encounters
 				{
 					var blood = new Color(220, 40, 60);
 					return Pick(
+						() => new Jaws((p, v) => ball(p, v, new Color(240, 230, 220)), Hard ? 70 : 90).Lasting(t),
+						() => new Diver(self, Hard ? 28 : 40).Lasting(t),
 						() => new LaneDash(self, Hard ? 40 : 54) { AllowVertical = true, Speed = 8.5f, LaunchSound = SoundID.Roar }.Lasting(t),
 						() => new Converge((p, v) => ball(p, v, blood), Hard ? 56 : 72) { Count = 8, Speed = 4f }.Lasting(t),
 						() => new Swoopers(small, Hard ? 18 : 26) { Speed = 2.6f }.Lasting(t),

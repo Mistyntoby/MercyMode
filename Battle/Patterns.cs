@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
@@ -90,8 +91,13 @@ namespace MercyMode.Battle
 			Lifetime = ticks,
 			OnDraw = b =>
 			{
-				float a = b.Age / 3 % 2 == 0 ? 0.55f : 0.25f;
-				DrDraw.Rect(area.X, area.Y, area.Width, area.Height, (color ?? new Color(255, 0, 0)) * a);
+				Color c = color ?? new Color(255, 0, 0);
+				float a = b.Age / 3 % 2 == 0 ? 0.45f : 0.2f;
+				// Fills in as the hit gets closer, with a steady edge so it reads even while flickering
+				float t = Math.Min(1f, b.Age / (float)Math.Max(1, ticks));
+				DrDraw.Rect(area.X, area.Y, area.Width, area.Height, c * a);
+				DrDraw.Rect(area.X, area.Y, area.Width, area.Height, c * (0.25f * t));
+				DrDraw.Outline(area.X, area.Y, area.Width, area.Height, c * 0.8f, 1);
 			},
 		};
 
@@ -110,10 +116,13 @@ namespace MercyMode.Battle
 
 		public override void Update(BattleSystem battle, int tick)
 		{
-			if (tick < FirstAt || tick > Duration - StopBeforeEnd)
+			// The battle's first Update of a turn is tick 1, so count from there: the first volley comes right away
+			// (counting from 0 skipped it, and an attack that only spawns once spawned nothing)
+			int t = tick - 1 - FirstAt;
+			if (t < 0 || tick > Duration - StopBeforeEnd)
 				return;
-			if ((tick - FirstAt) % Math.Max(1, Every) == 0)
-				Spawn(battle, (tick - FirstAt) / Math.Max(1, Every));
+			if (t % Math.Max(1, Every) == 0)
+				Spawn(battle, t / Math.Max(1, Every));
 		}
 
 		protected abstract void Spawn(BattleSystem battle, int index);
@@ -232,6 +241,8 @@ namespace MercyMode.Battle
 				{
 					x.Position.Y = floor;
 					x.Velocity.Y = -Math.Max(2.2f, x.Velocity.Y * bounce);
+					battle.AddEffect(new Sparks(new Vector2(x.Position.X - 4, floor + x.HitSize.Y / 2f), new Vector2(-1.2f, -0.6f), x.Color, 3f, 0.08f));
+					battle.AddEffect(new Sparks(new Vector2(x.Position.X + 4, floor + x.HitSize.Y / 2f), new Vector2(1.2f, -0.6f), x.Color, 3f, 0.08f));
 				}
 			};
 			b.Lifetime = 420;
@@ -291,6 +302,7 @@ namespace MercyMode.Battle
 				{
 					x.Harmful = true;
 					x.Velocity = dir * speed;
+					x.Trail = 5;
 					if (launch is SoundStyle roar)
 						AttackSfx.Vanilla(roar, 0.7f);
 					else
@@ -434,6 +446,7 @@ namespace MercyMode.Battle
 			float speed = Speed, turn = Turn;
 			int steer = SteerTicks;
 			b.Lifetime = 300;
+			b.Trail = 3;
 			b.OnUpdate += x =>
 			{
 				if (x.Age > steer)
@@ -568,6 +581,10 @@ namespace MercyMode.Battle
 			Duration = duration;
 			foreach (var p in parts)
 				p.Duration = duration;
+			// One SOUL mode for all: shared if they agree; a shield that can't move doesn't mix with other attacks
+			Soul = parts.All(p => p.Soul == parts[0].Soul) ? parts[0].Soul
+				: parts.Any(p => p.Soul == SoulMode.Green) ? SoulMode.Red
+				: parts.FirstOrDefault(p => p.Soul != SoulMode.Red)?.Soul ?? SoulMode.Red;
 		}
 
 		public override void Update(BattleSystem battle, int tick)
