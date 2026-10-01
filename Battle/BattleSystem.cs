@@ -1465,17 +1465,19 @@ namespace MercyMode.Battle
 		private void DrawPartyBox()
 		{
 			Rectangle r = PartyBox;
-			bool raised = partyLift > 1f;
+			bool choosing = phase == Phase.Menu || phase == Phase.EnemySelect || phase == Phase.ActSelect || phase == Phase.ItemSelect;
 			float buttonsY = ScreenHeight - panel + 5f;
-			if (raised)
+
+			float selectionAlpha = choosing ? 1f : MathHelper.Clamp(partyLift / 32f, 0f, 1f);
+			if (selectionAlpha > 0.01f)
 			{
 				// scr_selectionmatrix: fixed cyan rule above the buttons with sine-eased columns.
-				DrDraw.Rect(r.X, buttonsY - 5f, r.Width, 2f, KrisCyan);
+				DrDraw.Rect(r.X, buttonsY - 5f, r.Width, 2f, KrisCyan * selectionAlpha);
 				for (int i = 0; i < 12; i++)
 				{
 					float angle = selectedBarPhase + i * 10f * MathHelper.Pi;
 					float wave = (float)Math.Sin(angle / 60f);
-					float alpha = Math.Max(0f, (float)Math.Sin(angle / 60f));
+					float alpha = Math.Max(0f, (float)Math.Sin(angle / 60f)) * selectionAlpha;
 					DrDraw.Rect(r.X, buttonsY - 8f, 2f, 36f, KrisCyan * alpha);
 					DrDraw.Rect(r.Right + 1f, buttonsY - 8f, 2f, 36f, KrisCyan * alpha);
 					if (Math.Cos(angle / 60f) < 0f)
@@ -1486,26 +1488,49 @@ namespace MercyMode.Battle
 						DrDraw.Rect(rightX, buttonsY - 5f, 2f, 33f, KrisCyan * alpha);
 					}
 				}
-				DrDraw.Rect(r.X, r.Y - 2f, 1f, buttonsY - r.Y + 3f, KrisCyan * 0.8f);
-				DrDraw.Rect(r.Right - 1f, r.Y - 2f, 1f, buttonsY - r.Y + 3f, KrisCyan * 0.8f);
-				DrDraw.Rect(r.X + 1, r.Y, r.Width - 2, buttonsY - r.Y, Color.Black);
 			}
 
-			// The player's own head, tinted Deltarune cyan and raised slightly within the panel.
+			// Draw buttons first, as Deltarune does: the moving nameplate is drawn over them
+			// on the way down, so the menu tucks behind the panel as the bullet box opens.
+			if (choosing || partyLift > 1f)
+			{
+				string[] names = { "spr_btfight", "spr_btact", "spr_btitem", "spr_btspare", "spr_btdefend" };
+				string[] labels = { "FIGHT", "ACT", "ITEM", "SPARE", "DEFEND" };
+				for (int i = 0; i < 5; i++)
+				{
+					bool selected = (int)menuChoice == i && phase == Phase.Menu || (int)pendingChoice == i && phase != Phase.Menu && phase != Phase.ItemSelect
+						|| i == (int)Choice.Item && phase == Phase.ItemSelect;
+					float bx = r.X + 15 + 35 * i;
+					if (!DrDraw.Sprite(names[i], selected ? 1 : 0, bx, buttonsY, Color.White))
+					{
+						DrDraw.Outline(bx, buttonsY, 31, 32, selected ? new Color(255, 255, 0) : Orange, 2);
+						DrDraw.Text(labels[i].Substring(0, 1), bx + 10, buttonsY + 8, selected ? new Color(255, 255, 0) : Orange, DrDraw.SmallFont);
+					}
+					if (i == (int)Choice.Spare && encounter.Mercy >= 100f)
+						DrDraw.Sprite(names[i], 2, bx, buttonsY, Color.White, 1f, 0f, 0.4f + (float)Math.Sin(time / 12f) * 0.4f);
+				}
+			}
+
+			// The original outer top and side frame surrounds the moving black nameplate.
+			DrDraw.Rect(r.X, r.Y - 3f, r.Width, 1f, KrisCyan);
+			DrDraw.Rect(r.X, r.Y - 2f, 1f, r.Height + 3f, KrisCyan);
+			DrDraw.Rect(r.Right - 1f, r.Y - 2f, 1f, r.Height + 3f, KrisCyan);
+			DrDraw.Rect(r.X + 1f, r.Y - 1f, r.Width - 2f, r.Height + 34f, Color.Black);
+
+			// The player's own head, enlarged and shifted left to leave clear space before the name.
 			if (playerHeadPortrait?.IsReady == true)
 			{
-				DrDraw.Sb.Draw(playerHeadPortrait.GetTarget(), new Vector2(r.X + 20, r.Y + 15), null,
-					new Color(110, 220, 255), 0f, new Vector2(42f), 0.68f, SpriteEffects.None, 0f);
+				DrDraw.Sb.Draw(playerHeadPortrait.GetTarget(), new Vector2(r.X + 16, r.Y + 15), null,
+					new Color(110, 220, 255), 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
 			}
 			else
 			{
 				DrDraw.HeartShapeAt(r.X + 10, r.Y + 5, 17, new Color(64, 220, 255));
 			}
-			DrDraw.Text(Player.name.ToUpperInvariant(), r.X + 32, r.Y + 10, Color.White, DrDraw.SmallFont);
+			DrDraw.Text(Player.name.ToUpperInvariant(), r.X + 40, r.Y + 10, Color.White, DrDraw.SmallFont, 1.12f);
 			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + 22, Color.White))
 				DrDraw.Text("HP", r.X + 108, r.Y + 19, Color.White, DrDraw.SmallFont);
 			float ratio = MathHelper.Clamp(Player.statLife / (float)Player.statLifeMax2, 0f, 1f);
-			bool choosing = phase == Phase.Menu || phase == Phase.EnemySelect || phase == Phase.ActSelect || phase == Phase.ItemSelect;
 			const int hpBarX = 130;
 			const int hpBarWidth = 74;
 			DrDraw.Rect(r.X + hpBarX, r.Y + 19, hpBarWidth, 8, new Color(128, 0, 0));
@@ -1517,25 +1542,6 @@ namespace MercyMode.Battle
 			DrDraw.Text(hp, r.X + hpBarX + (hpBarWidth - hpTextWidth) / 2f, r.Y - 1f,
 				hpColor, DrDraw.BigFont, hpNumberScale);
 
-			if (!choosing && partyLift < 1f)
-				return;
-			string[] names = { "spr_btfight", "spr_btact", "spr_btitem", "spr_btspare", "spr_btdefend" };
-			string[] labels = { "FIGHT", "ACT", "ITEM", "SPARE", "DEFEND" };
-			float by = buttonsY; // 485 - bp; moves together with the bottom panel during transitions
-			for (int i = 0; i < 5; i++)
-			{
-				bool selected = (int)menuChoice == i && phase == Phase.Menu || (int)pendingChoice == i && phase != Phase.Menu && phase != Phase.ItemSelect
-					|| i == (int)Choice.Item && phase == Phase.ItemSelect;
-				float bx = r.X + 15 + 35 * i;
-				if (!DrDraw.Sprite(names[i], selected ? 1 : 0, bx, by, Color.White))
-				{
-					DrDraw.Outline(bx, by, 31, 32, selected ? new Color(255, 255, 0) : Orange, 2);
-					DrDraw.Text(labels[i].Substring(0, 1), bx + 10, by + 8, selected ? new Color(255, 255, 0) : Orange, DrDraw.SmallFont);
-				}
-				// SPARE glows when the enemy can be spared
-				if (i == (int)Choice.Spare && encounter.Mercy >= 100f)
-					DrDraw.Sprite(names[i], 2, bx, by, Color.White, 1f, 0f, 0.4f + (float)Math.Sin(time / 12f) * 0.4f);
-			}
 		}
 
 		private void DrawHeartCursor(float x, float y)
