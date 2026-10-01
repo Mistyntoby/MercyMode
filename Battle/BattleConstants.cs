@@ -114,7 +114,7 @@ namespace MercyMode.Battle
 		/// <summary>Most common global.turntimer in chapter 1 is 120-180 frames. 150 frames.</summary>
 		public const int DefaultEnemyTurnTicks = 150 * TicksPerFrame;
 		/// <summary>Full-screen attacks run longer: the arena takes a moment to open and close.</summary>
-		public const int FullScreenTurnTicks = 190 * TicksPerFrame;
+		public const int FullScreenTurnTicks = 300 * TicksPerFrame;
 
 		// ---- HUD (obj_battlecontroller) ----
 		/// <summary>bpy = 152: bottom panel height.</summary>
