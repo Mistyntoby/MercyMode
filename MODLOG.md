@@ -236,7 +236,7 @@ Resolution 640x480. All sizes below in those pixels.
   BossHigh) is only active while that instance exists, so Terraria's own boss-track selection plays (vanilla,
   modded ModNPC.Music, Otherworldly). Config BossBattleMusic (default on); off = Rude Buster everywhere. Regular
   enemies keep Rude Buster.
-- Rude Buster: BattleMusicVolume x RudeBusterGain 0.6 (it was louder than the boss tracks at Music 100%). A constant
+- Rude Buster: BattleMusicVolume x RudeBusterGain 0.45 (it was louder than the boss tracks at Music 100%). A constant
   rather than a new config default, since a saved config keeps its old value.
 - Boss music boost: AmbienceMute.BoostMusic(config BossMusicBoost, default 1.6) raises Main.musicVolume for boss
   battles (capped at 1), restored at End unless the player moved it; the SaveSettings detour saves the real value.
