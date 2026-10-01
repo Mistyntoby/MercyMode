@@ -48,7 +48,6 @@ namespace MercyMode.Deltarune
 		public static SoundEffect BattleMusic;
 		private static readonly Dictionary<string, SoundEffect> sounds = new();
 		private static readonly Dictionary<string, float> soundVolumes = new();
-		private static readonly Dictionary<string, float> soundPitches = new();
 		private static readonly Dictionary<string, DrSprite> sprites = new();
 		private static readonly Dictionary<string, DrFont> fonts = new();
 
@@ -120,7 +119,6 @@ namespace MercyMode.Deltarune
 			BattleMusic = null;
 			sounds.Clear();
 			soundVolumes.Clear();
-			soundPitches.Clear();
 			sprites.Clear();
 			fonts.Clear();
 			State = LoadState.NotStarted;
@@ -302,7 +300,6 @@ namespace MercyMode.Deltarune
 					{
 						sounds[role] = AudioDecoder.ToSoundEffect(raw.Data);
 						soundVolumes[role] = MathHelper.Clamp(raw.Volume, 0f, 1f);
-						soundPitches[role] = MathHelper.Clamp((float)Math.Log2(Math.Max(0.5f, raw.Pitch)), -1f, 1f);
 					}
 					catch (Exception e)
 					{
@@ -416,7 +413,7 @@ namespace MercyMode.Deltarune
 			{
 				float vol = MathHelper.Clamp(Main.soundVolume * config.BattleSoundVolume * soundVolumes.GetValueOrDefault(role, 1f) * roleGain, 0f, 1f);
 				if (vol > 0f)
-					effect.Play(vol, soundPitches.GetValueOrDefault(role), 0f);
+					effect.Play(vol, 0f, 0f);
 				return;
 			}
 			SoundEngine.PlaySound(fallback with { Volume = fallback.Volume * config.BattleSoundVolume * roleGain }, position);
@@ -441,7 +438,7 @@ namespace MercyMode.Deltarune
 			{
 				float vol = MathHelper.Clamp(Main.soundVolume * config.BattleSoundVolume * soundVolumes.GetValueOrDefault(role, 1f) * roleGain, 0f, 1f);
 				if (vol > 0f)
-					effect.Play(vol, soundPitches.GetValueOrDefault(role), 0f);
+					effect.Play(vol, 0f, 0f);
 			}
 		}
 
