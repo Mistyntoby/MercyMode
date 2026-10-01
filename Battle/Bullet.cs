@@ -43,6 +43,9 @@ namespace MercyMode.Battle
 
 		/// <summary>False for warnings and effects that can't hurt or be grazed.</summary>
 		public bool Harmful = true;
+		/// <summary>Ticks before the bullet appears and starts moving (for chains like worm segments).</summary>
+		public int StartDelay;
+		public bool Waiting => StartDelay > 0;
 		public bool Dead;
 		public int Age;
 		/// <summary>Removed after this many ticks.</summary>
@@ -60,6 +63,11 @@ namespace MercyMode.Battle
 
 		public void Update()
 		{
+			if (StartDelay > 0)
+			{
+				StartDelay--;
+				return;
+			}
 			OnUpdate?.Invoke(this);
 			Velocity += Acceleration;
 			Position += Velocity;
@@ -75,6 +83,8 @@ namespace MercyMode.Battle
 
 		public void Draw()
 		{
+			if (Waiting)
+				return;
 			if (OnDraw != null)
 			{
 				OnDraw(this);

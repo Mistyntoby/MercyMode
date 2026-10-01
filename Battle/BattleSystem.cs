@@ -18,9 +18,9 @@ using static MercyMode.Battle.BattleConstants;
 namespace MercyMode.Battle
 {
 	/// <summary>
-	/// The Deltarune-style battle screen. Starts when the player touches or hits a boss that has a
-	/// <see cref="BossBattle"/>, freezes the world, and runs player turns and enemy turns until the boss is
-	/// spared or defeated (or the player dies).
+	/// The Deltarune-style battle screen. Starts when the player touches or hits an enemy that has an
+	/// <see cref="Battle.Encounter"/> (see <see cref="EncounterRegistry"/>), freezes the world, and runs player
+	/// turns and enemy turns until the enemy is spared or defeated (or the player dies).
 	/// </summary>
 	public class BattleSystem : ModSystem
 	{
@@ -37,11 +37,14 @@ namespace MercyMode.Battle
 		private Phase phase = Phase.None;
 		private int phaseTicks;
 		private int time;
-		private BossBattle encounter;
+		private Encounter encounter;
 		private NPC boss;
 		public NPC Boss => boss;
 		public Player Player => Main.LocalPlayer;
-		public BossBattle Encounter => encounter;
+		public Encounter Encounter => encounter;
+		/// <summary>No new battle right after one ends, so you can walk away from a crowd.</summary>
+		private uint lastEndTick;
+		private const int GraceTicks = 150;
 
 		private Choice menuChoice;
 		private Choice pendingChoice;
@@ -114,27 +117,29 @@ namespace MercyMode.Battle
 
 		// ================================================================== lifecycle
 
-		public static bool CanStart(NPC npc, Player player)
+		public static bool CanStart(NPC npc, Player player, bool ignoreGrace = false)
 		{
 			if (Active || !MercyMode.IsSingleplayer || player.whoAmI != Main.myPlayer || player.dead)
 				return false;
 			var config = ModContent.GetInstance<MercyConfig>();
 			if (config != null && !config.TurnBasedBattles)
 				return false;
-			NPC root = MercyMode.Root(npc);
-			return root.active && root.boss && BossBattle.HasBattle(root);
+			if (!ignoreGrace && Main.GameUpdateCount - Instance.lastEndTick < GraceTicks && Instance.lastEndTick != 0)
+				return false;
+			return EncounterRegistry.Eligible(EncounterRegistry.ResolveRoot(npc));
 		}
 
 		public static void TryStart(NPC npc, Player player, string reason = "")
 		{
-			if (CanStart(npc, player))
-				Instance.Start(MercyMode.Root(npc), reason);
+			bool command = reason == "command";
+			if (CanStart(npc, player, command))
+				Instance.Start(EncounterRegistry.ResolveRoot(npc), reason);
 		}
 
 		private void Start(NPC root, string reason)
 		{
 			boss = root;
-			encounter = BossBattle.Create(root);
+			encounter = EncounterRegistry.Create(root);
 			time = 0;
 			battleOver = false;
 			defending = false;
@@ -170,12 +175,13 @@ namespace MercyMode.Battle
 
 			SetText(encounter.EncounterText);
 			SetPhase(Phase.Intro);
-			Mod.Logger.Info($"Battle started with {boss.FullName} ({boss.life}/{boss.lifeMax} HP) by {reason}");
+			Mod.Logger.Info($"Battle started with {boss.FullName} as {encounter.GetType().Name} ({encounter.Life}/{encounter.LifeMax} HP) by {reason}");
 		}
 
 		private void End()
 		{
-			Mod.Logger.Info($"Battle ended (boss active: {boss?.active}, player dead: {Player.dead})");
+			Mod.Logger.Info($"Battle ended (enemy alive: {encounter?.Alive}, player dead: {Player.dead})");
+			lastEndTick = (uint)Main.GameUpdateCount;
 			// Put everything back in motion where it was
 			foreach (var (i, (type, vel)) in npcVelocities)
 			{
@@ -226,7 +232,7 @@ namespace MercyMode.Battle
 		{
 			phase = p;
 			phaseTicks = 0;
-			Mod.Logger.Debug($"Battle phase {p} (turn {encounter?.Turn}, boss {boss?.life}/{boss?.lifeMax}, mercy {encounter?.Mercy:0}, TP {Player.GetModPlayer<MercyPlayer>().TP:0.0}, HP {Player.statLife})");
+			Mod.Logger.Debug($"Battle phase {p} (turn {encounter?.Turn}, boss {encounter?.Life}/{encounter?.LifeMax}, mercy {encounter?.Mercy:0}, TP {Player.GetModPlayer<MercyPlayer>().TP:0.0}, HP {Player.statLife})");
 		}
 
 		private void SetText(string s)
@@ -253,8 +259,25 @@ namespace MercyMode.Battle
 
 		// ================================================================== update
 
+		private int queuedNpc = -1;
+		private int queuedTicks;
+
+		/// <summary>Starts a battle with this NPC after a few ticks (test command).</summary>
+		public static void QueueStart(NPC npc, int ticks)
+		{
+			Instance.queuedNpc = npc.whoAmI;
+			Instance.queuedTicks = ticks;
+		}
+
 		public override void PostUpdateEverything()
 		{
+			if (queuedNpc >= 0 && --queuedTicks <= 0)
+			{
+				NPC q = Main.npc[queuedNpc];
+				queuedNpc = -1;
+				if (q.active)
+					TryStart(q, Player, "command");
+			}
 			if (phase == Phase.None)
 				return;
 
@@ -263,8 +286,8 @@ namespace MercyMode.Battle
 				End();
 				return;
 			}
-			// Boss gone without us ending the battle (despawned, killed some other way)
-			if (!boss.active && phase != Phase.Outro && phase != Phase.Message && phase != Phase.FightResult)
+			// Enemy gone without us ending the battle (despawned, killed some other way)
+			if (!encounter.Alive && phase != Phase.Outro && phase != Phase.Message && phase != Phase.FightResult)
 			{
 				battleOver = true;
 				StartOutro();
@@ -348,8 +371,12 @@ namespace MercyMode.Battle
 					tpCurrent = tpApparent;
 			}
 
+			// Step toward the target without overshooting (stepping past it made the veil and enemy flicker 0.9/1.0)
 			float fadeTarget = phase == Phase.Outro ? 0f : 1f;
-			screenFade = MathHelper.Clamp(screenFade + (fadeTarget > screenFade ? 0.1f : -0.1f), 0f, 1f);
+			if (screenFade < fadeTarget)
+				screenFade = Math.Min(fadeTarget, screenFade + 0.1f);
+			else if (screenFade > fadeTarget)
+				screenFade = Math.Max(fadeTarget, screenFade - 0.1f);
 		}
 
 		// ---- input ----
@@ -591,7 +618,7 @@ namespace MercyMode.Battle
 			if (encounter.Mercy >= 100f)
 			{
 				battleOver = true;
-				MercyGlobalNPC.Spare(boss);
+				encounter.Spare();
 				ShowMessages(new[] { spared }, StartOutro);
 				return;
 			}
@@ -669,7 +696,8 @@ namespace MercyMode.Battle
 			var config = ModContent.GetInstance<MercyConfig>();
 			float mult = config?.FightDamageMultiplier ?? 1f;
 			int raw = (int)Math.Round(AttackStat() * boltPoints / DamagePointsDivisor * mult);
-			int dealt = boss.SimpleStrikeNPC(raw, Player.direction, crit: false, knockBack: 0f);
+			NPC target = encounter.StrikeTarget();
+			int dealt = target.SimpleStrikeNPC(raw, Player.direction, crit: false, knockBack: 0f);
 
 			Sfx(boltPoints == 150 ? "crit" : "slash");
 			Sfx("damage");
@@ -692,7 +720,7 @@ namespace MercyMode.Battle
 			if (fightFade < 1f)
 				return;
 
-			if (!boss.active || boss.life <= 0)
+			if (!encounter.Alive)
 			{
 				battleOver = true;
 				ShowMessages(new[] { $"* YOU WON!\n* {encounter.Name} was defeated." }, StartOutro);
@@ -741,7 +769,7 @@ namespace MercyMode.Battle
 		public Rectangle Box => new((int)(BoxCenterX - BoxSize / 2f), (int)(BoxCenterY - BoxSize / 2f), BoxSize, BoxSize);
 		public Vector2 SoulCenter => soul + new Vector2(SoulSize / 2f);
 		public void Spawn(Bullet b) => Bullets.Add(b);
-		public bool BossInSecondPhase => boss.life < boss.lifeMax / 2;
+		public bool BossInSecondPhase => encounter.LifeRatio < 0.5f;
 
 		private Vector2 SoulRestPosition => new Vector2(BoxCenterX, BoxCenterY) - new Vector2(SoulSize / 2f);
 
@@ -821,7 +849,7 @@ namespace MercyMode.Battle
 
 		private void HitSoul(Bullet b)
 		{
-			int damage = Math.Max(1, (int)Math.Round(boss.damage * b.DamageMult));
+			int damage = Math.Max(1, (int)Math.Round(encounter.Damage * b.DamageMult));
 			Player.immune = false;
 			Player.immuneTime = 0;
 			HurtingPlayer = true;
@@ -995,23 +1023,25 @@ namespace MercyMode.Battle
 
 		private void DrawEnemy()
 		{
-			if (boss == null || !boss.active)
+			NPC npc = encounter?.DrawNpc;
+			if (npc == null || !npc.active)
 				return;
-			Main.instance.LoadNPC(boss.type);
-			Texture2D tex = TextureAssets.Npc[boss.type].Value;
-			Rectangle frame = boss.frame.Width > 0 ? boss.frame : new Rectangle(0, 0, tex.Width, tex.Height / Math.Max(1, Main.npcFrameCount[boss.type]));
+			Main.instance.LoadNPC(npc.type);
+			Texture2D tex = TextureAssets.Npc[npc.type].Value;
+			Rectangle frame = npc.frame.Width > 0 && npc.frame.Height > 0 ? npc.frame : new Rectangle(0, 0, tex.Width, tex.Height / Math.Max(1, Main.npcFrameCount[npc.type]));
+			float drawScale = encounter.DrawScale(frame);
 			Vector2 pos = encounter.DrawCenter + new Vector2(0, (float)Math.Sin(time / 20f) * 4f);
 			if (enemyShake > 0)
 				pos.X += (enemyShake % 4 < 2 ? 1 : -1) * enemyShake / 2f;
 			float alpha = screenFade;
 			bool selecting = phase == Phase.EnemySelect || phase == Phase.ActSelect;
-			Color color = Color.White * alpha;
-			DrDraw.Sb.Draw(tex, pos, frame, color, encounter.DrawRotation(time), frame.Size() / 2f, encounter.DrawScale, SpriteEffects.None, 0f);
+			Color color = encounter.DrawColor(npc) * alpha;
+			DrDraw.Sb.Draw(tex, pos, frame, color, encounter.DrawRotation(time), frame.Size() / 2f, drawScale, SpriteEffects.None, 0f);
 			if (selecting)
 			{
 				// Deltarune flashes the targeted enemy white
 				float flash = (float)(Math.Sin(time / 5f) * 0.5 + 0.5) * 0.6f;
-				DrDraw.Sb.Draw(tex, pos, frame, new Color(255, 255, 255, 0) * flash, encounter.DrawRotation(time), frame.Size() / 2f, encounter.DrawScale, SpriteEffects.None, 0f);
+				DrDraw.Sb.Draw(tex, pos, frame, new Color(255, 255, 255, 0) * flash, encounter.DrawRotation(time), frame.Size() / 2f, drawScale, SpriteEffects.None, 0f);
 			}
 
 			if (slashTimer >= 0)
@@ -1237,7 +1267,7 @@ namespace MercyMode.Battle
 			Color headerGray = new(128, 128, 128);
 			DrDraw.Text("HP", 424, y - 14, Color.White, DrDraw.SmallFont);
 			DrDraw.Text("MERCY", 524, y - 14, Color.White, DrDraw.SmallFont);
-			float hp = MathHelper.Clamp(boss.life / (float)boss.lifeMax, 0f, 1f);
+			float hp = MathHelper.Clamp(encounter.LifeRatio, 0f, 1f);
 			DrDraw.Rect(420, y + 5, 81, 16, new Color(128, 0, 0));
 			DrDraw.Rect(420, y + 5, (float)Math.Ceiling(hp * 81), 16, new Color(0, 255, 0));
 			DrDraw.Text($"{(int)Math.Ceiling(hp * 100)}%", 424, y + 5, Color.White, DrDraw.SmallFont);

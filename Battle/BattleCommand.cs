@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.ID;
@@ -5,48 +6,69 @@ using Terraria.ModLoader;
 
 namespace MercyMode.Battle
 {
-	/// <summary>Testing helper: spawns the Eye of Cthulhu next to you and opens the battle right away.</summary>
+	/// <summary>Testing helper: spawns enemies next to you and opens battles right away.</summary>
 	public class BattleCommand : ModCommand
 	{
 		public override CommandType Type => CommandType.Chat;
 		public override string Command => "mmbattle";
-		public override string Usage => "/mmbattle [spawn [dx dy] | kit | night | tp <0-100> | bosshp <n>]";
-		public override string Description => "Spawn the Eye of Cthulhu and start a Mercy Mode battle (for testing)";
+		public override string Usage => "/mmbattle [npc <id|name> | spawn [dx dy] | spawnnpc <id|name> | end | heal | mercy <n> | kit | night | tp <0-100> | bosshp <n>]";
+		public override string Description => "Start Mercy Mode battles for testing (no arguments: Eye of Cthulhu)";
 
 		public override void Action(CommandCaller caller, string input, string[] args)
 		{
 			Player player = caller.Player;
-			if (args.Length == 2 && args[0] == "tp" && float.TryParse(args[1], out float tp))
+			string cmd = args.Length > 0 ? args[0].ToLowerInvariant() : "";
+
+			switch (cmd)
 			{
-				player.GetModPlayer<MercyPlayer>().TP = MathHelper.Clamp(tp, 0f, 100f);
-				caller.Reply($"* TP set to {tp}%", MercyMode.TPOrange);
-				return;
+				case "tp" when args.Length == 2 && float.TryParse(args[1], out float tp):
+					player.GetModPlayer<MercyPlayer>().TP = MathHelper.Clamp(tp, 0f, 100f);
+					caller.Reply($"* TP set to {tp}%", MercyMode.TPOrange);
+					return;
+				case "mercy" when args.Length == 2 && float.TryParse(args[1], out float mercy) && BattleSystem.Active:
+					BattleSystem.Instance.Encounter.Mercy = mercy;
+					caller.Reply($"* MERCY set to {mercy}%.", MercyMode.MercyYellow);
+					return;
+				case "heal":
+					player.statLife = player.statLifeMax2;
+					caller.Reply("* HP restored.", MercyMode.TextWhite);
+					return;
+				case "night":
+					Main.dayTime = false;
+					Main.time = 0;
+					caller.Reply("* It's night now.", MercyMode.TextWhite);
+					return;
+				case "kit":
+					var src = player.GetSource_FromThis();
+					player.QuickSpawnItem(src, ItemID.LesserHealingPotion, 5);
+					player.QuickSpawnItem(src, ItemID.HealingPotion, 3);
+					player.QuickSpawnItem(src, ItemID.Mushroom, 2);
+					player.QuickSpawnItem(src, ItemID.WoodenBow, 1);
+					player.QuickSpawnItem(src, ItemID.WoodenArrow, 100);
+					caller.Reply("* Got some healing items.", MercyMode.TextWhite);
+					return;
+				case "bosshp" when args.Length == 2 && int.TryParse(args[1], out int hp):
+					if (BattleSystem.Active)
+					{
+						foreach (NPC m in BattleSystem.Instance.Encounter.Members())
+							m.life = Math.Clamp(hp, 1, m.lifeMax);
+					}
+					else
+					{
+						foreach (NPC n in Main.ActiveNPCs)
+							if (n.type == NPCID.EyeofCthulhu)
+								n.life = Math.Clamp(hp, 1, n.lifeMax);
+					}
+					caller.Reply($"* Enemy HP set to {hp}.", MercyMode.TextWhite);
+					return;
+				case "end":
+					if (BattleSystem.Active)
+						foreach (NPC m in BattleSystem.Instance.Encounter.Members())
+							m.active = false;
+					caller.Reply("* Battle ended.", MercyMode.Gray);
+					return;
 			}
-			if (args.Length == 1 && args[0] == "night")
-			{
-				Main.dayTime = false;
-				Main.time = 0;
-				caller.Reply("* It's night now.", MercyMode.TextWhite);
-				return;
-			}
-			if (args.Length == 1 && args[0] == "kit")
-			{
-				player.QuickSpawnItem(player.GetSource_FromThis(), ItemID.LesserHealingPotion, 5);
-				player.QuickSpawnItem(player.GetSource_FromThis(), ItemID.HealingPotion, 3);
-				player.QuickSpawnItem(player.GetSource_FromThis(), ItemID.Mushroom, 2);
-				player.QuickSpawnItem(player.GetSource_FromThis(), ItemID.WoodenBow, 1);
-				player.QuickSpawnItem(player.GetSource_FromThis(), ItemID.WoodenArrow, 100);
-				caller.Reply("* Got some healing items.", MercyMode.TextWhite);
-				return;
-			}
-			if (args.Length == 2 && args[0] == "bosshp" && int.TryParse(args[1], out int hp))
-			{
-				foreach (NPC n in Main.ActiveNPCs)
-					if (n.type == NPCID.EyeofCthulhu)
-						n.life = System.Math.Clamp(hp, 1, n.lifeMax);
-				caller.Reply($"* Eye of Cthulhu HP set to {hp}.", MercyMode.TextWhite);
-				return;
-			}
+
 			if (BattleSystem.Active)
 			{
 				caller.Reply("* A battle is already going.", MercyMode.Gray);
@@ -58,6 +80,26 @@ namespace MercyMode.Battle
 				return;
 			}
 
+			if ((cmd == "npc" || cmd == "spawnnpc") && args.Length >= 2)
+			{
+				int type = ParseNpc(string.Join(" ", args, 1, args.Length - 1));
+				if (type <= 0)
+				{
+					caller.Reply("* No NPC with that id or name.", MercyMode.Gray);
+					return;
+				}
+				NPC spawned = SpawnNear(player, type, 220, -60);
+				if (cmd == "npc")
+				{
+					// Worms, the Brain and others build their parts on their first AI ticks; start a moment later
+					BattleSystem.QueueStart(spawned, 20);
+					caller.Reply($"* Spawned {spawned.FullName}, starting the battle...", MercyMode.TextWhite);
+				}
+				else
+					caller.Reply($"* Spawned {spawned.FullName}.", MercyMode.TextWhite);
+				return;
+			}
+
 			NPC eye = null;
 			foreach (NPC n in Main.ActiveNPCs)
 				if (n.type == NPCID.EyeofCthulhu)
@@ -66,17 +108,51 @@ namespace MercyMode.Battle
 			{
 				int dx = args.Length >= 3 && int.TryParse(args[1], out int x) ? x : 300;
 				int dy = args.Length >= 3 && int.TryParse(args[2], out int y) ? y : -200;
-				int i = NPC.NewNPC(player.GetSource_FromThis(), (int)player.Center.X + dx, (int)player.Center.Y + dy, NPCID.EyeofCthulhu);
-				eye = Main.npc[i];
+				eye = SpawnNear(player, NPCID.EyeofCthulhu, dx, dy);
 			}
-			if (args.Length >= 1 && args[0] == "spawn")
+			if (cmd == "spawn")
 			{
 				caller.Reply("* The Eye of Cthulhu is here. Touch or hit it to start the battle.", MercyMode.TextWhite);
 				return;
 			}
-			BattleSystem.TryStart(eye, player, "command");
+			Begin(caller, eye, player);
+		}
+
+		private static void Begin(CommandCaller caller, NPC npc, Player player)
+		{
+			BattleSystem.TryStart(npc, player, "command");
 			if (!BattleSystem.Active)
-				caller.Reply("* Couldn't start the battle (turned off in the config?).", MercyMode.Gray);
+				caller.Reply($"* Couldn't start a battle with {npc.FullName} (turned off in the config, or not eligible).", MercyMode.Gray);
+		}
+
+		private static NPC SpawnNear(Player player, int type, int dx, int dy)
+		{
+			// Worms and multi-part bosses spawn their own pieces; Wall of Flesh needs the special spawner
+			if (type == NPCID.WallofFlesh)
+			{
+				NPC.SpawnWOF(player.Center + new Vector2(dx, 0));
+				if (Main.wofNPCIndex >= 0 && Main.npc[Main.wofNPCIndex].active)
+					return Main.npc[Main.wofNPCIndex];
+				// SpawnWOF only works in the Underworld; for testing elsewhere, spawn the mouth directly
+			}
+			int i = NPC.NewNPC(player.GetSource_FromThis(), (int)player.Center.X + dx, (int)player.Center.Y + dy, type);
+			return Main.npc[i];
+		}
+
+		private static int ParseNpc(string text)
+		{
+			if (int.TryParse(text, out int id))
+				return id > 0 && id < NPCLoader.NPCCount ? id : 0;
+			string want = text.Replace(" ", "").ToLowerInvariant();
+			for (int t = 1; t < NPCLoader.NPCCount; t++)
+			{
+				string name = Lang.GetNPCNameValue(t).Replace(" ", "").ToLowerInvariant();
+				if (name == want)
+					return t;
+			}
+			if (NPCID.Search.TryGetId(text, out int byInternal))
+				return byInternal;
+			return 0;
 		}
 	}
 }

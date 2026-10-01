@@ -1,6 +1,7 @@
 Spare bosses instead of killing them. A Deltarune-inspired fan mod.
 
-Turn-based battles (Eye of Cthulhu for now): touch or hit the boss and the world freezes into a Deltarune-style battle.
+Turn-based battles: touch or hit a boss or an enemy and the world freezes into a Deltarune-style battle.
+Custom battles for the Eye of Cthulhu, King Slime, Eater of Worlds, Brain of Cthulhu, Queen Bee, Skeletron, Deerclops and the Wall of Flesh; every other boss (modded too) gets a generic one. Regular enemies get battles by type: slimes, walkers like zombies and skeletons, fliers, casters, worms and everything else (can be turned off in the config).
 - FIGHT: press Z as the bolt crosses the line. The closer, the harder you hit.
 - ACT: boss-specific actions that raise MERCY. Heal Prayer costs 32% TP.
 - ITEM: drink healing potions from your inventory.
