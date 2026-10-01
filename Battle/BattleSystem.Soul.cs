@@ -58,8 +58,12 @@ namespace MercyMode.Battle
 		private const float ShieldDistance = 19f;
 		private const float ShieldWidth = 30f;
 		private const float ShieldThickness = 6f;
-		// Purple: three strings
+		// Purple: three strings. They stretch out from the SOUL as the turn starts (with a twang), wobble where the SOUL
+		// lands, and pull back into it as the turn ends
 		public const int PurpleStrings = 3;
+		private const int StringsInTicks = 14, StringsOutTicks = 14;
+		private const float PluckAmplitude = 4f;
+		private readonly int[] stringPlucked = new int[PurpleStrings];
 		// Yellow, from Deltarune's obj_heart yellow mode / obj_yheart_shot (30 fps numbers halved per tick): shots fly
 		// right at 8 px/tick, at most 3 at once; Z held 40+ ticks charges a big shot (4 px/tick, speeding up, 4 damage)
 		private const float YellowShotSpeed = 8f;
@@ -85,6 +89,17 @@ namespace MercyMode.Battle
 		private int purpleString = 1;
 		private int zHold, chargeDelay;
 		private bool chargeSounded;
+		private Microsoft.Xna.Framework.Audio.SoundEffectInstance chargeLoop;
+		private float chargeVolume;
+
+		private void StopChargeLoop()
+		{
+			if (chargeLoop == null)
+				return;
+			chargeLoop.Stop();
+			chargeLoop.Dispose();
+			chargeLoop = null;
+		}
 		private readonly List<YellowShot> yellowShots = new();
 		/// <summary>Bullets the yellow SOUL has hit but not broken yet, and how many more hits they take.</summary>
 		private readonly Dictionary<Bullet, int> toughness = new();
@@ -120,8 +135,11 @@ namespace MercyMode.Battle
 			shieldAngle = -MathHelper.PiOver2;
 			shieldFlash = 0;
 			purpleString = PurpleStrings / 2;
+			for (int i = 0; i < PurpleStrings; i++)
+				stringPlucked[i] = -1000;
 			zHold = 0;
 			chargeDelay = 0;
+			StopChargeLoop();
 			chargeSounded = false;
 			yellowShots.Clear();
 			toughness.Clear();
@@ -196,10 +214,20 @@ namespace MercyMode.Battle
 				case SoulMode.Purple:
 				{
 					soul.X = MathHelper.Clamp(soul.X + px, minX, maxX);
+					if (phaseTicks == 1)
+					{
+						// The strings stretch out of the SOUL: a twang, and they all quiver
+						AttackSfx.Vanilla(SoundID.Item26, 0.45f, -0.35f);
+						for (int i = 0; i < PurpleStrings; i++)
+							stringPlucked[i] = (int)time + i * 2;
+					}
+					int was = purpleString;
 					if (Pressed(Keys.Up) && purpleString > 0)
 						purpleString--;
 					if (Pressed(Keys.Down) && purpleString < PurpleStrings - 1)
 						purpleString++;
+					if (purpleString != was)
+						stringPlucked[purpleString] = (int)time + 3; // it wobbles as the SOUL lands
 					float targetY = PurpleStringY(purpleString) - SoulSize / 2f;
 					soul.Y += (targetY - soul.Y) * 0.45f;
 					if (Math.Abs(targetY - soul.Y) < 0.3f)
@@ -256,19 +284,32 @@ namespace MercyMode.Battle
 			bool released = !Held(Keys.Z) && zHold > 0;
 			if (Pressed(Keys.Z) || released && zHold >= 10 && zHold <= 39)
 			{
-				if (yellowShots.Count(s => !s.Big) < YellowMaxShots && chargeDelay == 0)
+				// instance_number(obj_yheart_shot) < 3: big shots count too
+				if (yellowShots.Count < YellowMaxShots && chargeDelay == 0)
 				{
 					yellowShots.Add(new YellowShot { Pos = SoulCenter, Vel = new Vector2(YellowShotSpeed, 0f) });
 					Sfx("attack");
 				}
 			}
+			// obj_heart yellow: the charge hum starts at z_hold 20, fading in to 0.3 and rising in pitch (0.1 -> 1.1 by 40)
 			if (zHold == 20 && !chargeSounded)
 			{
 				chargeSounded = true;
-				DeltaruneAssets.Play("chargeshot", SoundID.Item13 with { Volume = 0.4f });
+				chargeLoop = DeltaruneAssets.CreateLoop("chargeshot", out chargeVolume);
+				if (chargeLoop != null)
+					chargeLoop.Play();
+				else
+					AttackSfx.Vanilla(SoundID.Item13, 0.4f);
+			}
+			if (chargeLoop != null && zHold >= 20)
+			{
+				float pitch = 0.1f + Math.Min(20, zHold - 20) / 20f; // GameMaker's pitch is a speed multiplier
+				chargeLoop.Pitch = MathHelper.Clamp((float)Math.Log2(pitch), -1f, 1f);
+				chargeLoop.Volume = MathHelper.Clamp(chargeVolume * 0.3f * Math.Min(1f, (zHold - 20) / 40f), 0f, 1f);
 			}
 			if (released && zHold >= YellowChargeTicks)
 			{
+				StopChargeLoop();
 				DeltaruneAssets.Play("chargefire", SoundID.Item12 with { Volume = 0.8f, Pitch = -0.3f });
 				yellowShots.Add(new YellowShot
 				{
@@ -279,7 +320,10 @@ namespace MercyMode.Battle
 			}
 			zHold = Held(Keys.Z) ? zHold + 1 : 0;
 			if (zHold == 0)
+			{
 				chargeSounded = false;
+				StopChargeLoop();
+			}
 
 			Rectangle box = Box;
 			for (int i = yellowShots.Count - 1; i >= 0; i--)
@@ -306,6 +350,7 @@ namespace MercyMode.Battle
 					if (b.Dead || !b.Harmful || b.Waiting || !b.DestroyOnHit || b.HitTest != null || s.Hit.Contains(b) || !b.Hitbox.Intersects(shot))
 						continue;
 					s.Hit.Add(b);
+					AddEffect(new SpriteAnim("spr_yheart_shot_hit", s.Pos, 0.25f, s.Big ? 3f : 1f));
 					if (!toughness.TryGetValue(b, out int left))
 						left = b.Toughness > 0 ? b.Toughness : Math.Max(b.HitSize.X, b.HitSize.Y) >= 18f ? 3 : 1;
 					left -= s.Damage;
@@ -335,18 +380,59 @@ namespace MercyMode.Battle
 			}
 		}
 
+		/// <summary>
+		/// The purple SOUL's strings: out from the SOUL across the box at the start of the turn, back into it at the end
+		/// (drawn even after the SOUL has flown home, so they finish pulling in), each a plucked wave that settles.
+		/// </summary>
+		private void DrawPurpleStrings()
+		{
+			if (soulMode != SoulMode.Purple)
+				return;
+			float extend;
+			if (phase == Phase.EnemyTurn)
+				extend = Ease(Math.Min(1f, phaseTicks / (float)StringsInTicks));
+			else if (phase == Phase.EnemyOutro)
+				extend = 1f - Ease(Math.Min(1f, phaseTicks / (float)StringsOutTicks));
+			else
+				return;
+			if (extend <= 0f)
+				return;
+			Rectangle box = Box;
+			float cx = phase == Phase.EnemyOutro ? soulFrom.X + SoulSize / 2f : SoulCenter.X;
+			Color c = SoulMode.Purple.Color() * (0.85f * Math.Min(1f, extend * 1.5f));
+			const int segments = 16;
+			for (int i = 0; i < PurpleStrings; i++)
+			{
+				float y = PurpleStringY(i);
+				float left = MathHelper.Lerp(cx, box.Left + 3, extend), right = MathHelper.Lerp(cx, box.Right - 3, extend);
+				float since = (float)time - stringPlucked[i];
+				float amp = since < 0f ? 0f : PluckAmplitude * (float)Math.Pow(0.9, since);
+				Vector2 prev = new(left, y);
+				for (int k = 1; k <= segments; k++)
+				{
+					float u = k / (float)segments;
+					float x = MathHelper.Lerp(left, right, u);
+					// A standing wave between the two ends
+					float off = amp * (float)Math.Sin(u * MathHelper.Pi) * (float)Math.Cos(since * 1.3f);
+					var next = new Vector2(x, y + off);
+					DrDraw.Line(prev, next, 2f, c);
+					prev = next;
+				}
+				// Little knots where the strings meet the box
+				if (extend >= 1f)
+				{
+					DrDraw.Rect(left - 2f, y - 2f, 4f, 4f, c);
+					DrDraw.Rect(right - 2f, y - 2f, 4f, 4f, c);
+				}
+			}
+		}
+
+		private static float Ease(float t) => 1f - (1f - t) * (1f - t) * (1f - t);
+
 		/// <summary>The SOUL in its mode's colour, with the mode's extras (strings, shield, shots).</summary>
 		private void DrawSoulMode(int frame, float alpha)
 		{
 			Rectangle box = Box;
-			if (soulMode == SoulMode.Purple)
-			{
-				for (int i = 0; i < PurpleStrings; i++)
-				{
-					float y = PurpleStringY(i);
-					DrDraw.Line(new Vector2(box.Left + 3, y), new Vector2(box.Right - 3, y), 2f, SoulMode.Purple.Color() * 0.85f * alpha);
-				}
-			}
 			if (soulMode == SoulMode.Yellow)
 				foreach (YellowShot s in yellowShots)
 				{
@@ -370,11 +456,26 @@ namespace MercyMode.Battle
 			else if (soulMode == SoulMode.Yellow && DeltaruneAssets.Sprite("spr_yellowheart") is DrSprite y)
 			{
 				// Deltarune's own yellow SOUL; frame 2 once a big shot is charged, with its pulsing glow
+				// The charge: four sparks spiral in from 35 px (spr_yheart_charge), then the SOUL pulses
+				if (zHold >= 15)
+				{
+					float zc = Math.Min(35, zHold - 15);
+					for (int i = 0; i < 4; i++)
+					{
+						float rot = MathHelper.ToRadians(i * 90f + zc * 5f);
+						var at = soul + new Vector2(9f, 10f) - new Vector2((float)Math.Sin(rot), (float)Math.Cos(rot)) * (35f - zc);
+						float sc = 4f - zc * 2f / 35f;
+						if (!DrDraw.Sprite("spr_yheart_charge", 0, at.X, at.Y, Color.White, sc, 0f, Math.Min(1f, zc / 5f)))
+							DrDraw.Rect(at.X - sc, at.Y - sc, sc * 2f, sc * 2f, SoulMode.Yellow.Color() * Math.Min(1f, zc / 5f));
+					}
+				}
 				int charge = zHold - 35;
 				if (charge >= 0)
 				{
-					float k = Math.Abs((float)Math.Sin(charge / 20f));
+					float k = Math.Abs((float)Math.Sin(charge / 10f));
 					DrDraw.Sb.Draw(y.Frame(0), soul - new Vector2(k * 10f), null, Color.White * 0.3f, 0f, y.Origin, 1f + k, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
+					k = Math.Abs((float)Math.Sin(charge / 14f));
+					DrDraw.Sb.Draw(y.Frame(0), soul - new Vector2(2f + k * 10f), null, Color.White * 0.3f, 0f, y.Origin, 1.2f + k, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
 				}
 				DrDraw.Sb.Draw(y.Frame(zHold >= YellowChargeTicks ? 2 : 0), soul, null, Color.White * alpha, 0f, y.Origin, 1f, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
 			}

@@ -79,7 +79,7 @@ namespace MercyMode.Battle
 		public bool Alive => Members().Any(m => m.active && m.life > 0);
 
 		/// <summary>Members with their own health pool (worm segments share their head's).</summary>
-		private IEnumerable<NPC> HealthPools() => Members().Where(m => m.active && (m.realLife < 0 || m.realLife == m.whoAmI));
+		public IEnumerable<NPC> HealthPools() => Members().Where(m => m.active && (m.realLife < 0 || m.realLife == m.whoAmI));
 
 		public int Life => HealthPools().Sum(m => Math.Max(0, m.life));
 
@@ -106,6 +106,35 @@ namespace MercyMode.Battle
 				return d > 0 ? d : 10;
 			}
 		}
+
+		// ---- breakable parts ----
+
+		/// <summary>
+		/// FIGHT picks a part (Skeletron's hands or head, either Twin...) instead of the boss as a whole. Each part has
+		/// its own HP; breaking one takes it out of the fight, and breaking <see cref="CorePart"/> ends it.
+		/// </summary>
+		public virtual bool TargetableParts => false;
+		/// <summary>The part FIGHT is aimed at (null: <see cref="StrikeTarget"/> decides).</summary>
+		public NPC ChosenPart;
+		/// <summary>The part whose loss ends the fight (the rest go with it); null when every part has to go (the Twins).</summary>
+		public virtual NPC CorePart => Npc.active ? Npc : null;
+		public virtual string PartName(NPC part) => Lang.GetNPCNameValue(part.type).ToUpperInvariant();
+		/// <summary>Lets guarded parts be hit once what guards them is gone (the AI that would do it is paused).</summary>
+		public virtual void UnlockParts() { }
+
+		public static bool CanHit(NPC n) => n != null && n.active && n.life > 0 && !n.dontTakeDamage;
+
+		/// <summary>The parts FIGHT can choose from: the core first, then by name.</summary>
+		public List<NPC> TargetParts()
+		{
+			UnlockParts();
+			NPC core = CorePart;
+			return HealthPools().Where(m => m.life > 0).Distinct()
+				.OrderBy(m => m == core ? 0 : 1).ThenBy(PartName).ToList();
+		}
+
+		/// <summary>Left or right of the core, for naming paired parts.</summary>
+		protected string Side(NPC part) => part.Center.X < (CorePart ?? Npc).Center.X ? "LEFT" : "RIGHT";
 
 		/// <summary>The NPC that FIGHT hits. Skips invulnerable parts while something else can be hurt.</summary>
 		public virtual NPC StrikeTarget()

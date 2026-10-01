@@ -177,6 +177,8 @@ namespace MercyMode.Battle
 			fightWeaponSlot = -1;
 			fightWeapon = null;
 			heroRecoil = 0f;
+			partScreen.Clear();
+			slashPart = -1;
 			// The party and the enemy fly in from where they stood in the world
 			CaptureWorldPositions();
 			tpBarX = -40f;
@@ -260,6 +262,7 @@ namespace MercyMode.Battle
 			music?.Stop();
 			music?.Dispose();
 			music = null;
+			StopChargeLoop();
 			AmbienceMute.Restore();
 			ReleasePlayerHeadPortrait();
 			Bullets.Clear();
@@ -316,6 +319,7 @@ namespace MercyMode.Battle
 				music?.Stop();
 				music?.Dispose();
 				music = null;
+				StopChargeLoop();
 				phase = Phase.None;
 				encounter = null;
 				boss = null;
@@ -327,6 +331,12 @@ namespace MercyMode.Battle
 
 		private void SetPhase(Phase p)
 		{
+			// The yellow SOUL's charge hum only lasts as long as the turn
+			if (p != Phase.EnemyTurn)
+			{
+				StopChargeLoop();
+				zHold = 0;
+			}
 			phase = p;
 			phaseTicks = 0;
 			Mod.Logger.Debug($"Battle phase {p} (turn {encounter?.Turn}, boss {encounter?.Life}/{encounter?.LifeMax}, mercy {encounter?.Mercy:0}, TP {Player.GetModPlayer<MercyPlayer>().TP:0.0}, HP {Player.statLife})");
@@ -651,28 +661,79 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>The enemy list, with the cursor on the current target.</summary>
+		/// <summary>One row of the enemy list: an enemy, or one part of a boss when FIGHT can pick parts.</summary>
+		private readonly struct TargetRow
+		{
+			public readonly BattleEnemy Enemy;
+			public readonly NPC Part;
+
+			public TargetRow(BattleEnemy enemy, NPC part)
+			{
+				Enemy = enemy;
+				Part = part;
+			}
+
+			public bool Locked => Part != null && !Encounter.CanHit(Part);
+		}
+
+		/// <summary>The rows for the current command: parts of breakable bosses for FIGHT, whole enemies otherwise.</summary>
+		private List<TargetRow> TargetRows()
+		{
+			var rows = new List<TargetRow>();
+			foreach (BattleEnemy en in LivingEnemies)
+			{
+				if (pendingChoice == Choice.Fight && en.E.TargetableParts)
+				{
+					List<NPC> parts = en.E.TargetParts();
+					if (parts.Count > 0)
+					{
+						foreach (NPC p in parts)
+							rows.Add(new TargetRow(en, p));
+						continue;
+					}
+				}
+				rows.Add(new TargetRow(en, null));
+			}
+			return rows;
+		}
+
+		/// <summary>The enemy list, with the cursor on the current target (and part).</summary>
 		private void OpenEnemySelect()
 		{
 			RetargetIfNeeded();
-			listIndex = Math.Max(0, LivingEnemies.IndexOf(targetEnemy));
+			List<TargetRow> rows = TargetRows();
+			int at = rows.FindIndex(r => r.Enemy == targetEnemy && (r.Part == null || r.Part == targetEnemy.E.ChosenPart));
+			if (at < 0)
+				at = Math.Max(0, rows.FindIndex(r => r.Enemy == targetEnemy && !r.Locked));
+			listIndex = Math.Max(0, at);
+			ApplyRow(rows);
 			SetPhase(Phase.EnemySelect);
+		}
+
+		private void ApplyRow(List<TargetRow> rows)
+		{
+			if (rows.Count == 0)
+				return;
+			listIndex = Math.Clamp(listIndex, 0, rows.Count - 1);
+			TargetRow row = rows[listIndex];
+			SetTarget(row.Enemy);
+			row.Enemy.E.ChosenPart = row.Part;
 		}
 
 		private void UpdateEnemySelect()
 		{
-			List<BattleEnemy> living = LivingEnemies;
-			if (living.Count > 1)
+			List<TargetRow> rows = TargetRows();
+			if (rows.Count > 1)
 			{
 				int before = listIndex;
 				if (Pressed(Keys.Down))
-					listIndex = (listIndex + 1) % living.Count;
+					listIndex = (listIndex + 1) % rows.Count;
 				if (Pressed(Keys.Up))
-					listIndex = (listIndex + living.Count - 1) % living.Count;
-				listIndex = Math.Clamp(listIndex, 0, living.Count - 1);
+					listIndex = (listIndex + rows.Count - 1) % rows.Count;
 				if (listIndex != before)
 					Sfx("menumove");
-				SetTarget(living[listIndex]);
 			}
+			ApplyRow(rows);
 			if (Cancel)
 			{
 				if (pendingChoice == Choice.Fight)
@@ -683,6 +744,12 @@ namespace MercyMode.Battle
 			}
 			if (!Confirm)
 				return;
+			// A guarded part (Golem's body behind its head, the Moon Lord's heart behind its eyes) can't be picked yet
+			if (rows.Count > 0 && rows[Math.Clamp(listIndex, 0, rows.Count - 1)].Locked)
+			{
+				Sfx("cantselect");
+				return;
+			}
 			Sfx("select");
 			switch (pendingChoice)
 			{
@@ -1430,6 +1497,7 @@ namespace MercyMode.Battle
 			}
 			DrawBoxShape(s, angle, alpha);
 
+			DrawPurpleStrings();
 			foreach (Bullet b in Bullets)
 				b.Draw();
 			DrawBulletEffects();
@@ -1701,30 +1769,44 @@ namespace MercyMode.Battle
 				DrDraw.HeartShapeAt(x, y, 16, Color.Red);
 		}
 
+		/// <summary>Rows of the enemy list shown at once; longer lists (a boss's parts) scroll.</summary>
+		private const int EnemyListRows = 3;
+
 		private void DrawEnemyList(float y)
 		{
-			List<BattleEnemy> living = LivingEnemies;
-			int cursor = Math.Clamp(listIndex, 0, Math.Max(0, living.Count - 1));
-			DrawHeartCursor(55, y + 10 + cursor * 30);
+			List<TargetRow> rows = TargetRows();
+			int cursor = Math.Clamp(listIndex, 0, Math.Max(0, rows.Count - 1));
+			int first = Math.Clamp(cursor - EnemyListRows + 1, 0, Math.Max(0, rows.Count - EnemyListRows));
+			DrawHeartCursor(55, y + 10 + (cursor - first) * 30);
 
-			// HP and MERCY columns like Deltarune's enemy list, one row per enemy
+			// HP and MERCY columns like Deltarune's enemy list, one row per enemy (or per part)
 			DrDraw.Text("HP", 424, y - 14, Color.White, DrDraw.SmallFont);
 			DrDraw.Text("MERCY", 524, y - 14, Color.White, DrDraw.SmallFont);
-			for (int i = 0; i < living.Count; i++)
+			for (int i = first; i < Math.Min(rows.Count, first + EnemyListRows); i++)
 			{
-				Encounter e = living[i].E;
-				float rowY = y + i * 30;
+				TargetRow row = rows[i];
+				Encounter e = row.Enemy.E;
+				float rowY = y + (i - first) * 30;
 				bool spareable = e.Mercy >= 100f;
-				DrDraw.Text(e.Name, 80, rowY, spareable ? new Color(255, 255, 0) : Color.White);
-				float hp = MathHelper.Clamp(e.LifeRatio, 0f, 1f);
+				string name = row.Part != null ? e.PartName(row.Part) : e.Name;
+				Color nameColor = row.Locked ? new Color(128, 128, 128) : spareable ? new Color(255, 255, 0) : Color.White;
+				DrDraw.Text(name, 80, rowY, nameColor);
+				float hp = row.Part != null
+					? MathHelper.Clamp(row.Part.life / (float)Math.Max(1, row.Part.lifeMax), 0f, 1f)
+					: MathHelper.Clamp(e.LifeRatio, 0f, 1f);
 				DrDraw.Rect(420, rowY + 5, 81, 16, new Color(128, 0, 0));
-				DrDraw.Rect(420, rowY + 5, (float)Math.Ceiling(hp * 81), 16, new Color(0, 255, 0));
-				DrDraw.Text($"{(int)Math.Ceiling(hp * 100)}%", 424, rowY + 5, Color.White, DrDraw.SmallFont);
+				DrDraw.Rect(420, rowY + 5, (float)Math.Ceiling(hp * 81), 16, row.Locked ? new Color(110, 110, 110) : new Color(0, 255, 0));
+				DrDraw.Text(row.Locked ? "GUARDED" : $"{(int)Math.Ceiling(hp * 100)}%", 424, rowY + 5, Color.White, DrDraw.SmallFont);
 				float mercy = MathHelper.Clamp(e.Mercy / 100f, 0f, 1f);
 				DrDraw.Rect(520, rowY + 5, 81, 16, new Color(255, 80, 32));
 				DrDraw.Rect(520, rowY + 5, (float)Math.Ceiling(mercy * 81), 16, new Color(255, 255, 0));
 				DrDraw.Text($"{(int)e.Mercy}%", 524, rowY + 5, new Color(128, 0, 0), DrDraw.SmallFont);
 			}
+			// More rows above or below
+			if (first > 0)
+				DrDraw.Text("^", 60, y - 14, Color.White, DrDraw.SmallFont);
+			if (first + EnemyListRows < rows.Count)
+				DrDraw.Text("v", 60, y + EnemyListRows * 30 - 6, Color.White, DrDraw.SmallFont);
 		}
 
 		private void DrawGrid(float y, List<(string name, bool greyed)> entries)

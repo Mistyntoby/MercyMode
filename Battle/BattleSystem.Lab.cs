@@ -19,6 +19,8 @@ namespace MercyMode.Battle
 		internal int LabShieldDir => shieldDir;
 		internal int LabYellowShots => yellowShots.Count;
 		internal int LabBlocks, LabBroken;
+		/// <summary>The enemy list as shown: (name, guarded) per row.</summary>
+		internal List<(string Name, bool Locked)> LabRows => TargetRows().Select(r => (r.Part != null ? r.Enemy.E.PartName(r.Part) : r.Enemy.E.Name, r.Locked)).ToList();
 		internal string LabDeath => deathReason == null ? "?" : $"{deathReason.GetDeathText(Player.name)} ({deathDamage:0} damage)";
 		/// <summary>The attack this enemy turn is running (unwrapped).</summary>
 		internal EnemyAttack LabAttack => attack is OwnedAttack o ? o.Inner : attack;

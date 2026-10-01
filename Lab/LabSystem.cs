@@ -171,6 +171,9 @@ namespace MercyMode.Lab
 				("act-second-target", ActSecondTarget),
 				("boss-fights-alone", BossAlone),
 				("single-enemy", SingleEnemy),
+				("parts-skeletron", PartsSkeletron),
+				("parts-twins", PartsTwins),
+				("parts-golem", PartsGolem),
 				("soul-blue", SoulBlue),
 				("soul-green", SoulGreen),
 				("soul-purple", SoulPurple),
@@ -792,6 +795,102 @@ namespace MercyMode.Lab
 			};
 			foreach (var (label, types) in bosses)
 				yield return SweepAttacks(label, 9, types);
+		}
+
+		// ================================================================== breakable bosses
+
+		/// <summary>FIGHT the part named in the enemy list, after dropping it to 1 HP so the hit breaks it.</summary>
+		private IEnumerable FightPart(string part, bool expectLocked = false)
+		{
+			yield return Choose(0);
+			yield return Until(() => B.LabPhase == Phase.WeaponSelect, "the weapon list", skipText: false);
+			yield return Press(Keys.Z);
+			yield return Until(() => B.LabPhase == Phase.EnemySelect, "the enemy list", skipText: false);
+			var rows = B.LabRows;
+			int want = rows.FindIndex(r => r.Name == part);
+			Check(want >= 0, $"no {part} in the list: {string.Join(", ", rows.Select(r => r.Name + (r.Locked ? " (guarded)" : "")))}");
+			int guard = 0;
+			while (B.LabListIndex != want)
+			{
+				Check(++guard < 12, $"couldn't move the cursor to {part}");
+				yield return Press(Keys.Down);
+			}
+			NPC chosen = B.LabTarget.ChosenPart;
+			Check(chosen != null && B.LabTarget.PartName(chosen) == part, $"the cursor is on {part} but the chosen part is {(chosen == null ? "none" : B.LabTarget.PartName(chosen))}");
+			if (expectLocked)
+			{
+				yield return Press(Keys.Z);
+				yield return Wait(4);
+				Check(B.LabPhase == Phase.EnemySelect, $"a guarded {part} could be picked");
+				yield return Press(Keys.X);
+				yield return Press(Keys.X);
+				yield return Until(() => B.LabPhase == Phase.Menu, "back to the menu", skipText: false);
+				yield break;
+			}
+			chosen.life = 1;
+			yield return Press(Keys.Z);
+			yield return Until(() => B.LabPhase == Phase.FightBar, "the FIGHT bar", skipText: false);
+			int t = 0;
+			while (B.LabPhase == Phase.FightBar)
+			{
+				Check(++t < 60 * 20, "the FIGHT bar never finished");
+				down.Add(Keys.Z);
+				yield return null;
+				down.Remove(Keys.Z);
+				yield return null;
+			}
+			Check(!chosen.active || chosen.life <= 0 || !B.LabTarget.Members().Contains(chosen), $"{part} survived the hit with 1 HP");
+		}
+
+		private IEnumerable PartsSkeletron()
+		{
+			yield return StartWith(NPCID.SkeletronHead);
+			yield return Menu();
+			yield return Choose(0);
+			yield return Until(() => B.LabPhase == Phase.WeaponSelect, "the weapon list", skipText: false);
+			yield return Press(Keys.Z);
+			yield return Until(() => B.LabPhase == Phase.EnemySelect, "the enemy list", skipText: false);
+			var rows = B.LabRows.Select(r => r.Name).ToList();
+			Log($"  rows: {string.Join(", ", rows)}");
+			Check(rows.SequenceEqual(new[] { "SKELETRON", "LEFT HAND", "RIGHT HAND" }), "expected the head and both hands");
+			yield return Press(Keys.X);
+			yield return Press(Keys.X);
+			yield return Until(() => B.LabPhase == Phase.Menu, "back to the menu", skipText: false);
+
+			yield return FightPart("LEFT HAND");
+			Check(BattleSystem.Active && B.LabTarget.Alive, "breaking a hand ended the fight");
+			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the enemy turn after the hand broke");
+			yield return Menu();
+			yield return FightPart("SKELETRON");
+			yield return WaitForEnd();
+			Check(!Main.npc.Any(n => n.active && n.type == NPCID.SkeletronHand), "a hand outlived the head");
+		}
+
+		private IEnumerable PartsTwins()
+		{
+			yield return StartWith(NPCID.Retinazer, NPCID.Spazmatism);
+			yield return Menu();
+			yield return FightPart("RETINAZER");
+			Check(BattleSystem.Active && B.LabTarget.Alive, "breaking one twin ended the fight");
+			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the enemy turn");
+			string name = B.LabAttack?.GetType().Name;
+			Log($"  Spazmatism alone attacks with {name}");
+			Check(name is "Sprinkler" or "LaneDash", $"the lone Spazmatism used {name}, one of Retinazer's attacks");
+			yield return Menu();
+			yield return FightPart("SPAZMATISM");
+			yield return WaitForEnd();
+		}
+
+		private IEnumerable PartsGolem()
+		{
+			yield return StartWith(NPCID.Golem);
+			yield return Menu();
+			yield return FightPart("GOLEM", expectLocked: true);
+			yield return FightPart("HEAD");
+			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the enemy turn");
+			yield return Menu();
+			yield return FightPart("GOLEM");
+			yield return WaitForEnd();
 		}
 
 		// ================================================================== SOUL modes

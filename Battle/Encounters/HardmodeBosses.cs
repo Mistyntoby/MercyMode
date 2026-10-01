@@ -92,6 +92,9 @@ namespace MercyMode.Battle.Encounters
 		public override bool DrawWithTerraria => true;
 		public override Vector2 CompositeSize => new(240f, 160f);
 		public override string EncounterText => "* THE TWINS blink in perfect sync.";
+		public override bool TargetableParts => true;
+		// Both have to go
+		public override NPC CorePart => null;
 		protected override string Check => "* Retinazer aims. Spazmatism burns. Neither listens.";
 		protected override (string, string)[] ActNames => new[] { ("Stop", "Ask for\na break"), ("Focus", "Praise\nthe focus"), ("Pick", "Pick a\nfavourite") };
 		protected override string[] Lines => new[] {
@@ -109,16 +112,30 @@ namespace MercyMode.Battle.Encounters
 			Bullet flame(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(120, 255, 60), 0.6f, 1.2f).Fiery(6);
 			Bullet spaz(Vector2 p, Vector2 d) => Shots.Npc(NPCID.Spazmatism, p, Vector2.Zero, 0.35f, 1.2f, new Vector2(30, 30), rotate: false);
 			var red = new Color(255, 60, 60);
-			return Cycle(
+			bool retinazer = Members().Any(m => m.type == NPCID.Retinazer && m.life > 0);
+			bool spazmatism = Members().Any(m => m.type == NPCID.Spazmatism && m.life > 0);
+			// Retinazer's lasers and Spazmatism's flames; a twin left alone only has its own
+			var retinazerAttacks = new Func<EnemyAttack>[]
+			{
 				// Yellow SOUL: Retinazer hangs back and fires; shoot it down (and its shots)
 				() => new Gunships((p, v) => Shots.Npc(NPCID.Retinazer, p, v, 0.28f, 1f, new Vector2(24, 24), rotate: false), laser, Hard ? 50 : 66)
 					{ Toughness = Hard ? 5 : 4, FireEvery = Hard ? 36 : 48, ShotSpeed = 3f },
 				// Retinazer locks on and fires
 				() => new Beam(Hard ? 36 : 48) { Width = 10f, Warn = Hard ? 32 : 40, Active = 16, Color = red, FireSound = SoundID.Item33 },
+				() => new AimedBursts(laser, Hard ? 26 : 36) { Count = Hard ? 4 : 3, Speed = 3.2f, Spread = 0.25f },
+			};
+			var spazmatismAttacks = new Func<EnemyAttack>[]
+			{
 				// Spazmatism's flamethrower sweeps from above
 				() => new Sprinkler(flame) { Every = Hard ? 4 : 6, Arms = Hard ? 2 : 1, Speed = 2.6f, TurnSpeed = 0.07f, FanSpread = 0.9f },
 				() => new LaneDash(spaz, Hard ? 46 : 60) { AllowVertical = true, Speed = Hard ? 9f : 7.5f, LaunchSound = SoundID.ForceRoar },
-				() => new AimedBursts(laser, Hard ? 26 : 36) { Count = Hard ? 4 : 3, Speed = 3.2f, Spread = 0.25f },
+			};
+			if (retinazer && !spazmatism)
+				return Cycle(retinazerAttacks);
+			if (spazmatism && !retinazer)
+				return Cycle(spazmatismAttacks);
+			return Cycle(
+				retinazerAttacks[0], retinazerAttacks[1], spazmatismAttacks[0], spazmatismAttacks[1], retinazerAttacks[2],
 				() => new Combo(TurnTicks,
 					new Beam(60) { Width = 10f, Color = red, FireSound = SoundID.Item33 },
 					new Sprinkler(flame) { Every = 9, Speed = 2.2f, TurnSpeed = 0.05f }),
@@ -181,6 +198,15 @@ namespace MercyMode.Battle.Encounters
 		public override bool DrawWithTerraria => true;
 		public override Vector2 CompositeSize => new(320f, 260f);
 		public override string EncounterText => "* SKELETRON PRIME whirs to life, four arms ready!";
+		public override bool TargetableParts => true;
+		public override string PartName(NPC part) => part.type switch
+		{
+			NPCID.PrimeCannon => "CANNON",
+			NPCID.PrimeSaw => "SAW",
+			NPCID.PrimeVice => "VICE",
+			NPCID.PrimeLaser => "LASER",
+			_ => "PRIME",
+		};
 		protected override string Check => "* Skeletron, but upgraded. Somebody gave it a saw.";
 		protected override (string, string)[] ActNames => new[] { ("Arms", "Ask about\nthe arms"), ("Oil", "Oil a\njoint"), ("Upgrade", "Praise the\nupgrade") };
 		protected override string[] Lines => new[] {
@@ -245,19 +271,32 @@ namespace MercyMode.Battle.Encounters
 			Bullet rocket(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.RocketSkeleton, p, v, 1f, 0.9f, new Vector2(10, 10), rotationOffset: MathHelper.PiOver2).Smoking();
 			Bullet bomb(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.BombSkeletronPrime, p, v, 1f, 0.9f, new Vector2(14, 14), spin: 0.2f).Smoking(4);
 			Bullet spark(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(255, 170, 60), 0.6f).Fiery(8);
-			return Cycle(
+			Bullet vice(Vector2 p, Vector2 d) => Shots.Npc(NPCID.PrimeVice, p, Vector2.Zero, 0.7f, 1.1f, new Vector2(24, 24), rotate: false);
+			bool Has(int arm) => Members().Any(m => m.type == arm && m.life > 0);
+			// Each arm's attacks go when that arm is broken; the head's stay
+			var attacks = new List<Func<EnemyAttack>>();
+			if (Has(NPCID.PrimeCannon))
 				// Yellow SOUL: its cannon arms hover in and fire rockets; shoot them down
-				() => new Gunships((p, v) => Shots.Npc(NPCID.PrimeCannon, p, v, 0.7f, 1f, new Vector2(22, 22), rotate: false), rocket, Hard ? 48 : 62)
-					{ Toughness = Hard ? 5 : 4, FireEvery = Hard ? 44 : 56, ShotSpeed = 2.2f },
-				() => new LaneDash(saw, Hard ? 44 : 58) { AllowVertical = true, Speed = Hard ? 9f : 7.5f },
-				() => new Homing(rocket, Hard ? 26 : 36) { Speed = 2f, Turn = 0.04f, SteerTicks = 80 },
-				() => new Beam(Hard ? 40 : 52) { Width = 9f, Warn = 36, Active = 14, Color = new Color(255, 60, 60), FireSound = SoundID.Item33 },
+				attacks.Add(() => new Gunships((p, v) => Shots.Npc(NPCID.PrimeCannon, p, v, 0.7f, 1f, new Vector2(22, 22), rotate: false), rocket, Hard ? 48 : 62)
+					{ Toughness = Hard ? 5 : 4, FireEvery = Hard ? 44 : 56, ShotSpeed = 2.2f });
+			if (Has(NPCID.PrimeSaw))
+				attacks.Add(() => new LaneDash(saw, Hard ? 44 : 58) { AllowVertical = true, Speed = Hard ? 9f : 7.5f });
+			if (Has(NPCID.PrimeCannon))
+				attacks.Add(() => new Homing(rocket, Hard ? 26 : 36) { Speed = 2f, Turn = 0.04f, SteerTicks = 80 });
+			if (Has(NPCID.PrimeLaser))
+				attacks.Add(() => new Beam(Hard ? 40 : 52) { Width = 9f, Warn = 36, Active = 14, Color = new Color(255, 60, 60), FireSound = SoundID.Item33 });
+			if (Has(NPCID.PrimeCannon))
 				// The cannon lobs bombs that burst
-				() => new Fireworks(bomb, spark, Hard ? 40 : 54) { Count = Hard ? 10 : 8 },
-				() => new LaneDash(head, Hard ? 56 : 72) { AllowVertical = true, Speed = Hard ? 7.5f : 6f, LaneWidth = 40f, LaunchSound = SoundID.Roar },
-				() => Hard
-					? FullScreen(new Slashes(62) { Color = new Color(230, 230, 230), PerBurst = 4 }, new Homing(rocket, 50) { Speed = 2f, FirstAt = 40 })
-					: new Combo(TurnTicks, new LaneDash(saw, 80) { Speed = 7f }, new Homing(rocket, 60) { Speed = 1.8f }));
+				attacks.Add(() => new Fireworks(bomb, spark, Hard ? 40 : 54) { Count = Hard ? 10 : 8 });
+			if (Has(NPCID.PrimeVice))
+				// The vice lunges to grab
+				attacks.Add(() => new LaneDash(vice, Hard ? 40 : 52) { Speed = Hard ? 9.5f : 8f, Warn = 30, LaneWidth = 30f });
+			attacks.Add(() => new LaneDash(head, Hard ? 56 : 72) { AllowVertical = true, Speed = Hard ? 7.5f : 6f, LaneWidth = 40f, LaunchSound = SoundID.Roar });
+			attacks.Add(() => Hard
+				? FullScreen(new Slashes(62) { Color = new Color(230, 230, 230), PerBurst = 4 }, Has(NPCID.PrimeCannon)
+					? new Homing(rocket, 50) { Speed = 2f, FirstAt = 40 } : new Homing(head, 60) { Speed = 1.6f, FirstAt = 40 })
+				: new Combo(TurnTicks, new LaneDash(Has(NPCID.PrimeSaw) ? saw : head, 80) { Speed = 7f }, new Homing(spark, 60) { Speed = 1.8f }));
+			return Cycle(attacks.ToArray());
 		}
 	}
 
@@ -308,6 +347,22 @@ namespace MercyMode.Battle.Encounters
 
 		public override string Name => "GOLEM";
 		public override bool DrawWithTerraria => true;
+		public override bool TargetableParts => true;
+		public override NPC CorePart => BossKit.OfTypes(NPCID.Golem).FirstOrDefault();
+		public override string PartName(NPC part) => part.type switch
+		{
+			NPCID.GolemHead or NPCID.GolemHeadFree => "HEAD",
+			NPCID.GolemFistLeft => "LEFT FIST",
+			NPCID.GolemFistRight => "RIGHT FIST",
+			_ => "GOLEM",
+		};
+		/// <summary>The body's shield drops once the head is gone.</summary>
+		public override void UnlockParts()
+		{
+			NPC body = CorePart;
+			if (body != null && !BossKit.OfTypes(NPCID.GolemHead).Any(h => h.life > 0))
+				body.dontTakeDamage = false;
+		}
 		// The battle can freeze its head mid-fade
 		public override bool ForceOpaque => true;
 		// Measured in game: ~250 px each way
@@ -508,6 +563,21 @@ namespace MercyMode.Battle.Encounters
 		// Closed eyes are out of the fight but still part of the body
 		public override IEnumerable<NPC> DrawParts() => BossKit.OfTypes(Parts);
 		public override string EncounterText => "* The MOON LORD has awoken.";
+		public override bool TargetableParts => true;
+		public override NPC CorePart => Core;
+		public override string PartName(NPC part) => part.type switch
+		{
+			NPCID.MoonLordHand => Side(part) + " HAND",
+			NPCID.MoonLordHead => "HEAD",
+			_ => "HEART",
+		};
+		/// <summary>The heart opens once every eye is shut.</summary>
+		public override void UnlockParts()
+		{
+			NPC core = Core;
+			if (core != null && !Members().Any(n => n.type != NPCID.MoonLordCore))
+				core.dontTakeDamage = false;
+		}
 		protected override string Check => "* The final enemy. Has more eyes than reasons to be here.";
 		protected override (string, string)[] ActNames => new[] { ("Stare", "Look into\nits eyes"), ("Fine", "World's\nfine"), ("Hands", "Praise\nthe hands") };
 		protected override string[] Lines => new[] {

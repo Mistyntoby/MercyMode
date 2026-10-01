@@ -56,6 +56,10 @@ namespace MercyMode.Battle
 		/// <summary>Then the hero swings their weapon (the weapon-draw sound plays)...</summary>
 		private const int IntroSwingAt = GlideTicks + 3 * TicksPerFrame;
 		private const int SwingFrames = 12; // attackframes 6 at speed 0.5
+		// The shortsword / spear stab, in Deltarune frames: wind-up, out, hold, back; reach and body lean in battle px
+		private const float StabWindup = 2f, StabOut = 2f, StabHold = 3f, StabBack = 5f;
+		private const float StabReach = 12f, StabLean = 4f;
+		private float stabLean, stabStreak;
 		/// <summary>...and once the swing is over the bottom UI glides up.</summary>
 		private const int IntroPanelAt = IntroSwingAt + SwingFrames * TicksPerFrame;
 
@@ -169,8 +173,9 @@ namespace MercyMode.Battle
 				}
 			}
 
-			foreach (var e in effects)
-				e.Step(dt);
+			// By index: an effect can add others while it steps (a hit animation falling back to sparks)
+			for (int i = 0; i < effects.Count; i++)
+				effects[i].Step(dt);
 			effects.RemoveAll(e => e.Done);
 			for (int i = boxAfterimages.Count - 1; i >= 0; i--)
 			{
@@ -370,6 +375,8 @@ namespace MercyMode.Battle
 
 			p.direction = 1;
 			p.itemAnimation = 0;
+			stabLean = 0f;
+			stabStreak = 0f;
 			p.compositeFrontArm = default;
 			p.compositeBackArm = default;
 			int bodyFrame = 0, legFrame = 0;
@@ -398,14 +405,45 @@ namespace MercyMode.Battle
 				}
 				else
 				{
-					// Shortswords and spears: arm straight out, item in the hand, a short thrust when attacking
+					// Shortswords and spears: a real stab, the arm carrying the blade. It pulls back and up a little
+					// (wind-up), shoots out with the body leaning in, holds a moment, then eases back to the ready pose.
 					float armRot = pose == HeroPose.Defend ? -MathHelper.Pi * 0.85f : -MathHelper.PiOver2;
-					p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot);
-					manualItem = weapon;
-					manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot);
-					manualRotation = armRot + MathHelper.PiOver2; // along the arm
+					var stretch = Player.CompositeArmStretchAmount.Full;
 					if (pose == HeroPose.Attack)
-						manualThrust = (float)Math.Sin(Math.Min(1f, timer / 8f) * Math.PI) * 10f;
+					{
+						float t = timer; // Deltarune frames since the hit
+						if (t < StabWindup)
+						{
+							stretch = Player.CompositeArmStretchAmount.Quarter;
+							armRot -= 0.18f * (t / StabWindup);
+							manualThrust = -4f * (t / StabWindup);
+						}
+						else if (t < StabWindup + StabOut)
+						{
+							float k = (t - StabWindup) / StabOut;
+							stretch = k < 0.5f ? Player.CompositeArmStretchAmount.ThreeQuarters : Player.CompositeArmStretchAmount.Full;
+							manualThrust = MathHelper.Lerp(-4f, StabReach, 1f - (1f - k) * (1f - k));
+							stabLean = StabLean * k;
+						}
+						else if (t < StabWindup + StabOut + StabHold)
+						{
+							manualThrust = StabReach;
+							stabLean = StabLean;
+						}
+						else
+						{
+							float k = Math.Min(1f, (t - StabWindup - StabOut - StabHold) / StabBack);
+							manualThrust = StabReach * (1f - k);
+							stabLean = StabLean * (1f - k);
+							stretch = k < 0.5f ? Player.CompositeArmStretchAmount.Full : Player.CompositeArmStretchAmount.ThreeQuarters;
+						}
+						// The streak of the thrust, drawn at the tip while it's going out
+						stabStreak = t >= StabWindup && t < StabWindup + StabOut + StabHold ? 1f - Math.Max(0f, t - StabWindup - StabOut) / StabHold : 0f;
+					}
+					p.SetCompositeArmFront(true, stretch, armRot);
+					manualItem = weapon;
+					manualHand = p.GetFrontHandPosition(stretch, armRot);
+					manualRotation = armRot + MathHelper.PiOver2; // along the arm
 					p.itemAnimation = 0;
 				}
 			}
@@ -450,6 +488,8 @@ namespace MercyMode.Battle
 			p.legFrame.Y = legFrame * p.legFrame.Height;
 
 			// Where the player's hitbox bottom-centre lands on the battle screen; world offsets scale around it
+			// The stab leans the whole body in a little
+			feet.X += stabLean * scale / BattleCharacterScale;
 			Vector2 anchorWorld = p.position + new Vector2(p.width / 2f, p.height);
 			Vector2 ToBattle(Vector2 world) => feet + (world - anchorWorld) * scale;
 
@@ -483,8 +523,17 @@ namespace MercyMode.Battle
 					{
 						// Blade sprites point up-right (-45 degrees); turn them to follow the arm, handle in the hand
 						Vector2 along = manualRotation.ToRotationVector2();
-						DrDraw.Sb.Draw(tex, hand + along * manualThrust, src, Color.White * (1f - shadow), manualRotation + MathHelper.PiOver4,
+						Vector2 grip = hand + along * manualThrust * scale / BattleCharacterScale;
+						DrDraw.Sb.Draw(tex, grip, src, Color.White * (1f - shadow), manualRotation + MathHelper.PiOver4,
 							new Vector2(0, src.Height), scale * 0.85f, SpriteEffects.None, 0f);
+						if (stabStreak > 0f && shadow < 0.5f)
+						{
+							// A thin white streak off the point of the blade
+							float blade = (float)Math.Sqrt(src.Width * src.Width + src.Height * src.Height) * scale * 0.85f;
+							Vector2 tip = grip + along * blade;
+							DrDraw.Line(tip, tip + along * 22f * stabStreak, 3f * stabStreak, Color.White * (0.8f * stabStreak));
+							DrDraw.Line(tip - along * 6f, tip + along * 10f * stabStreak, 1.5f, new Color(255, 255, 200) * stabStreak);
+						}
 					}
 				}
 
@@ -578,9 +627,9 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>The enemy's damage number: from its sprite, 8 frames after the hit.</summary>
-		private void EnemyNumber(int amount, Color color, int message = -1, float yOffset = 0f)
+		private void EnemyNumber(int amount, Color color, int message = -1, float yOffset = 0f, Vector2? at = null)
 		{
-			Vector2 c = encounter.ScreenCenter;
+			Vector2 c = at ?? encounter.ScreenCenter;
 			AddEffect(new DamageNumber(c.X - 30, c.Y - 20 + yOffset, amount, color, message, delay: 8));
 		}
 
