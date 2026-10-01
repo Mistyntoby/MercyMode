@@ -32,6 +32,11 @@ namespace MercyMode.Battle
 		/// <summary>True while the battle itself is hurting the player, so other damage stays blocked.</summary>
 		public static bool HurtingPlayer;
 		public static bool Defending => Active && Instance.defending;
+		/// <summary>
+		/// True while Terraria's music should be silent: Rude Buster is playing, or the SOUL is breaking (Deltarune cuts
+		/// the music then, boss tracks included).
+		/// </summary>
+		public static bool SilenceTerrariaMusic => Active && (Instance.music != null || Instance.phase == Phase.Death);
 
 		// ---- state ----
 		private Phase phase = Phase.None;
@@ -208,7 +213,9 @@ namespace MercyMode.Battle
 			battleLife = Player.statLife;
 			CreatePlayerHeadPortrait();
 
-			if (DeltaruneAssets.BattleMusic != null)
+			// Bosses keep their own Terraria music (BattleMusicScene steps aside); other battles get Rude Buster
+			bool bossMusic = encounter.IsBoss && (ModContent.GetInstance<MercyConfig>()?.BossBattleMusic ?? true);
+			if (DeltaruneAssets.BattleMusic != null && !bossMusic)
 			{
 				music = DeltaruneAssets.BattleMusic.CreateInstance();
 				music.IsLooped = true;
