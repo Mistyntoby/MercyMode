@@ -95,7 +95,10 @@ namespace MercyMode.Battle
 			Player.controlLeft = Player.controlRight = Player.controlUp = Player.controlDown = false;
 			Player.controlJump = Player.controlUseItem = Player.controlUseTile = Player.controlThrow = false;
 			Player.controlHook = Player.controlMount = Player.controlQuickHeal = Player.controlQuickMana = false;
-			Player.controlSmart = Player.controlTorch = Player.controlInv = Player.controlMap = false;
+			Player.controlSmart = Player.controlTorch = Player.controlMap = false;
+			// The inventory key stays free while the pause menu is open, so Esc closes it as usual
+			if (!Main.ingameOptionsWindow)
+				Player.controlInv = false;
 		}
 
 		public override bool CanUseItem(Item item) => !BattleSystem.Active;

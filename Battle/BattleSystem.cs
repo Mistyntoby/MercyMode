@@ -6,6 +6,7 @@ using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
+using Terraria.GameInput;
 using Terraria.DataStructures;
 using Terraria.GameContent;
 using Terraria.ID;
@@ -1281,6 +1282,30 @@ namespace MercyMode.Battle
 			}
 		}
 
+		private bool optionsWereOpen;
+
+		/// <summary>
+		/// While a battle runs: the scroll wheel and hotbar keys don't switch items underneath it, and Esc (the
+		/// inventory key, locked during battles) opens the pause menu instead, so Save & Exit is still there.
+		/// </summary>
+		public override void PostUpdateInput()
+		{
+			if (phase == Phase.None || Main.gameMenu)
+			{
+				optionsWereOpen = Main.ingameOptionsWindow;
+				return;
+			}
+			PlayerInput.ScrollWheelDelta = 0;
+			PlayerInput.ScrollWheelDeltaForUI = 0;
+			foreach (TriggersSet set in new[] { PlayerInput.Triggers.Current, PlayerInput.Triggers.JustPressed })
+				foreach (string key in set.KeyStatus.Keys.Where(k => k.StartsWith("Hotbar") || k.StartsWith("DpadRadial")).ToList())
+					set.KeyStatus[key] = false;
+			// Opened on the press, not again on the press that closes it
+			if (PlayerInput.Triggers.JustPressed.Inventory && !Main.ingameOptionsWindow && !optionsWereOpen && !Main.drawingPlayerChat)
+				IngameOptions.Open();
+			optionsWereOpen = Main.ingameOptionsWindow;
+		}
+
 		public override void ModifyInterfaceLayers(List<GameInterfaceLayer> layers)
 		{
 			if (phase == Phase.None)
@@ -1295,9 +1320,10 @@ namespace MercyMode.Battle
 				l.Active = false;
 			}
 
-			int index = layers.FindIndex(l => l.Name.Contains("Player Chat"));
+			// Under the pause menu (so Save & Exit shows over the battle), and so under chat too
+			int index = layers.FindIndex(l => l.Name.Contains("Ingame Options"));
 			if (index < 0)
-				index = layers.FindIndex(l => l.Name.Contains("Ingame Options"));
+				index = layers.FindIndex(l => l.Name.Contains("Player Chat"));
 			if (index < 0)
 				index = layers.Count;
 			layers.Insert(index, new LegacyGameInterfaceLayer("MercyMode: Battle", () =>
