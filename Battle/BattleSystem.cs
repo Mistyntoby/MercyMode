@@ -1563,6 +1563,8 @@ namespace MercyMode.Battle
 			}
 		}
 
+		private static readonly Color ManaBlue = new(70, 120, 255);
+
 		private void DrawPartyBox()
 		{
 			Rectangle r = PartyBox;
@@ -1625,7 +1627,15 @@ namespace MercyMode.Battle
 			// the head sits; otherwise the player's own head, enlarged and shifted left to clear the name.
 			if (faceAction == FaceNone || !DrDraw.Sprite("spr_headkris", faceAction, r.X + 3, r.Y + 4, Color.White))
 				DrawPlayerHead(new Vector2(r.X + 16, r.Y + 15), 1f);
-			DrDraw.Text(Player.name.ToUpperInvariant(), r.X + 40, r.Y + 7, Color.White, DrDraw.BigFont, 0.68f);
+			// Long names shrink to fit before the HP label (and are cut short if even that isn't enough)
+			const float nameScale = 0.68f, nameMinScale = 0.4f, nameRoom = 64f;
+			string name = Player.name.ToUpperInvariant();
+			float nameWidth = Math.Max(1f, DrDraw.Measure(name, DrDraw.BigFont));
+			float scale = MathHelper.Clamp(nameRoom / nameWidth, nameMinScale, nameScale);
+			while (name.Length > 1 && DrDraw.Measure(name, DrDraw.BigFont) * scale > nameRoom)
+				name = name.Substring(0, name.Length - 1);
+			float nameY = r.Y + 7 + DrDraw.LineHeight(DrDraw.BigFont) * (nameScale - scale) / 2f;
+			DrDraw.Text(name, r.X + 40, nameY, Color.White, DrDraw.BigFont, scale);
 			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + 22, Color.White))
 				DrDraw.Text("HP", r.X + 108, r.Y + 19, Color.White, DrDraw.SmallFont);
 			float ratio = MathHelper.Clamp(Player.statLife / (float)Player.statLifeMax2, 0f, 1f);
@@ -1633,6 +1643,13 @@ namespace MercyMode.Battle
 			const int hpBarWidth = 74;
 			DrDraw.Rect(r.X + hpBarX, r.Y + 19, hpBarWidth, 8, new Color(128, 0, 0));
 			DrDraw.Rect(r.X + hpBarX, r.Y + 19, (float)Math.Ceiling(ratio * hpBarWidth), 8, KrisCyan);
+			// Mana, thin and blue under HP like Terraria's own bars (magic weapons spend it per hit)
+			if (Player.statManaMax2 > 0)
+			{
+				float mana = MathHelper.Clamp(Player.statMana / (float)Player.statManaMax2, 0f, 1f);
+				DrDraw.Rect(r.X + hpBarX, r.Y + 28, hpBarWidth, 3, new Color(20, 28, 90));
+				DrDraw.Rect(r.X + hpBarX, r.Y + 28, (float)Math.Ceiling(mana * hpBarWidth), 3, ManaBlue);
+			}
 			string hp = $"{Player.statLife}/{Player.statLifeMax2}";
 			Color hpColor = ratio <= 0.25f ? new Color(255, 255, 0) : Color.White;
 			const float hpNumberScale = 0.55f;
