@@ -49,9 +49,16 @@ namespace MercyMode.Battle
 				parts.Insert(0, anchorNpc);
 
 			Rectangle bounds = PartBounds(parts);
+			// Never smaller than the boss's known size (its drawing can be far bigger than its hitboxes)
+			Vector2 min = encounter.CompositeSize;
+			if (bounds.Width < min.X)
+				bounds.Inflate((int)((min.X - bounds.Width) / 2f), 0);
+			if (bounds.Height < min.Y)
+				bounds.Inflate(0, (int)((min.Y - bounds.Height) / 2f));
 			float glide = FlyProgress();
-			// Fits a ~230x210 area on the battle screen, no bigger than the hero's scale
-			float fit = Math.Min(BattleCharacterScale, Math.Min(230f / Math.Max(1, bounds.Width), 210f / Math.Max(1, bounds.Height)));
+			// Fits the encounter's area on the battle screen, no bigger than the hero's scale
+			Vector2 area = encounter.CompositeArea;
+			float fit = Math.Min(BattleCharacterScale, Math.Min(area.X / Math.Max(1, bounds.Width), area.Y / Math.Max(1, bounds.Height)));
 			float s = MathHelper.Lerp(WorldPixelScale(), fit, glide);
 
 			// Where the anchor NPC lands; once it has arrived the whole group is centred on the enemy's spot

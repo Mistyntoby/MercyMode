@@ -1177,7 +1177,7 @@ namespace MercyMode.Battle
 					// A full-screen attack: everything, the HUD included, goes black; only the arena's border,
 					// the SOUL and the attacks are left
 					DrawTPBar();
-					DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f);
+					DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f, top + height + BackgroundBleed);
 					DrDraw.Rect(left - BackgroundBleed, top - BackgroundBleed, width + BackgroundBleed * 2f, height + BackgroundBleed * 2f,
 						Color.Black * arenaBlend);
 					DrawBox();
@@ -1186,7 +1186,7 @@ namespace MercyMode.Battle
 				{
 					DrawBox();
 					DrawTPBar();
-					DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f);
+					DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f, top + height + BackgroundBleed);
 				}
 				DrawSoulDeath(left - BackgroundBleed, top - BackgroundBleed, width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
 			}
@@ -1438,10 +1438,12 @@ namespace MercyMode.Battle
 			}
 		}
 
-		private void DrawPanel(float left, float width)
+		/// <param name="bottom">The bottom of the window in battle coordinates: the black panel reaches it even when the
+		/// window is taller than 4:3 (or the scale is rounded down and leaves a margin).</param>
+		private void DrawPanel(float left, float width, float bottom)
 		{
 			float top = ScreenHeight - panel;
-			DrDraw.Rect(left, top, width, panel + BackgroundBleed + 1, Color.Black);
+			DrDraw.Rect(left, top, width, Math.Max(panel + BackgroundBleed + 1, bottom - top), Color.Black);
 			DrDraw.Rect(left, top + 34, width, 2, PanelLine);
 			if (panel <= 0)
 			{

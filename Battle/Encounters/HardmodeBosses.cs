@@ -51,6 +51,7 @@ namespace MercyMode.Battle.Encounters
 	{
 		public override string Name => "QUEEN SLIME";
 		public override bool DrawWithTerraria => true;
+		public override Vector2 CompositeSize => new(220f, 200f);
 		public override string EncounterText => "* QUEEN SLIME descends in a shower of crystals!";
 		protected override string Check => "* The Hallow's royal slime. Sharper than she looks.";
 		protected override (string, string)[] ActNames => new[] { ("Admire", "Call her\npretty"), ("Compare", "Unlike King\nSlime..."), ("Tiara", "Offer a\ntiara") };
@@ -89,6 +90,7 @@ namespace MercyMode.Battle.Encounters
 
 		public override string Name => "THE TWINS";
 		public override bool DrawWithTerraria => true;
+		public override Vector2 CompositeSize => new(300f, 200f);
 		public override string EncounterText => "* THE TWINS blink in perfect sync.";
 		protected override string Check => "* Retinazer aims. Spazmatism burns. Neither listens.";
 		protected override (string, string)[] ActNames => new[] { ("Stop", "Ask for\na break"), ("Focus", "Praise\nthe focus"), ("Pick", "Pick a\nfavourite") };
@@ -172,6 +174,7 @@ namespace MercyMode.Battle.Encounters
 
 		public override string Name => "SKELETRON PRIME";
 		public override bool DrawWithTerraria => true;
+		public override Vector2 CompositeSize => new(560f, 420f);
 		public override string EncounterText => "* SKELETRON PRIME whirs to life, four arms ready!";
 		protected override string Check => "* Skeletron, but upgraded. Somebody gave it a saw.";
 		protected override (string, string)[] ActNames => new[] { ("Arms", "Ask about\nthe arms"), ("Oil", "Oil a\njoint"), ("Upgrade", "Praise the\nupgrade") };
@@ -256,6 +259,7 @@ namespace MercyMode.Battle.Encounters
 
 		public override string Name => "GOLEM";
 		public override bool DrawWithTerraria => true;
+		public override Vector2 CompositeSize => new(440f, 380f);
 		public override IEnumerable<NPC> DrawParts() => BossKit.OfTypes(Parts);
 		public override string EncounterText => "* GOLEM stirs in the temple's heart!";
 		protected override string Check => "* An ancient Lihzahrd idol. Has been guarding for centuries.";
@@ -353,6 +357,7 @@ namespace MercyMode.Battle.Encounters
 	{
 		public override string Name => "EMPRESS OF LIGHT";
 		public override bool DrawWithTerraria => true;
+		public override Vector2 CompositeSize => new(560f, 420f);
 		// The battle can freeze her mid fade-in
 		public override bool ForceOpaque => true;
 		public override string EncounterText => "* The EMPRESS OF LIGHT unfurls her wings.";
@@ -435,6 +440,11 @@ namespace MercyMode.Battle.Encounters
 
 		public override string Name => "MOON LORD";
 		public override bool DrawWithTerraria => true;
+		// Torso, head and outstretched hands: well over a thousand pixels across. It looms behind the fight.
+		public override Vector2 CompositeSize => new(1400f, 1150f);
+		// Fitted between the TP bar and the right edge, above the bottom panel
+		public override Vector2 CompositeArea => new(380f, 310f);
+		public override Vector2 DrawCenter => new(440f, 160f);
 		// Closed eyes are out of the fight but still part of the body
 		public override IEnumerable<NPC> DrawParts() => BossKit.OfTypes(Parts);
 		public override string EncounterText => "* The MOON LORD has awoken.";

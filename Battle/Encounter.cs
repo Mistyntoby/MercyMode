@@ -124,6 +124,13 @@ namespace MercyMode.Battle
 		public virtual IEnumerable<NPC> DrawParts() => Members();
 		/// <summary>Draw fully opaque even if the battle froze it mid fade-in (the Empress).</summary>
 		public virtual bool ForceOpaque => false;
+		/// <summary>
+		/// The least world area (pixels) the whole drawn boss covers, for scaling. Hitboxes and frames can be much smaller
+		/// than what Terraria draws (the Moon Lord's torso, the Empress's wings) or bunched up just after spawning.
+		/// </summary>
+		public virtual Vector2 CompositeSize => Vector2.Zero;
+		/// <summary>The battle-screen area the drawn boss is fitted into.</summary>
+		public virtual Vector2 CompositeArea => new(230f, 210f);
 
 		/// <summary>Ends the fight peacefully: removes every other part, then drops the loot from one.</summary>
 		public virtual void Spare()
