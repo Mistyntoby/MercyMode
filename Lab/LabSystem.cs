@@ -452,18 +452,28 @@ namespace MercyMode.Lab
 			Check(all.Select(e => e.E.Slot).Distinct().Count() == 3 && all.All(e => e.E.Slot != null), "enemies don't have their own spots");
 
 			yield return Menu();
-			// Last one first, to check the cursor wraps and the target follows it
+			// Last one first, to check the cursor wraps and the target follows it. Leftover hits may take out more.
 			yield return FightAndKill(2);
-			Check(Living().Count == 2, $"expected 2 left, {Living().Count} living");
-			yield return Until(() => B.LabPhase != Phase.FightResult, "the end of the FIGHT", skipText: false);
-			Check(B.LabPhase is Phase.EnemyIntro or Phase.EnemyTurn, $"expected the enemy turn right after the kill, got {B.LabPhase}");
-			yield return WatchEnemyTurn(2);
-			yield return Menu();
-			yield return FightAndKill(0);
-			Check(Living().Count == 1, "expected 1 left");
-			yield return WatchEnemyTurn(1);
-			yield return Menu();
-			yield return FightAndKill(0);
+			int left = Living().Count;
+			Check(left <= 2, $"expected at most 2 left, {left} living");
+			if (left > 0)
+			{
+				yield return Until(() => B.LabPhase != Phase.FightResult, "the end of the FIGHT", skipText: false);
+				Check(B.LabPhase is Phase.EnemyIntro or Phase.EnemyTurn, $"expected the enemy turn right after the kill, got {B.LabPhase}");
+				yield return WatchEnemyTurn(left);
+			}
+			// Keep fighting until everyone is down, each turn's attackers matching who's left
+			int guard = 0;
+			while (BattleSystem.Active && Living().Count > 0)
+			{
+				Check(++guard < 5, "too many turns");
+				yield return Menu();
+				if (!BattleSystem.Active || B.LabPhase != Phase.Menu)
+					break;
+				yield return FightAndKill(0);
+				if (Living().Count > 0)
+					yield return WatchEnemyTurn(Living().Count);
+			}
 			yield return WaitForEnd();
 			Check(Main.npc.Count(n => n.active && n.type == NPCID.Zombie) == 0, "zombies still around after the battle");
 		}
@@ -541,11 +551,12 @@ namespace MercyMode.Lab
 			Check(a.Mercy == aBefore, "the act changed the wrong slime");
 			yield return WatchEnemyTurn(2);
 			yield return Menu();
-			// Mixed ending: defeat one, spare the other
-			yield return FightAndKill(0);
+			// Mixed ending: spare the one we acted on, defeat the other
+			b.Mercy = 100f;
+			yield return Spare(Living().IndexOf(b));
 			yield return Menu();
-			Living()[0].Mercy = 100f;
-			yield return Spare(0);
+			Check(Living().Count == 1 && Living()[0] == a, "the spare took the wrong slime");
+			yield return FightAndKill(0);
 			yield return WaitForEnd();
 		}
 
