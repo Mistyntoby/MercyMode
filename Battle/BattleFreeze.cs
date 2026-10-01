@@ -107,6 +107,28 @@ namespace MercyMode.Battle
 			drawInfo.colorMount = Color.White;
 			drawInfo.colorDisplayDollSkin = Color.White;
 			drawInfo.floatingTubeColor = Color.White;
+
+			// Afterimages are drawn with a "shadow" amount; keep them see-through like Terraria does
+			if (drawInfo.shadow > 0f)
+			{
+				float a = 1f - drawInfo.shadow;
+				drawInfo.colorHair *= a;
+				drawInfo.colorEyeWhites *= a;
+				drawInfo.colorEyes *= a;
+				drawInfo.colorHead *= a;
+				drawInfo.colorBodySkin *= a;
+				drawInfo.colorLegs *= a;
+				drawInfo.colorShirt *= a;
+				drawInfo.colorUnderShirt *= a;
+				drawInfo.colorPants *= a;
+				drawInfo.colorShoes *= a;
+				drawInfo.colorArmorHead *= a;
+				drawInfo.colorArmorBody *= a;
+				drawInfo.colorArmorLegs *= a;
+				drawInfo.colorMount *= a;
+				drawInfo.colorDisplayDollSkin *= a;
+				drawInfo.floatingTubeColor *= a;
+			}
 		}
 
 		public override void ModifyHurt(ref Player.HurtModifiers modifiers)
