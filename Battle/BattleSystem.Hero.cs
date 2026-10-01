@@ -341,7 +341,9 @@ namespace MercyMode.Battle
 							p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot);
 							manualItem = ContentSamples.ItemsByType[usedItemType];
 							manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot);
-							manualThrust = pose == HeroPose.Item ? Math.Min(timer, 15) * 0.6f : 0f;
+							// Raise the potion briskly, then hold it overhead until the use pose ends.
+							float rise = 22f * (1f - (float)Math.Pow(1f - Math.Min(timer, 8f) / 8f, 2f));
+							manualThrust = pose == HeroPose.Item ? rise : 0f;
 						}
 						else
 						{
