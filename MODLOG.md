@@ -158,6 +158,12 @@ Resolution 640x480. All sizes below in those pixels.
 - Ambience (owls, birds, frogs, wind, rain, waterfalls) is all SoundType.Ambient, scaled by Main.ambientVolume
   (ActiveSound.Update and Main's ambient cues). `AmbienceMute` sets it to 0 from Start to End; an On_Main.SaveSettings
   detour writes the real value, since Terraria saves settings from ~10 places (exit, options menu...).
+- Command icons (from the DELTAModKit decompile, scr_charbox): the nameplate draws spr_headkris at frame
+  global.faceaction. Frames: 0 head, 1 FIGHT sword, 2 magic waves, 3 ITEM bag, 4 DEFEND shield, 5 hurt, 6 ACT waves,
+  7 menu heart, 8 grey head, 9 Zzz (down), 10 SPARE X. Set when the command is confirmed, reset at the next player
+  turn (scr_turn). 32x24, origin 0,0. Head 0 stays the player's own portrait.
+- FIGHT bar: spr_pressfront (75x38) is Kris's head (left 40 px) + "Z"; only the Z part is drawn, with the player's
+  head portrait where Kris's was.
 - Built in the cloud against tModLoader's release DLLs (0 warnings, 0 errors); beam collision unit-tested.
   NOT yet verified in game: needs the lab loop above.
 
