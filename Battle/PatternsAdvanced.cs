@@ -13,6 +13,8 @@ namespace MercyMode.Battle
 	{
 		/// <summary>Bullets materialising (a telegraph, a ring forming).</summary>
 		public static void Appear() => DeltaruneAssets.Play("bulletappear", SoundID.Item8 with { Volume = 0.6f, Pitch = 0.3f });
+		/// <summary>A sword slash (the FIGHT slash sound).</summary>
+		public static void Slash() => DeltaruneAssets.Play("slash", SoundID.Item71 with { Volume = 0.8f });
 		/// <summary>Bullets launching after a telegraph.</summary>
 		public static void Fire() => DeltaruneAssets.Play("bulletfire", SoundID.Item5 with { Volume = 0.8f });
 		/// <summary>Something heavy hitting the floor of the box.</summary>
@@ -132,20 +134,30 @@ namespace MercyMode.Battle
 			float angle = FixedAngle is float fixedAngle ? fixedAngle + Main.rand.NextFloat(-Tilt, Tilt)
 				: AxisAligned ? (index % 2 == 0 ? 0f : MathHelper.PiOver2)
 				: Main.rand.NextFloat(MathHelper.Pi);
-			Vector2 dir = angle.ToRotationVector2();
-			Vector2 a = through - dir * 420f, b2 = through + dir * 420f;
-			int warn = Warn, active = Active;
-			float width = Width;
-			Color color = Color;
 			SoundStyle fireSound = FireSound;
 			AttackSfx.Appear();
+			battle.Spawn(Make(battle, through, angle, Warn, Active, Width, Color, Damage, () =>
+			{
+				AttackSfx.Vanilla(fireSound, 0.8f);
+				battle.ShakeScreen(2);
+			}));
+		}
 
-			battle.Spawn(new Bullet
+		/// <summary>
+		/// One beam through a point: a flickering telegraph line for <paramref name="warn"/> ticks, then the beam for
+		/// <paramref name="active"/> ticks (hurts along its whole length). <paramref name="onFire"/> runs as it fires.
+		/// </summary>
+		public static Bullet Make(BattleSystem battle, Vector2 through, float angle, int warn, int active, float width,
+			Color color, float damage, Action onFire, bool sharp = false)
+		{
+			Vector2 dir = angle.ToRotationVector2();
+			Vector2 a = through - dir * 520f, b2 = through + dir * 520f;
+			return new Bullet
 			{
 				Position = through,
 				Harmful = false,
 				Lifetime = warn + active,
-				DamageMult = Damage,
+				DamageMult = damage,
 				GrazePoints = 3f,
 				DestroyOnHit = false,
 				OnUpdate = x =>
@@ -153,9 +165,11 @@ namespace MercyMode.Battle
 					if (x.Age == warn)
 					{
 						x.Harmful = true;
-						AttackSfx.Vanilla(fireSound, 0.8f);
-						battle.ShakeScreen(2);
+						onFire?.Invoke();
 					}
+					// A slash only cuts in its first moments; the rest is the afterglow fading
+					if (sharp && x.Age > warn + active / 2)
+						x.Harmful = false;
 				},
 				HitTest = (x, r) => x.Harmful && SegmentNear(a, b2, r, width / 2f),
 				OnDraw = x =>
@@ -169,13 +183,22 @@ namespace MercyMode.Battle
 						return;
 					}
 					float life = (x.Age - warn) / (float)active;
+					if (sharp)
+					{
+						// A slash: full width at once, then thins out to nothing
+						float s = 1f - life;
+						DrDraw.Line(a, b2, width * s + 10f * s, color * (0.3f * s));
+						DrDraw.Line(a, b2, width * s * s, color);
+						DrDraw.Line(a, b2, width * 0.4f * s * s, Color.White);
+						return;
+					}
 					float w = width * (life < 0.15f ? life / 0.15f : life > 0.7f ? (1f - life) / 0.3f : 1f);
 					w *= 1f + (float)Math.Sin(x.Age * 1.7f) * 0.08f;
 					DrDraw.Line(a, b2, w + 6f, color * 0.35f);
 					DrDraw.Line(a, b2, w, color);
 					DrDraw.Line(a, b2, w * 0.45f, Color.White);
 				},
-			});
+			};
 		}
 
 		/// <summary>Whether a segment passes within <paramref name="radius"/> of a rectangle.</summary>
@@ -190,6 +213,49 @@ namespace MercyMode.Battle
 			float dx = Math.Max(0f, Math.Abs(d.X) - r.Width / 2f);
 			float dy = Math.Max(0f, Math.Abs(d.Y) - r.Height / 2f);
 			return dx * dx + dy * dy <= radius * radius;
+		}
+	}
+
+	/// <summary>
+	/// The Roaring Knight's way: bursts of huge slashes across the whole arena. Each slash flickers as a thin line,
+	/// then cuts in one stroke; a burst's slashes land one after another, the first aimed at the SOUL. Meant for
+	/// full-screen attacks (set <see cref="EnemyAttack.FullScreen"/>), so it waits for the arena to open.
+	/// </summary>
+	public class Slashes : RepeatingAttack
+	{
+		public int PerBurst = 3;
+		/// <summary>Ticks between slashes in a burst.</summary>
+		public int Stagger = 9;
+		public int Warn = 34;
+		public int Active = 14;
+		public float Width = 22f;
+		public Color Color = Color.White;
+		public float Damage = 1.1f;
+
+		public Slashes(int every = 70)
+		{
+			Every = every;
+			FirstAt = 36; // the arena opens first
+			StopBeforeEnd = 60;
+		}
+
+		protected override void Spawn(BattleSystem battle, int index)
+		{
+			Rectangle box = battle.Box;
+			AttackSfx.Appear();
+			float baseAngle = Main.rand.NextFloat(MathHelper.Pi);
+			for (int i = 0; i < PerBurst; i++)
+			{
+				// The first goes through the SOUL; the rest cut across the arena at spread-out angles
+				Vector2 through = i == 0 ? battle.SoulCenter
+					: new Vector2(Main.rand.NextFloat(box.Left + 30, box.Right - 30), Main.rand.NextFloat(box.Top + 30, box.Bottom - 30));
+				float angle = baseAngle + i * (MathHelper.Pi / PerBurst) + Main.rand.NextFloat(-0.2f, 0.2f);
+				battle.Spawn(Beam.Make(battle, through, angle, Warn + i * Stagger, Active, Width, Color, Damage, () =>
+				{
+					AttackSfx.Slash();
+					battle.ShakeScreen(3);
+				}, sharp: true));
+			}
 		}
 	}
 

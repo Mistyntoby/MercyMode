@@ -62,7 +62,7 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			bool hard = LifeRatio < 0.5f;
-			int pick = Turn % 6;
+			int pick = Turn % 7;
 			return pick switch
 			{
 				0 => new TearRain(hard),
@@ -74,8 +74,14 @@ namespace MercyMode.Battle.Encounters
 					: new Beam(70) { Width = 14f },
 				// Tears gather around the SOUL, then fall in on it
 				4 => new Converge(EyeTear, hard ? 50 : 66) { Count = hard ? 10 : 8, Speed = hard ? 4.6f : 3.8f },
-				_ => hard ? new Combo(BattleConstants.DefaultEnemyTurnTicks, new EyeRing(), new ServantSwarm(false))
+				5 => hard ? new Combo(BattleConstants.DefaultEnemyTurnTicks, new EyeRing(), new ServantSwarm(false))
 					: new TearRain(false) { WithServants = true },
+				// Phase 2's full-screen frenzy: its gaze slashes across everything while it cries blood
+				_ => hard
+					? new Combo(BattleConstants.FullScreenTurnTicks,
+						new Slashes(64) { Color = new Color(255, 70, 70), PerBurst = 3 },
+						new TearRain(false)) { FullScreen = true }
+					: new ServantSwarm(false),
 			};
 		}
 

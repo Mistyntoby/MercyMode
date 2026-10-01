@@ -364,7 +364,13 @@ namespace MercyMode.Battle.Encounters
 						new LaneDash(hand, 90) { Speed = 7.5f })
 					: new Combo(BattleConstants.DefaultEnemyTurnTicks,
 						new Rain(bone, 16) { SpeedMin = 2f, SpeedMax = 2.6f, Wobble = 0f },
-						new LaneDash(hand, 80) { Speed = 7f }));
+						new LaneDash(hand, 80) { Speed = 7f }),
+				// Phase 2, full screen: the curse cuts through the whole room while bones rain down
+				() => hard
+					? new Combo(BattleConstants.FullScreenTurnTicks,
+						new Slashes(66) { Color = new Color(235, 225, 200), PerBurst = 3 },
+						new Rain(bone, 14) { SpeedMin = 2f, SpeedMax = 2.8f, Wobble = 0f }) { FullScreen = true }
+					: new LaneDash(hand, 60) { AllowVertical = true, Speed = 7f });
 		}
 	}
 
@@ -429,7 +435,13 @@ namespace MercyMode.Battle.Encounters
 				() => new Rain(rock, hard ? 10 : 15) { SpeedMin = 2.2f, SpeedMax = 3f, Wobble = 0f },
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new FloorSpikes(spike, 45),
-					new Rain(rock, 22) { Wobble = 0f }));
+					new Rain(rock, 22) { Wobble = 0f }),
+				// Phase 2, full screen: icy slashes across the whole field, rocks falling everywhere
+				() => hard
+					? new Combo(BattleConstants.FullScreenTurnTicks,
+						new Slashes(68) { Color = Shots.Ice, PerBurst = 3 },
+						new Rain(rock, 16) { SpeedMin = 2.2f, SpeedMax = 3f, Wobble = 0f }) { FullScreen = true }
+					: new FloorSpikes(spike, 34));
 		}
 	}
 
@@ -485,7 +497,12 @@ namespace MercyMode.Battle.Encounters
 				() => new Snake(leechHead, leechBody, hard ? 70 : 95) { Side = -1, Segments = 6, Speed = 2.6f },
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new Beam(80) { FixedAngle = 0f, Tilt = 0.15f, Color = new Color(255, 80, 200), FireSound = SoundID.Item33 },
-					new Walls(hungry, 90) { Side = -1, Speed = 1.5f, Spacing = 18f, GapSize = 46f }));
+					new Walls(hungry, 90) { Side = -1, Speed = 1.5f, Spacing = 18f, GapSize = 46f }),
+				// Full screen: the whole wall bears down, lasers cutting across while the Hungry sweep through
+				() => new Combo(BattleConstants.FullScreenTurnTicks,
+					new Slashes(hard ? 60 : 74) { Color = new Color(255, 80, 200), PerBurst = hard ? 4 : 3, Width = 18f },
+					new Walls(hungry, hard ? 95 : 120) { Side = -1, Speed = 2.6f, Spacing = 20f, GapSize = 52f, FirstAt = 40 })
+					{ FullScreen = true });
 		}
 	}
 
@@ -557,7 +574,13 @@ namespace MercyMode.Battle.Encounters
 				() => new ClosingRing(red, hard ? 60 : 80),
 				() => new Sprinkler(purple) { Every = hard ? 6 : 8, Arms = hard ? 2 : 1, Speed = 2.6f, TurnSpeed = 0.055f },
 				() => new Fireworks((p, v) => Shots.Ball(p, v, Color.White, 0.9f, 1.8f), red, hard ? 40 : 54) { Count = hard ? 10 : 8 },
-				() => new Walls((p, v) => Shots.Ball(p, v, Color.White, 0.7f), hard ? 55 : 75) { Side = 0 });
+				() => new Walls((p, v) => Shots.Ball(p, v, Color.White, 0.7f), hard ? 55 : 75) { Side = 0 },
+				// Hardmode (or badly hurt): a full-screen onslaught
+				() => hard
+					? new Combo(BattleConstants.FullScreenTurnTicks,
+						new Slashes(62) { PerBurst = 4 },
+						new AimedBursts(red, 50) { Count = 3, Speed = 2.4f, FirstAt = 40 }) { FullScreen = true }
+					: new Converge(red, 68) { Count = 8, Speed = 3.8f });
 		}
 	}
 
