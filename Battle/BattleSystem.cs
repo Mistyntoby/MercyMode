@@ -1636,25 +1636,29 @@ namespace MercyMode.Battle
 				name = name.Substring(0, name.Length - 1);
 			float nameY = r.Y + 7 + DrDraw.LineHeight(DrDraw.BigFont) * (nameScale - scale) / 2f;
 			DrDraw.Text(name, r.X + 40, nameY, Color.White, DrDraw.BigFont, scale);
-			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + 22, Color.White))
-				DrDraw.Text("HP", r.X + 108, r.Y + 19, Color.White, DrDraw.SmallFont);
+			// HP bar raised to make room for the mana bar and its label underneath
+			const int hpBarY = 14;
+			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + hpBarY + 3, Color.White))
+				DrDraw.Text("HP", r.X + 108, r.Y + hpBarY - 1, Color.White, DrDraw.SmallFont);
 			float ratio = MathHelper.Clamp(Player.statLife / (float)Player.statLifeMax2, 0f, 1f);
 			const int hpBarX = 130;
 			const int hpBarWidth = 74;
-			DrDraw.Rect(r.X + hpBarX, r.Y + 19, hpBarWidth, 8, new Color(128, 0, 0));
-			DrDraw.Rect(r.X + hpBarX, r.Y + 19, (float)Math.Ceiling(ratio * hpBarWidth), 8, KrisCyan);
+			DrDraw.Rect(r.X + hpBarX, r.Y + hpBarY, hpBarWidth, 8, new Color(128, 0, 0));
+			DrDraw.Rect(r.X + hpBarX, r.Y + hpBarY, (float)Math.Ceiling(ratio * hpBarWidth), 8, KrisCyan);
 			// Mana, thin and blue under HP like Terraria's own bars (magic weapons spend it per hit)
 			if (Player.statManaMax2 > 0)
 			{
 				float mana = MathHelper.Clamp(Player.statMana / (float)Player.statManaMax2, 0f, 1f);
-				DrDraw.Rect(r.X + hpBarX, r.Y + 28, hpBarWidth, 3, new Color(20, 28, 90));
-				DrDraw.Rect(r.X + hpBarX, r.Y + 28, (float)Math.Ceiling(mana * hpBarWidth), 3, ManaBlue);
+				const int manaBarY = hpBarY + 10;
+				DrDraw.Text("MP", r.X + 111, r.Y + manaBarY - 2, ManaBlue, DrDraw.SmallFont, 0.6f);
+				DrDraw.Rect(r.X + hpBarX, r.Y + manaBarY, hpBarWidth, 5, new Color(20, 28, 90));
+				DrDraw.Rect(r.X + hpBarX, r.Y + manaBarY, (float)Math.Ceiling(mana * hpBarWidth), 5, ManaBlue);
 			}
 			string hp = $"{Player.statLife}/{Player.statLifeMax2}";
 			Color hpColor = ratio <= 0.25f ? new Color(255, 255, 0) : Color.White;
 			const float hpNumberScale = 0.55f;
 			float hpTextWidth = DrDraw.Measure(hp, DrDraw.BigFont) * hpNumberScale;
-			DrDraw.Text(hp, r.X + hpBarX + (hpBarWidth - hpTextWidth) / 2f, r.Y - 1f,
+			DrDraw.Text(hp, r.X + hpBarX + (hpBarWidth - hpTextWidth) / 2f, r.Y - 3f,
 				hpColor, DrDraw.BigFont, hpNumberScale);
 
 		}
