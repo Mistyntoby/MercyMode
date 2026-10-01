@@ -164,6 +164,12 @@ Resolution 640x480. All sizes below in those pixels.
   turn (scr_turn). 32x24, origin 0,0. Head 0 stays the player's own portrait.
 - FIGHT bar: spr_pressfront (75x38) is Kris's head (left 40 px) + "Z"; only the Z part is drawn, with the player's
   head portrait where Kris's was.
+- 60 fps: UpdateHudFrame/UpdateHeroFrame and every BattleEffect now run every tick, stepped by
+  FrameStep = 0.5 Deltarune frames (BattleEffect.Frame() -> Step(dt)). Per-frame eases become
+  EasePerTick(f) = 1 - (1 - f)^0.5 (same spot after a frame). TP bar slide uses its closed form
+  -40 + 13n - n(n+1)/2 (n frames, stops at 38). Hurt shift uses hurttimer / 2 unrounded (GameMaker division
+  isn't integer, so Deltarune slides it too). Shake swings with cos(pi * tick / 2) instead of jumping.
+  Afterimages still spawn once per frame but fade per tick. Event timings (heal, crack, shatter) unchanged.
 - Built in the cloud against tModLoader's release DLLs (0 warnings, 0 errors); beam collision unit-tested.
   NOT yet verified in game: needs the lab loop above.
 

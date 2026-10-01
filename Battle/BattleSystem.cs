@@ -81,7 +81,7 @@ namespace MercyMode.Battle
 		private struct BoxAfterimage
 		{
 			public float Scale, Rotation, Alpha;
-			public int Age;
+			public float Age; // frames
 		}
 		private readonly List<BoxAfterimage> boxAfterimages = new();
 
@@ -181,7 +181,7 @@ namespace MercyMode.Battle
 			CaptureWorldPositions(root);
 			enemyWorldRotation = root.rotation;
 			tpBarX = -40f;
-			tpBarSpeed = 0f;
+			tpBarIn = -1f;
 			panel = 0;
 			selectedBarPhase = 0f;
 			partyLift = 0f;
@@ -395,11 +395,9 @@ namespace MercyMode.Battle
 			Player.statLife = Math.Min(battleLife, Player.statLifeMax2);
 			Player.lifeRegenCount = 0;
 
-			if (time % TicksPerFrame == 0)
-			{
-				UpdateHudFrame();
-				UpdateHeroFrame();
-			}
+			// Every tick (60 fps), stepped in half Deltarune frames
+			UpdateHudFrame();
+			UpdateHeroFrame();
 			if (textShown < text.Length)
 			{
 				int visibleBefore = (int)textShown;
@@ -438,55 +436,60 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>The parts of obj_battlecontroller / obj_tensionbar that count in Deltarune frames.</summary>
-		private float tpBarX = -40f, tpBarSpeed;
+		private float tpBarX = -40f;
+		/// <summary>Frames since the TP bar started sliding in, or -1 before it does.</summary>
+		private float tpBarIn = -1f;
 		private float enemyWorldRotation;
 
+		/// <summary>Every tick: Deltarune's per-frame HUD motion, stepped in half frames so it moves at 60 fps.</summary>
 		private void UpdateHudFrame()
 		{
-			// obj_tensionbar: x = -40, hspeed 13, friction 1 -> stops at 38. Slides back out at the end.
+			const float dt = FrameStep;
+			// obj_tensionbar: x = -40, hspeed 13, friction 1 -> stops at 38 after 12 frames. After n frames that's
+			// -40 + 13n - n(n+1)/2, which also gives the in-between positions. Slides back out at the end.
 			if (panelDir < 0)
 			{
-				tpBarX = Math.Max(-40f, tpBarX - 13f);
+				tpBarX = Math.Max(-40f, tpBarX - 13f * dt);
 			}
-			else if (tpBarSpeed > 0f)
+			else if (tpBarIn >= 0f)
 			{
-				tpBarSpeed = Math.Max(0f, tpBarSpeed - 1f);
-				tpBarX += tpBarSpeed;
+				tpBarIn = Math.Min(12f, tpBarIn + dt);
+				tpBarX = -40f + 13f * tpBarIn - tpBarIn * (tpBarIn + 1f) / 2f;
 			}
 			// Damp the panel toward its target instead of stepping 30 pixels per frame.
 			float panelTarget = panelDir > 0 ? PanelHeight : panelDir < 0 ? 0f : panel;
 			float panelEase = panelDir < 0 ? 0.68f : 0.5f;
-			panel = MathHelper.Lerp(panel, panelTarget, panelEase);
+			panel = MathHelper.Lerp(panel, panelTarget, EasePerTick(panelEase));
 			if (Math.Abs(panelTarget - panel) < 0.75f)
 				panel = panelTarget;
 			panel = MathHelper.Clamp(panel, 0f, PanelHeight);
 			float liftTarget = phase is Phase.Menu or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect ? 32f : 0f;
-			partyLift = MathHelper.Lerp(partyLift, liftTarget, liftTarget == 0f ? 0.68f : 0.5f);
+			partyLift = MathHelper.Lerp(partyLift, liftTarget, EasePerTick(liftTarget == 0f ? 0.68f : 0.5f));
 			if (Math.Abs(liftTarget - partyLift) < 0.5f)
 				partyLift = liftTarget;
-			selectedBarPhase += 2f;
+			selectedBarPhase += 2f * dt;
 
-			// TP bar: apparent jumps 20 at a time, current catches up after a short delay
+			// TP bar: apparent moves 20 a frame, current catches up after a short delay
 			float tension = Player.GetModPlayer<MercyPlayer>().TP / TensionToTP;
-			if (Math.Abs(tpApparent - tension) < 20)
+			if (Math.Abs(tpApparent - tension) < 20 * dt)
 				tpApparent = tension;
 			else
-				tpApparent += tpApparent < tension ? 20 : -20;
+				tpApparent += (tpApparent < tension ? 20 : -20) * dt;
 			float d = tpApparent - tpCurrent;
 			if (d != 0)
 			{
 				float step = 2 + (Math.Abs(d) > 10 ? 2 : 0) + (Math.Abs(d) > 25 ? 3 : 0) + (Math.Abs(d) > 50 ? 4 : 0) + (Math.Abs(d) > 100 ? 5 : 0);
-				tpCurrent += Math.Sign(d) * step;
-				if (Math.Abs(tpApparent - tpCurrent) < 3)
+				tpCurrent += Math.Sign(d) * step * dt;
+				if (Math.Abs(tpApparent - tpCurrent) < 3 * dt)
 					tpCurrent = tpApparent;
 			}
 
 			// Step toward the target without overshooting (stepping past it made the veil and enemy flicker 0.9/1.0)
 			float fadeTarget = phase == Phase.Outro ? 0f : 1f;
 			if (screenFade < fadeTarget)
-				screenFade = Math.Min(fadeTarget, screenFade + 0.1f);
+				screenFade = Math.Min(fadeTarget, screenFade + 0.1f * dt);
 			else if (screenFade > fadeTarget)
-				screenFade = Math.Max(fadeTarget, screenFade - 0.1f);
+				screenFade = Math.Max(fadeTarget, screenFade - 0.1f * dt);
 		}
 
 		private void PlayTextSoundThrough(int visibleCharacters)
@@ -545,7 +548,7 @@ namespace MercyMode.Battle
 			if (phaseTicks == IntroPanelAt)
 			{
 				panelDir = 1;
-				tpBarSpeed = 13f;
+				tpBarIn = 0f;
 				SetHeroPose(HeroPose.Idle);
 				if (music != null)
 				{

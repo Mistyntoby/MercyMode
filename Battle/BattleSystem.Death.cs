@@ -67,13 +67,9 @@ namespace MercyMode.Battle
 
 		private void UpdateSoulDeath()
 		{
-			if (phaseTicks % TicksPerFrame != 0)
-				return;
-			int frame = phaseTicks / TicksPerFrame;
-
-			if (frame == SoulCrackFrame)
+			if (phaseTicks == SoulCrackFrame * TicksPerFrame)
 				DeltaruneAssets.Play("soulcrack", SoundID.Item27);
-			if (frame == SoulShatterFrame)
+			if (phaseTicks == SoulShatterFrame * TicksPerFrame)
 			{
 				DeltaruneAssets.Play("soulshatter", SoundID.Shatter);
 				Vector2 center = SoulCenter;
@@ -89,16 +85,17 @@ namespace MercyMode.Battle
 				}
 			}
 
+			// Shards fall every tick (velocities are per Deltarune frame)
 			for (int i = 0; i < soulShards.Count; i++)
 			{
 				SoulShard s = soulShards[i];
-				s.Velocity.Y += 0.35f;
-				s.Position += s.Velocity;
-				s.Frame += 0.2f;
+				s.Velocity.Y += 0.35f * FrameStep;
+				s.Position += s.Velocity * FrameStep;
+				s.Frame += 0.2f * FrameStep;
 				soulShards[i] = s;
 			}
 
-			if (frame >= SoulDeathEndFrame)
+			if (phaseTicks >= SoulDeathEndFrame * TicksPerFrame)
 				End(killPlayer: true);
 		}
 

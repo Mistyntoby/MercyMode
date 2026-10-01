@@ -9,6 +9,14 @@ namespace MercyMode.Battle
 	{
 		/// <summary>Terraria ticks per Deltarune frame.</summary>
 		public const int TicksPerFrame = 2;
+		/// <summary>One tick in Deltarune frames: animations step every tick by this much, so they run at 60 fps.</summary>
+		public const float FrameStep = 1f / TicksPerFrame;
+
+		/// <summary>
+		/// A per-frame ease (x = lerp(x, target, f) each Deltarune frame) as a per-tick factor that lands in the
+		/// same place after one frame's worth of ticks.
+		/// </summary>
+		public static float EasePerTick(float perFrame) => 1f - (float)System.Math.Pow(1f - perFrame, FrameStep);
 
 		public const int ScreenWidth = 640;
 		public const int ScreenHeight = 480;
