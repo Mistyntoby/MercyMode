@@ -29,6 +29,11 @@ namespace MercyMode.Battle
 	{
 		/// <summary>Turn length in ticks (global.turntimer).</summary>
 		public int Duration = BattleConstants.DefaultEnemyTurnTicks;
+		/// <summary>
+		/// The box opens up into an arena over the whole battle screen and everything else goes dark, like the
+		/// Roaring Knight's attacks. Patterns built on <see cref="BattleSystem.Box"/> fill the arena.
+		/// </summary>
+		public bool FullScreen;
 		public abstract void Update(BattleSystem battle, int tick);
 	}
 

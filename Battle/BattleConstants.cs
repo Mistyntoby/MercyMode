@@ -43,6 +43,10 @@ namespace MercyMode.Battle
 		public const int BoxGrowTicks = 15 * TicksPerFrame;
 		public const float BoxCenterX = 320f;
 		public const float BoxCenterY = 170f;
+		/// <summary>A full-screen attack's arena: everything above the bottom panel, right of the TP bar.</summary>
+		public static readonly Microsoft.Xna.Framework.Rectangle FullScreenArena = new(72, 16, 548, 304);
+		/// <summary>How fast the box opens into the arena (and closes again), per Deltarune frame.</summary>
+		public const float ArenaEase = 0.22f;
 
 		// ---- Getting hit (scr_damage) ----
 		/// <summary>global.inv = global.invc * 40 frames, invc = 1. Bullets only hurt while inv &lt; 0.</summary>
@@ -106,6 +110,8 @@ namespace MercyMode.Battle
 		// ---- Turns ----
 		/// <summary>Most common global.turntimer in chapter 1 is 120-180 frames. 150 frames.</summary>
 		public const int DefaultEnemyTurnTicks = 150 * TicksPerFrame;
+		/// <summary>Full-screen attacks run longer: the arena takes a moment to open and close.</summary>
+		public const int FullScreenTurnTicks = 190 * TicksPerFrame;
 
 		// ---- HUD (obj_battlecontroller) ----
 		/// <summary>bpy = 152: bottom panel height.</summary>

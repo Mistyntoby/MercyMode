@@ -170,6 +170,15 @@ Resolution 640x480. All sizes below in those pixels.
   -40 + 13n - n(n+1)/2 (n frames, stops at 38). Hurt shift uses hurttimer / 2 unrounded (GameMaker division
   isn't integer, so Deltarune slides it too). Shake swings with cos(pi * tick / 2) instead of jumping.
   Afterimages still spawn once per frame but fade per tick. Event timings (heal, crack, shatter) unchanged.
+- Death timing: hard cut to black (no fade), SOUL alone 30 frames (1 s), crack, 30 more frames, shatter,
+  then 45 frames of falling shards before Player.KillMe.
+- Full-screen attacks (Roaring Knight style; the DELTAModKit decompile is chapters 1-2 only, so this is built
+  from how the fight plays, not its code): EnemyAttack.FullScreen opens Box into FullScreenArena (72,16 548x304:
+  above the panel, right of the TP bar) with an eased arenaBlend, and dims everything behind it to 85% black.
+  Patterns built on Box fill it. The outro holds until the arena has closed (clamping the SOUL in), then does the
+  normal spin. `Slashes`: bursts of sharp beams (Beam.Make sharp: full width at once, thins out, only hurts for
+  the first half), the first through the SOUL, staggered 9 ticks, FIGHT slash sound + shake. Used by EoC/Skeletron/
+  Deerclops in phase 2, WoF always, generic bosses in Hardmode or under half HP. Turn 190 frames.
 - Built in the cloud against tModLoader's release DLLs (0 warnings, 0 errors); beam collision unit-tested.
   NOT yet verified in game: needs the lab loop above.
 

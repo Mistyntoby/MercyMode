@@ -187,6 +187,7 @@ namespace MercyMode.Battle
 			partyLift = 0f;
 			panelDir = 0;
 			screenFade = 0;
+			arenaBlend = 0f;
 			slashTimer = -1;
 			enemyShake = 0;
 			enemyAttackEnergy = 0f;
@@ -398,6 +399,7 @@ namespace MercyMode.Battle
 			// Every tick (60 fps), stepped in half Deltarune frames
 			UpdateHudFrame();
 			UpdateHeroFrame();
+			UpdateArena();
 			if (textShown < text.Length)
 			{
 				int visibleBefore = (int)textShown;
@@ -969,7 +971,33 @@ namespace MercyMode.Battle
 			SetPhase(Phase.EnemyIntro);
 		}
 
-		public Rectangle Box => new((int)(BoxCenterX - BoxSize / 2f), (int)(BoxCenterY - BoxSize / 2f), BoxSize, BoxSize);
+		/// <summary>The bullet box: the normal square, opening into <see cref="FullScreenArena"/> for full-screen attacks.</summary>
+		public Rectangle Box
+		{
+			get
+			{
+				var small = new Rectangle((int)(BoxCenterX - BoxSize / 2f), (int)(BoxCenterY - BoxSize / 2f), BoxSize, BoxSize);
+				if (arenaBlend <= 0f)
+					return small;
+				Rectangle big = FullScreenArena;
+				float t = arenaBlend;
+				int left = (int)MathHelper.Lerp(small.Left, big.Left, t), top = (int)MathHelper.Lerp(small.Top, big.Top, t);
+				int right = (int)MathHelper.Lerp(small.Right, big.Right, t), bottom = (int)MathHelper.Lerp(small.Bottom, big.Bottom, t);
+				return new Rectangle(left, top, right - left, bottom - top);
+			}
+		}
+
+		/// <summary>0 = the normal box, 1 = a full-screen arena (eased while it opens and closes).</summary>
+		private float arenaBlend;
+
+		private void UpdateArena()
+		{
+			bool open = phase == Phase.EnemyTurn && attack != null && attack.FullScreen;
+			float target = open ? 1f : 0f;
+			arenaBlend = MathHelper.Lerp(arenaBlend, target, EasePerTick(ArenaEase));
+			if (Math.Abs(arenaBlend - target) < 0.002f)
+				arenaBlend = target;
+		}
 		public Vector2 SoulCenter => soul + new Vector2(SoulSize / 2f);
 		public void Spawn(Bullet b)
 		{
@@ -1156,6 +1184,16 @@ namespace MercyMode.Battle
 
 		private void UpdateEnemyOutro()
 		{
+			// A full-screen arena closes back into the box first, carrying the SOUL in with it
+			if (arenaBlend > 0.01f)
+			{
+				Rectangle box = Box;
+				soul.X = MathHelper.Clamp(soul.X, box.Left + BoxClampLow, box.Right - BoxClampHigh);
+				soul.Y = MathHelper.Clamp(soul.Y, box.Top + BoxClampLow, box.Bottom - BoxClampHigh);
+				soulFrom = soul;
+				phaseTicks = 0;
+				return;
+			}
 			boxTimer = Math.Max(0, boxTimer - 1);
 			CaptureBoxAfterimage();
 			// obj_returnheart: back to the hero in 8 frames, then a burst; the next turn starts 15 frames after the end
@@ -1253,6 +1291,10 @@ namespace MercyMode.Battle
 				DrawEnemy();
 				DrawHero(sb, m);
 				DrawEffects();
+				// A full-screen attack: the world of the battle goes dark around the arena
+				if (arenaBlend > 0f)
+					DrDraw.Rect(left - BackgroundBleed, top - BackgroundBleed, width + BackgroundBleed * 2f, height + BackgroundBleed * 2f,
+						Color.Black * (0.85f * arenaBlend));
 				DrawBox();
 				DrawTPBar();
 				DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f);
@@ -1387,6 +1429,8 @@ namespace MercyMode.Battle
 			float alpha = 0.5f + t * 0.5f;
 			foreach (BoxAfterimage image in boxAfterimages)
 			{
+				if (arenaBlend > 0.01f)
+					break; // the spinning afterimages belong to the small box
 				float ghostAlpha = Math.Max(0f, image.Alpha - image.Age * 0.04f);
 				if (ghostAlpha > 0f)
 					DrawBoxShape(image.Scale, image.Rotation, ghostAlpha);
@@ -1419,6 +1463,14 @@ namespace MercyMode.Battle
 
 		private void DrawBoxShape(float scale, float angle, float alpha)
 		{
+			// Opening into (or out of) a full-screen arena: a plain rectangle that follows Box
+			if (arenaBlend > 0.01f)
+			{
+				Rectangle box = Box;
+				DrDraw.Rect(box.X, box.Y, box.Width, box.Height, Color.Black * alpha);
+				DrDraw.Outline(box.X, box.Y, box.Width, box.Height, BoxGreen * alpha, 3);
+				return;
+			}
 			float centerX = BoxCenterX, centerY = BoxCenterY;
 			bool first = DrDraw.Sprite("spr_battlebg_0", 1, centerX, centerY, BoxGreen, scale, angle, alpha);
 			bool second = DrDraw.Sprite("spr_battlebg_0", 0, centerX, centerY, BoxGreen, scale, angle, alpha);

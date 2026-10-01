@@ -17,14 +17,12 @@ namespace MercyMode.Battle
 	public partial class BattleSystem
 	{
 		// ---- timeline (Deltarune frames into the Death phase) ----
-		/// <summary>The SOUL sits alone on black for a moment, then cracks.</summary>
-		private const int SoulCrackFrame = 20;
-		/// <summary>The cracked SOUL holds, then breaks apart.</summary>
-		private const int SoulShatterFrame = 50;
+		/// <summary>The screen cuts to black at once; the SOUL sits alone for a second, then cracks.</summary>
+		private const int SoulCrackFrame = 30;
+		/// <summary>The cracked SOUL holds for another second, then breaks apart.</summary>
+		private const int SoulShatterFrame = SoulCrackFrame + 30;
 		/// <summary>The shards fall away; then the player dies for real.</summary>
-		private const int SoulDeathEndFrame = 95;
-		/// <summary>How fast the screen goes black around the SOUL.</summary>
-		private const int DeathFadeTicks = 6;
+		private const int SoulDeathEndFrame = SoulShatterFrame + 45;
 
 		private bool deathPending;
 		private PlayerDeathReason deathReason;
@@ -105,8 +103,8 @@ namespace MercyMode.Battle
 			if (phase != Phase.Death)
 				return;
 
-			float fade = MathHelper.Clamp(phaseTicks / (float)DeathFadeTicks, 0f, 1f);
-			DrDraw.Rect(left, top, width, height, Color.Black * fade);
+			// A hard cut to black, no fade
+			DrDraw.Rect(left, top, width, height, Color.Black);
 
 			int frame = phaseTicks / TicksPerFrame;
 			if (frame < SoulCrackFrame)
