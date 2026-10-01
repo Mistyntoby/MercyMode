@@ -24,7 +24,7 @@ namespace MercyMode.Battle
 	/// </summary>
 	public partial class BattleSystem : ModSystem
 	{
-		public enum Phase { None, Intro, Menu, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death }
+		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death }
 		private enum Choice { Fight, Act, Item, Spare, Defend }
 
 		public static BattleSystem Instance => ModContent.GetInstance<BattleSystem>();
@@ -87,10 +87,6 @@ namespace MercyMode.Battle
 
 		// fight
 		private float boltX; // frames since the bar appeared (boltx)
-		private bool boltAlive;
-		private int boltPoints = -1;
-		private Vector2 burstPos;
-		private int burstTimer;
 		private float fightFade;
 		private int slashTimer = -1;
 		private int enemyShake;
@@ -110,7 +106,6 @@ namespace MercyMode.Battle
 		/// <summary>Only the battle changes HP: no natural regen, potions' regen or debuffs while it's open.</summary>
 		private int battleLife;
 		private int lastHeal = -1;
-		private int attackPending = -1;
 		private float soulAlpha = 1f;
 		private float partyLift;
 		private float musicVolumeCurrent;
@@ -176,7 +171,9 @@ namespace MercyMode.Battle
 			pendingHealFx = -1;
 			usedItemType = 0;
 			faceAction = FaceNone;
-			attackPending = -1;
+			fightWeaponSlot = -1;
+			fightWeapon = null;
+			heroRecoil = 0f;
 			// The party and the enemy fly in from where they stood in the world
 			CaptureWorldPositions(root);
 			enemyWorldRotation = root.rotation;
@@ -371,7 +368,7 @@ namespace MercyMode.Battle
 				return;
 			}
 			// Enemy gone without us ending the battle (despawned, killed some other way)
-			if (!encounter.Alive && phase != Phase.Outro && phase != Phase.Message && phase != Phase.FightResult && phase != Phase.Death)
+			if (!encounter.Alive && phase != Phase.Outro && phase != Phase.Message && phase != Phase.FightBar && phase != Phase.FightResult && phase != Phase.Death)
 			{
 				battleOver = true;
 				StartOutro();
@@ -414,8 +411,6 @@ namespace MercyMode.Battle
 				enemyShake--;
 			if (patternSoundCooldown > 0)
 				patternSoundCooldown--;
-			if (burstTimer > 0)
-				burstTimer--;
 			if (slashTimer >= 0 && ++slashTimer > 20)
 				slashTimer = -1;
 
@@ -423,6 +418,7 @@ namespace MercyMode.Battle
 			{
 				case Phase.Intro: UpdateIntro(); break;
 				case Phase.Menu: UpdateMenu(); break;
+				case Phase.WeaponSelect: UpdateWeaponSelect(); break;
 				case Phase.EnemySelect: UpdateEnemySelect(); break;
 				case Phase.ActSelect: UpdateActSelect(); break;
 				case Phase.ItemSelect: UpdateItemSelect(); break;
@@ -465,7 +461,7 @@ namespace MercyMode.Battle
 			if (Math.Abs(panelTarget - panel) < 0.75f)
 				panel = panelTarget;
 			panel = MathHelper.Clamp(panel, 0f, PanelHeight);
-			float liftTarget = phase is Phase.Menu or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect ? 32f : 0f;
+			float liftTarget = phase is Phase.Menu or Phase.WeaponSelect or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect ? 32f : 0f;
 			partyLift = MathHelper.Lerp(partyLift, liftTarget, EasePerTick(liftTarget == 0f ? 0.68f : 0.5f));
 			if (Math.Abs(liftTarget - partyLift) < 0.5f)
 				partyLift = liftTarget;
@@ -595,6 +591,11 @@ namespace MercyMode.Battle
 			switch (menuChoice)
 			{
 				case Choice.Fight:
+					// Pick the weapon first, then the enemy
+					Sfx("select");
+					pendingChoice = menuChoice;
+					OpenWeaponSelect();
+					break;
 				case Choice.Act:
 				case Choice.Spare:
 					Sfx("select");
@@ -623,7 +624,10 @@ namespace MercyMode.Battle
 		{
 			if (Cancel)
 			{
-				SetPhase(Phase.Menu);
+				if (pendingChoice == Choice.Fight)
+					OpenWeaponSelect();
+				else
+					SetPhase(Phase.Menu);
 				return;
 			}
 			if (!Confirm)
@@ -804,129 +808,6 @@ namespace MercyMode.Battle
 		}
 
 		// ---- FIGHT ----
-
-		private void StartFightBar()
-		{
-			boltX = 0;
-			boltAlive = true;
-			boltPoints = -1;
-			fightFade = 0;
-			SetPhase(Phase.FightBar);
-		}
-
-		private void UpdateFightBar()
-		{
-			boltX += 1f / TicksPerFrame;
-			// Deltarune checks presses once per frame, so score on the frame this tick belongs to
-			int close = BoltStartFrame - (int)Math.Floor(boltX);
-
-			if (boltAlive && Confirm && close < BoltWindowEarly && close > -BoltWindowLate)
-			{
-				boltAlive = false;
-				boltPoints = BoltPoints(close);
-				burstPos = new Vector2(FightBarX + 80 + (BoltStartFrame - boltX) * BoltSpeed, FightBarY);
-				burstTimer = 20;
-				StartHeroAttack();
-				return;
-			}
-			if (boltAlive && BoltStartFrame - boltX < -BoltWindowLate)
-			{
-				boltAlive = false;
-				boltPoints = 0;
-				StartHeroAttack();
-			}
-		}
-
-		/// <summary>Weapon damage stands in for Kris's AT: the held weapon, or the best one in the hotbar.</summary>
-		public int AttackStat()
-		{
-			Item held = Player.HeldItem;
-			if (!held.IsAir && held.damage > 0 && held.useStyle != ItemUseStyleID.None && !held.accessory)
-				return Math.Max(1, Player.GetWeaponDamage(held));
-			int best = 0;
-			for (int i = 0; i < 10; i++)
-			{
-				Item it = Player.inventory[i];
-				if (!it.IsAir && it.damage > 0 && !it.accessory && it.ammo == AmmoID.None)
-					best = Math.Max(best, Player.GetWeaponDamage(it));
-			}
-			return Math.Max(5, best);
-		}
-
-		/// <summary>obj_heroparent state 1: the swing starts now, the hit lands 10 frames later (alarm[1] = 10).</summary>
-		private void StartHeroAttack()
-		{
-			SetHeroPose(HeroPose.Attack);
-			attackPending = 10 * TicksPerFrame;
-			Sfx("slash");
-			if (boltPoints == 150)
-			{
-				Sfx("crit");
-				for (int i = 0; i < 3; i++)
-					AddEffect(new CritSparkle(new Vector2(HeroX + 68 + Main.rand.NextFloat(50f), HeroY + 30 + Main.rand.NextFloat(30f))));
-			}
-			SetPhase(Phase.FightResult);
-		}
-
-		/// <summary>The colour of damage the hero deals: merge_color(c_aqua, c_white, 0.5).</summary>
-		private static readonly Color HeroDamageColor = new(128, 255, 255);
-
-		private void ResolveAttack()
-		{
-			if (boltPoints <= 0)
-			{
-				EnemyNumber(0, HeroDamageColor, DamageNumber.MissFrame);
-				return;
-			}
-
-			var config = ModContent.GetInstance<MercyConfig>();
-			float mult = config?.FightDamageMultiplier ?? 1f;
-			int raw = (int)Math.Round(AttackStat() * boltPoints / DamagePointsDivisor * mult);
-			NPC target = encounter.StrikeTarget();
-			int dealt = target.SimpleStrikeNPC(raw, Player.direction, crit: false, knockBack: 0f);
-
-			Sfx("damage");
-			slashTimer = 0;
-			enemyShake = 18;
-			if (dealt > 0)
-				EnemyNumber(dealt, HeroDamageColor);
-			else
-				EnemyNumber(0, HeroDamageColor, DamageNumber.MissFrame);
-
-			// A killing blow: the enemy breaks apart right away (obj_deathanim), from how it looked a moment ago
-			if (!encounter.Alive)
-				PlayEnemyDeath();
-
-			if (dealt > 0)
-			{
-				var mp = Player.GetModPlayer<MercyPlayer>();
-				mp.TP = Math.Min(100f, mp.TP + (float)Math.Round(boltPoints / HitTensionDivisor) * TensionToTP);
-			}
-		}
-
-		private void UpdateFightResult()
-		{
-			if (attackPending > 0 && --attackPending == 0)
-			{
-				attackPending = -1;
-				ResolveAttack();
-			}
-			if (attackPending > 0)
-				return;
-			if (phaseTicks > FightPostTicks)
-				fightFade += FightFadePerTick;
-			if (fightFade < 1f)
-				return;
-
-			if (!encounter.Alive)
-			{
-				battleOver = true;
-				SetHeroPose(HeroPose.Victory);
-				ShowMessages(new[] { $"* YOU WON!\n* {encounter.Name} was defeated." }, StartOutro);
-				return;
-			}
-			StartEnemyTurn();
-		}
 
 		// ---- text boxes ----
 
@@ -1421,7 +1302,7 @@ namespace MercyMode.Battle
 			if (slashTimer < 0)
 				return;
 			int f = Math.Min(4, slashTimer / 4); // image_speed 0.5: two frames per sprite frame
-			float s = boltPoints == 150 ? 2.5f : 2f;
+			float s = bestPoints == 150 ? 2.5f : 2f;
 			if (!DrDraw.Sprite("spr_attack_cut1", f, pos.X, pos.Y, Color.White, s))
 				DrDraw.Rect(pos.X - 30 + slashTimer * 3, pos.Y - 30 + slashTimer * 3, 8, 8, Color.White);
 		}
@@ -1575,6 +1456,9 @@ namespace MercyMode.Battle
 				case Phase.Message:
 					DrDraw.Text(text.Substring(0, Math.Min(text.Length, (int)textShown)), 30, textY, Color.White);
 					break;
+				case Phase.WeaponSelect:
+					DrawWeaponSelect(textY);
+					break;
 				case Phase.EnemySelect:
 					DrawEnemyList(textY);
 					break;
@@ -1598,7 +1482,7 @@ namespace MercyMode.Battle
 		private void DrawPartyBox()
 		{
 			Rectangle r = PartyBox;
-			bool choosing = phase == Phase.Menu || phase == Phase.EnemySelect || phase == Phase.ActSelect || phase == Phase.ItemSelect;
+			bool choosing = phase == Phase.Menu || phase == Phase.WeaponSelect || phase == Phase.EnemySelect || phase == Phase.ActSelect || phase == Phase.ItemSelect;
 			float buttonsY = ScreenHeight - panel + 5f;
 			float selectionAlpha = choosing ? 1f : MathHelper.Clamp(partyLift / 32f, 0f, 1f);
 
@@ -1775,10 +1659,16 @@ namespace MercyMode.Battle
 			if (!DrDraw.Sprite("spr_pressspot", 0, x + 80, y, Color.White, 1f, 0f, alpha))
 				DrDraw.Rect(x + 80, y, 10, 38, new Color(0, 0, 255) * alpha);
 
-			if (boltAlive)
+			foreach (FightBolt bolt in bolts)
 			{
-				float bx = x + 80 + (BoltStartFrame - boltX) * BoltSpeed;
-				float boltAlpha = BoltStartFrame - boltX < 0 ? 1f + (BoltStartFrame - boltX) / 3f : 1f;
+				if (!bolt.Alive)
+					continue;
+				float ahead = bolt.Frame - boltX;
+				float bx = x + 80 + ahead * BoltSpeed;
+				// Bolts further back start off the right of the bar; only draw them once they're on it
+				if (bx > x + 80 + FightBoxWidth + 4)
+					continue;
+				float boltAlpha = ahead < 0 ? 1f + ahead / 3f : 1f;
 				// Afterimages every other frame, fading
 				for (int k = 2; k >= 1; k--)
 					if (!DrDraw.Sprite("spr_attackspot", 0, bx + k * BoltSpeed, y, Color.White, 1f, 0f, 0.4f / k * boltAlpha))
@@ -1787,14 +1677,14 @@ namespace MercyMode.Battle
 					DrDraw.Rect(bx + 2, y, 6, 38, Color.White * boltAlpha);
 			}
 
-			if (burstTimer > 0)
+			foreach (BoltBurst burst in boltBursts)
 			{
 				// obj_burstbolt: grows and fades; yellow for a perfect hit
-				float t = 1f - burstTimer / 20f;
-				Color c = boltPoints == 150 ? new Color(255, 255, 0) : MergeColor(KrisCyan, Color.White, 0.5f);
+				float t = 1f - burst.Timer / 20f;
+				Color c = burst.Perfect ? new Color(255, 255, 0) : MergeColor(KrisCyan, Color.White, 0.5f);
 				Vector2 sc = new(1f + t * 2f, 1f + t * 0.5f);
-				if (!DrDraw.Sprite("spr_attackspot", 0, burstPos.X - 5 * (sc.X - 1), burstPos.Y - 19 * (sc.Y - 1), c, sc, 0f, 1f - t))
-					DrDraw.Rect(burstPos.X, burstPos.Y, 10 * sc.X, 38 * sc.Y, c * (1f - t));
+				if (!DrDraw.Sprite("spr_attackspot", 0, burst.Position.X - 5 * (sc.X - 1), burst.Position.Y - 19 * (sc.Y - 1), c, sc, 0f, 1f - t))
+					DrDraw.Rect(burst.Position.X, burst.Position.Y, 10 * sc.X, 38 * sc.Y, c * (1f - t));
 			}
 		}
 	}

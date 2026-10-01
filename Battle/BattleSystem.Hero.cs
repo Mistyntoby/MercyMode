@@ -71,6 +71,9 @@ namespace MercyMode.Battle
 		private EnemySnapshot enemySnap;
 		private BattleEffect enemyOverride; // spare / death animation replaces the enemy sprite
 		private int usedItemType;
+		/// <summary>Frames of gun kick left after a shot (the weapon tips up and the hero rocks back).</summary>
+		private float heroRecoil;
+		private const float RecoilFrames = 6f;
 
 		/// <summary>Afterimages left behind while gliding (obj_afterimage).</summary>
 		private struct TrailPoint
@@ -106,6 +109,8 @@ namespace MercyMode.Battle
 			}
 			if (shake > 0)
 				shake = Math.Max(0f, shake - dt);
+			if (heroRecoil > 0)
+				heroRecoil = Math.Max(0f, heroRecoil - dt);
 			enemyAttackEnergy = Math.Max(0f, enemyAttackEnergy - 0.055f * dt);
 			enemyAttackDirection = Vector2.Lerp(enemyAttackDirection, Vector2.Zero, EasePerTick(0.12f));
 
@@ -114,7 +119,7 @@ namespace MercyMode.Battle
 				SetHeroPose(HeroPose.Idle);
 			if (heroPose == HeroPose.Item && heroTimer >= ItemPoseFrames)
 				SetHeroPose(HeroPose.Idle);
-			if (heroPose == HeroPose.Attack && heroTimer >= SwingFrames + 6 && phase != Phase.FightResult)
+			if (heroPose == HeroPose.Attack && heroTimer >= SwingFrames + 6 && phase != Phase.FightResult && phase != Phase.FightBar)
 				SetHeroPose(HeroPose.Idle);
 
 			// Afterimages: drop one every frame while gliding, let the old ones fade out
@@ -178,7 +183,7 @@ namespace MercyMode.Battle
 				return pendingChoice switch { Choice.Fight => HeroPose.AttackReady, _ => HeroPose.ActReady };
 			if (phase == Phase.ItemSelect)
 				return HeroPose.ItemReady;
-			if (phase == Phase.FightBar)
+			if (phase == Phase.FightBar || phase == Phase.WeaponSelect)
 				return HeroPose.AttackReady;
 			return HeroPose.Idle;
 		}
@@ -285,7 +290,9 @@ namespace MercyMode.Battle
 
 			// Stays solid on the way back: the world lighting (HeroLight) takes over instead of fading out,
 			// and it lands exactly on the real character, which is hidden until the battle ends
-			DrawPlayerPose(sb, m, p, HeroFeetNow + new Vector2(hurtShift, bob), HeroScaleNow, pose, heroTimer, 0f);
+			// A shot rocks the hero back a little
+			float kick = heroRecoil / RecoilFrames;
+			DrawPlayerPose(sb, m, p, HeroFeetNow + new Vector2(hurtShift - kick * 4f, bob), HeroScaleNow, pose, heroTimer, 0f);
 			HeroLight = Color.White;
 		}
 
@@ -352,7 +359,8 @@ namespace MercyMode.Battle
 				p.itemAnimationMax = 30;
 				p.itemAnimation = Math.Max(1, (int)Math.Round(30 * (1f - swing)));
 				p.itemTime = p.itemAnimation;
-				p.itemRotation = 0f; // guns and bows point straight ahead
+				// Guns and bows point straight ahead, tipping up with the recoil of a shot
+				p.itemRotation = -0.35f * (heroRecoil / RecoilFrames);
 				if (!weapon.noUseGraphic)
 				{
 					Main.instance.LoadItem(weapon.type);
@@ -489,21 +497,6 @@ namespace MercyMode.Battle
 			}
 		}
 
-		private Item WeaponForDisplay()
-		{
-			Item held = Player.HeldItem;
-			if (!held.IsAir && held.damage > 0 && held.useStyle != ItemUseStyleID.None && !held.accessory)
-				return held;
-			Item best = null;
-			for (int i = 0; i < 10; i++)
-			{
-				Item it = Player.inventory[i];
-				if (!it.IsAir && it.damage > 0 && !it.accessory && it.ammo == AmmoID.None && (best == null || it.damage > best.damage))
-					best = it;
-			}
-			return best;
-		}
-
 		private void DrawEffects()
 		{
 			foreach (var e in effects)
@@ -548,10 +541,10 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>The enemy's damage number: from its sprite, 8 frames after the hit.</summary>
-		private void EnemyNumber(int amount, Color color, int message = -1)
+		private void EnemyNumber(int amount, Color color, int message = -1, float yOffset = 0f)
 		{
 			Vector2 c = encounter.DrawCenter;
-			AddEffect(new DamageNumber(c.X - 30, c.Y - 20, amount, color, message, delay: 8));
+			AddEffect(new DamageNumber(c.X - 30, c.Y - 20 + yOffset, amount, color, message, delay: 8));
 		}
 
 		/// <summary>obj_healanim: green stars rise off the hero, then the healed amount (or MAX) in green.</summary>

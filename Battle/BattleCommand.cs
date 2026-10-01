@@ -66,7 +66,12 @@ namespace MercyMode.Battle
 					player.QuickSpawnItem(src, ItemID.WoodenBow, 1);
 					player.QuickSpawnItem(src, ItemID.WoodenArrow, 100);
 					player.QuickSpawnItem(src, ItemID.CopperBroadsword, 1);
-					caller.Reply("* Got some healing items.", MercyMode.TextWhite);
+					// One of each kind of weapon for testing FIGHT: a gun with bullets, a wand, throwables
+					player.QuickSpawnItem(src, ItemID.FlintlockPistol, 1);
+					player.QuickSpawnItem(src, ItemID.MusketBall, 100);
+					player.QuickSpawnItem(src, ItemID.WandofSparking, 1);
+					player.QuickSpawnItem(src, ItemID.Shuriken, 50);
+					caller.Reply("* Got healing items and one of each kind of weapon.", MercyMode.TextWhite);
 					return;
 				case "bosshp" when args.Length == 2 && int.TryParse(args[1], out int hp):
 					if (BattleSystem.Active)

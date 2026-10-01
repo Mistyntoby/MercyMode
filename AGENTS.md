@@ -95,7 +95,7 @@ This plan is not present in the actual current source: `Deltarune/DeltaruneAsset
 
 ## 7. Known bugs, errors, or TODOs
 
-- Balance remains unresolved: `MercyConfig.FightDamageMultiplier` defaults to `1.0`, and `MODLOG.md` estimates a Copper Shortsword hit at about 22 damage against a 2,800-HP Eye of Cthulhu. Decide the intended default/range before tuning more encounters.
+- FIGHT balance (2026-10-01): a perfect turn deals about 8 seconds of the weapon's Terraria DPS (`TurnSeconds` in `Battle/BattleSystem.Fight.cs`); `MercyConfig.FightDamageMultiplier` (default `1.0`) scales it. `MODLOG.md` lists estimated turns-to-kill; needs in-game playtesting.
 - Multiplayer is explicitly unsupported; battle starts are gated to single-player.
 - The MERCY popup and the planned sound-redirection/volume controls from the final transcript are not implemented in the current source.
 - No automated tests are present; rely on the isolated in-game test loop and release build.

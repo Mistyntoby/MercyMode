@@ -181,6 +181,23 @@ Resolution 640x480. All sizes below in those pixels.
   normal spin. `Slashes`: bursts of sharp beams (Beam.Make sharp: full width at once, thins out, only hurts for
   the first half), the first through the SOUL, staggered 9 ticks, FIGHT slash sound + shake. Used by EoC/Skeletron/
   Deerclops in phase 2, WoF always, generic bosses in Hardmode or under half HP. Turn 300 frames (~10 s).
+- FIGHT rework (`BattleSystem.Fight.cs`): FIGHT -> weapon list -> enemy -> bar. `Weapons()` is the single source
+  for the stat, the menu and the sprite (fixes held-vs-hotbar mismatch). Every damaging inventory item except
+  ammo, accessories and summon staves (whips stay); tools sorted last; bare hands (5) if none.
+  ShotDamage = GetWeaponDamage, or PickAmmo's damage (weapon + ammo) for useAmmo weapons. Bolts =
+  clamp(round(45 / useAnimation), 1, 4); HitShare = (TurnSeconds 8 * 60 / useAnimation) / bolts, so a perfect turn
+  = ~8 s of the weapon's Terraria DPS whatever its speed. Hit = ShotDamage * HitShare * points/150 * config,
+  then SimpleStrikeNPC with Terraria's crit roll (GetWeaponCrit, x2) and the item's DamageClass; defense applies.
+  Each pressed bolt pays: PickAmmo(dontConsume: false) (ammo-saving effects apply), ItemLoader.ConsumeItem for
+  throwables, CheckMana(pay: true) (mana flower applies); unpaid = fizzle. Weapons with no ammo / mana are greyed.
+  Bolts spaced 12 or 18 frames like obj_attackpress (boltframe 30 + boltxoff, diff 12); a press scores the alive
+  bolt in the window with the lowest close (scr_boltcheck_onebutton). TP per hit / bolts. Menu: ATK = perfect-turn
+  damage, arrows vs the current weapon, hits, crit, ammo/mana. Choosing a hotbar weapon selects it for real.
+  Est. turns to kill EoC (normal, def 12) at ~80% timing: copper shortsword 20, gold broadsword 11, gold bow 14,
+  musket 7, minishark 4.5. Tune TurnSeconds in BattleSystem.Fight.cs.
+- Shots (guns, bows, spells, throwables): item.UseSound, recoil (weapon tips up, hero rocks back 6 frames), muzzle
+  flash, the projectile sprite flying 10 frames to the enemy (with a streak for invisible magic shots), impact sparks.
+  `/mmbattle kit` now also gives a Flintlock Pistol + Musket Balls, Wand of Sparking and Shurikens.
 - Built in the cloud against tModLoader's release DLLs (0 warnings, 0 errors); beam collision unit-tested.
   NOT yet verified in game: needs the lab loop above.
 
