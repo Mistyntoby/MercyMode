@@ -1636,9 +1636,10 @@ namespace MercyMode.Battle
 				name = name.Substring(0, name.Length - 1);
 			float nameY = r.Y + 7 + DrDraw.LineHeight(DrDraw.BigFont) * (nameScale - scale) / 2f;
 			DrDraw.Text(name, r.X + 40, nameY, Color.White, DrDraw.BigFont, scale);
-			// HP bar raised to make room for the mana bar and its label underneath
+			// HP bar raised to make room for the mana bar and its label underneath; the HP label (about 9 px tall)
+			// lines up with the bar instead of hanging below it, where it ran into the MP label
 			const int hpBarY = 14;
-			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + hpBarY + 3, Color.White))
+			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + hpBarY - 1, Color.White))
 				DrDraw.Text("HP", r.X + 108, r.Y + hpBarY - 1, Color.White, DrDraw.SmallFont);
 			float ratio = MathHelper.Clamp(Player.statLife / (float)Player.statLifeMax2, 0f, 1f);
 			const int hpBarX = 130;
