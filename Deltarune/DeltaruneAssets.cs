@@ -103,6 +103,18 @@ namespace MercyMode.Deltarune
 
 		public static readonly string[] FontNames = { "fnt_mainbig", "fnt_main", "fnt_small" };
 
+		/// <summary>
+		/// Coloured SOULs for the SOUL modes, found by name: the shortest sprite name with "heart" and the colour in it
+		/// (and none of the effect words), from whichever chapter has one. Stored as "soul_blue" etc.
+		/// </summary>
+		public static readonly (string key, string colour)[] SoulModeSprites =
+		{
+			("soul_blue", "blue"), ("soul_green", "green"), ("soul_purple", "purple"), ("soul_yellow", "yellow"),
+		};
+		private static readonly string[] NotASoul = { "shot", "charge", "break", "shard", "outline", "graze", "trail", "burst", "spawn", "marker", "hit", "anim", "flash" };
+		/// <summary>Which Deltarune sprite each coloured SOUL came from (for /drassets).</summary>
+		public static readonly Dictionary<string, string> SoulModeSources = new();
+
 		public override void PostSetupContent()
 		{
 			if (!Main.dedServ)
@@ -199,6 +211,7 @@ namespace MercyMode.Deltarune
 			}
 
 			DumpPath = "";
+			SoulModeSources.Clear();
 			var dataFiles = InstallFinder.FindDataFiles(install);
 			if (dataFiles.Count == 0)
 			{
@@ -258,6 +271,24 @@ namespace MercyMode.Deltarune
 						rawSprites[n] = s;
 				}
 
+				foreach (var (key, colour) in SoulModeSprites)
+				{
+					if (rawSprites.ContainsKey(key))
+						continue;
+					string best = data.Sprites.Keys
+						.Where(n => n.Contains("heart", StringComparison.OrdinalIgnoreCase) && n.Contains(colour, StringComparison.OrdinalIgnoreCase)
+							&& !NotASoul.Any(w => n.Contains(w, StringComparison.OrdinalIgnoreCase)))
+						.OrderBy(n => n.Length).ThenBy(n => n).FirstOrDefault();
+					if (best == null)
+						continue;
+					RawSprite s = TryRead(() => data.ReadSprite(best), best, log);
+					if (s != null && s.Frames.Count > 0)
+					{
+						rawSprites[key] = s;
+						SoulModeSources[key] = $"{best} (chapter {chapter})";
+					}
+				}
+
 				foreach (string n in FontNames)
 				{
 					if (rawFonts.ContainsKey(n))
@@ -274,7 +305,7 @@ namespace MercyMode.Deltarune
 				if (rawSounds.Count + rawSprites.Count + rawFonts.Count + (soulFrame != null ? 1 : 0) > before)
 					usedChapters.Add(chapter);
 
-				if (soulFrame != null && rawSounds.Count == SoundRoles.Count && rawSprites.Count == SpriteNames.Length && rawFonts.Count == FontNames.Length)
+				if (soulFrame != null && rawSounds.Count == SoundRoles.Count && SpriteNames.All(rawSprites.ContainsKey) && rawFonts.Count == FontNames.Length)
 					break;
 			}
 
@@ -347,6 +378,8 @@ namespace MercyMode.Deltarune
 					.Concat(SoundRoles.Keys.Where(r => !sounds.ContainsKey(r)).Select(r => "sound:" + r)).ToList();
 				if (missing.Count > 0)
 					log.Info("Missing Deltarune assets (using fallbacks): " + string.Join(", ", missing));
+				log.Info("Coloured SOULs: " + (SoulModeSources.Count == 0 ? "none found (recoloured red SOUL)"
+					: string.Join(", ", SoulModeSources.Select(kv => $"{kv.Key} = {kv.Value}"))));
 			});
 		}
 
