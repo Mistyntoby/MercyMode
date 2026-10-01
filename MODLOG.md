@@ -232,6 +232,10 @@ Resolution 640x480. All sizes below in those pixels.
   body into the screen corner and broke our matrix. ForceOpaque also on Golem (head was half transparent).
 - Single-sprite enemies: DrawScale = npc.scale x 1.5 (the hero's scale), capped to fit 220x200. Was hitbox height
   x 1.5 / frame height, which made most enemies (Eater of Souls...) too small since sprites exceed hitboxes.
+- Music: boss battles (Encounter.IsBoss) don't create the Rude Buster instance, and BattleMusicScene (Music 0,
+  BossHigh) is only active while that instance exists, so Terraria's own boss-track selection plays (vanilla,
+  modded ModNPC.Music, Otherworldly). Config BossBattleMusic (default on); off = Rude Buster everywhere. Regular
+  enemies keep Rude Buster.
 - The Dungeon Guardian never starts a battle (Eligible): vanilla behaviour. As a regular enemy it was 1000-damage
   bullets vs 9999 HP/defense, or a two-ACT spare that skipped the pre-Skeletron Dungeon barrier.
 - Skeletron's DrawCenter raised to (500, 150): its bones hang below the parts the bounds measure.
@@ -243,7 +247,8 @@ Resolution 640x480. All sizes below in those pixels.
   restored). Arms/hands use their AI's rest spots, since the bones are drawn from the part toward fixed points by
   the head (Main.DrawNPCDirect: segments of 92 + 60 px aimed at head -200/-50 * ai[0], +130/+80) and come apart
   anywhere else: Skeletron hands (aiStyle 12) at head.Center.X - 120 * ai[0], head.position.Y + 230; Prime saw/vice
-  (33/34) -200 * ai[0], +230; cannon/laser (35/36) -120 * ai[0], -100, rotated to aim left. Members only take arms
+  (33/34) -200 * ai[0], +230; cannon/laser (35/36) -120 * ai[0], -100, rotated so the barrel points away from the
+  first bone (aimed left at the party they came off their bones: the bone start doesn't follow the rotation). Members only take arms
   whose ai[1] is this head (a leftover second Prime's arms were being drawn too). Deerclops: frame.Y is a cell of a 5x5 sheet (Main.DrawNPCDirect_Deerclops:
   Frame(5,5,Y/5,Y%5)); FindFrame: 0 stand, 1 air, 2-11 walk (velocity-driven, so 0 while frozen), 12-17/18 roar
   attacks, 19-24 rubble attack. Battle: walk cycle in place, roar while attacking.

@@ -193,10 +193,14 @@ namespace MercyMode.Battle
 	}
 
 	/// <summary>Silences Terraria's music while Rude Buster plays.</summary>
+	/// <summary>
+	/// Silences Terraria's music while Rude Buster plays. In boss battles it stays off, so Terraria picks the boss's
+	/// own track as usual (vanilla, modded, Otherworldly).
+	/// </summary>
 	public class BattleMusicScene : ModSceneEffect
 	{
-		public override int Music => Deltarune.DeltaruneAssets.BattleMusic != null ? 0 : -1;
+		public override int Music => 0;
 		public override SceneEffectPriority Priority => SceneEffectPriority.BossHigh;
-		public override bool IsSceneEffectActive(Player player) => BattleSystem.Active;
+		public override bool IsSceneEffectActive(Player player) => BattleSystem.SilenceTerrariaMusic;
 	}
 }

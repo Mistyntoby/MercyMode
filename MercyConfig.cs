@@ -32,6 +32,10 @@ namespace MercyMode
 		[DefaultValue(false)]
 		public bool BattlesDuringEvents;
 
+		/// <summary>Boss battles play the boss's own Terraria music; off = Rude Buster for every battle.</summary>
+		[DefaultValue(true)]
+		public bool BossBattleMusic;
+
 		[Range(0.1f, 10f)]
 		[Increment(0.1f)]
 		[DefaultValue(1f)]

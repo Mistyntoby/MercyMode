@@ -216,9 +216,15 @@ namespace MercyMode.Battle.Encounters
 					continue;
 				p.position.X = anchor.Center.X - across * p.ai[0] - p.width / 2f;
 				p.position.Y = anchor.position.Y + down;
-				// Pointing left, at the party (their sprites point down at rotation 0)
 				if (p.type is NPCID.PrimeCannon or NPCID.PrimeLaser)
-					p.rotation = MathHelper.PiOver2;
+				{
+					// Main.DrawNPCDirect starts the bones at (centre x - 5 * ai[0], top + 20) and aims the first one at
+					// head centre + (-200 * ai[0], 130). Turn the arm so its mount faces down that bone and the barrel
+					// points the other way (sprites point down at rotation 0); aimed sideways it came off its bones.
+					Vector2 boneStart = new(p.position.X + p.width / 2f - 5f * p.ai[0], p.position.Y + 20f);
+					Vector2 elbow = anchor.Center + new Vector2(-200f * p.ai[0], 130f);
+					p.rotation = (boneStart - elbow).ToRotation() - MathHelper.PiOver2;
+				}
 			}
 		}
 
