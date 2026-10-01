@@ -86,6 +86,9 @@ namespace MercyMode.Battle
 			bool savedMenu = Main.gameMenu;
 			int[] savedAlpha = parts.Select(n => n.alpha).ToArray();
 			Vector2[] savedPosition = parts.Select(n => n.position).ToArray();
+			Rectangle[] savedFrame = parts.Select(n => n.frame).ToArray();
+			float[] savedRotation = parts.Select(n => n.rotation).ToArray();
+			int[] savedDirection = parts.Select(n => n.spriteDirection).ToArray();
 			EnemyLight = WorldLightTint(anchor);
 
 			// Immediate, like the Bestiary: some bosses apply shaders mid-draw (the Empress's wings)
@@ -101,6 +104,7 @@ namespace MercyMode.Battle
 				Main.gameMenu = true;
 				// Move every part first: a part's drawing can reach for another's position (hands draw their arms
 				// to the core)
+				encounter.PoseForBattle(parts, anchorNpc, time, phase == Phase.EnemyTurn ? MathHelper.Clamp(enemyAttackEnergy, 0f, 1f) : 0f);
 				for (int i = 0; i < parts.Count; i++)
 				{
 					// As a Bestiary icon, NPC drawing never restarts the sprite batch with the world camera
@@ -122,6 +126,9 @@ namespace MercyMode.Battle
 				{
 					parts[i].alpha = savedAlpha[i];
 					parts[i].position = savedPosition[i];
+					parts[i].frame = savedFrame[i];
+					parts[i].rotation = savedRotation[i];
+					parts[i].spriteDirection = savedDirection[i];
 					parts[i].IsABestiaryIconDummy = savedDummy[i];
 				}
 				DrawingEnemy = false;

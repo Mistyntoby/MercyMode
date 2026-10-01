@@ -315,6 +315,25 @@ namespace MercyMode.Battle.Encounters
 		public override string Name => "SKELETRON";
 		public override bool DrawWithTerraria => true;
 		public override Vector2 CompositeSize => new(300f, 220f);
+
+		/// <summary>Head upright, a hand out to each side (frozen, they'd be wherever the fight left them).</summary>
+		public override void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking)
+		{
+			int side = 0;
+			foreach (NPC p in parts)
+			{
+				if (p.type == NPCID.SkeletronHead)
+				{
+					p.rotation = 0f;
+					continue;
+				}
+				if (p.type != NPCID.SkeletronHand)
+					continue;
+				float dir = p.ai[0] != 0 ? Math.Sign(p.ai[0]) : (side++ == 0 ? -1 : 1);
+				p.Center = anchor.Center + new Vector2(dir * 150f, 70f);
+				p.rotation = 0f;
+			}
+		}
 		public override string EncounterText => "* SKELETRON rises to guard the dungeon!";
 
 		public override IEnumerable<NPC> Members()
@@ -383,6 +402,16 @@ namespace MercyMode.Battle.Encounters
 		public override string Name => "DEERCLOPS";
 		public override bool DrawWithTerraria => true;
 		public override Vector2 CompositeSize => new(200f, 240f);
+
+		/// <summary>
+		/// Its frames (frame.Y is a cell 0-24 of a 5x5 sheet): 0 stand, 2-11 walk, 12-17 roar. It stomps in place while
+		/// waiting and roars while it attacks.
+		/// </summary>
+		public override void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking)
+		{
+			anchor.spriteDirection = -1; // facing the party
+			anchor.frame.Y = attacking > 0.2f ? 12 + time / 5 % 6 : 2 + time / 9 % 10;
+		}
 		public override string EncounterText => "* DEERCLOPS lumbers out of the snow!";
 
 		public override string FlavorText()
@@ -406,6 +435,28 @@ namespace MercyMode.Battle.Encounters
 			HealPrayerAct(),
 		};
 
+		/// <summary>
+		/// One piece of Deerclops's rubble. Its texture is a grid (a column per piece shape, 4 rows), so draw one cell,
+		/// like Main.DrawProj does for it.
+		/// </summary>
+		private static Bullet Rubble(Vector2 p, Vector2 v, float scale, float damage, Vector2 hitSize)
+		{
+			Main.instance.LoadProjectile(ProjectileID.DeerclopsRangedProjectile);
+			var tex = Terraria.GameContent.TextureAssets.Projectile[ProjectileID.DeerclopsRangedProjectile].Value;
+			int columns = Math.Max(1, Main.projFrames[ProjectileID.DeerclopsRangedProjectile]);
+			var source = tex.Frame(columns, 4, Main.rand.Next(columns), Main.rand.Next(4));
+			return new Bullet
+			{
+				Position = p,
+				Velocity = v,
+				Texture = tex,
+				Source = source,
+				Scale = scale,
+				HitSize = hitSize,
+				DamageMult = damage,
+			}.Spin(Main.rand.NextBool() ? 0.12f : -0.12f);
+		}
+
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			bool hard = LifeRatio < 0.5f;
@@ -426,8 +477,8 @@ namespace MercyMode.Battle.Encounters
 				},
 			};
 			Bullet hand(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.InsanityShadowHostile, p, v, 0.6f, 0.8f, new Vector2(14, 14), rotate: true);
-			Bullet rock(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.DeerclopsRangedProjectile, p, v, 0.6f, 0.8f, new Vector2(14, 14), spin: 0.15f);
-			Bullet boulder(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.DeerclopsRangedProjectile, p, v, 1.1f, 1.2f, new Vector2(26, 26), spin: 0.08f);
+			Bullet rock(Vector2 p, Vector2 v) => Rubble(p, v, 1f, 0.8f, new Vector2(14, 14));
+			Bullet boulder(Vector2 p, Vector2 v) => Rubble(p, v, 1.8f, 1.2f, new Vector2(26, 26));
 			Bullet iceShard(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Ice, 0.7f);
 			return Cycle(
 				() => new FloorSpikes(spike, hard ? 24 : 34) { Warn = hard ? 24 : 30 },

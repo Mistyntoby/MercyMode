@@ -132,6 +132,13 @@ namespace MercyMode.Battle
 		/// <summary>The battle-screen area the drawn boss is fitted into.</summary>
 		public virtual Vector2 CompositeArea => new(260f, 250f);
 
+		/// <summary>
+		/// Poses the parts for the battle screen (their AI is paused, so they'd stay however the world left them):
+		/// positions, rotations, frames. Only for the draw; everything is put back right after.
+		/// </summary>
+		/// <param name="attacking">0..1, how hard the enemy is attacking this moment.</param>
+		public virtual void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking) { }
+
 		/// <summary>Ends the fight peacefully: removes every other part, then drops the loot from one.</summary>
 		public virtual void Spare()
 		{

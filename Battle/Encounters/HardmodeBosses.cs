@@ -194,6 +194,25 @@ namespace MercyMode.Battle.Encounters
 
 		public override NPC DrawNpc => Npc.active ? Npc : base.DrawNpc;
 
+		/// <summary>Head upright; cannon and laser up on either side, saw and vice lower down.</summary>
+		public override void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking)
+		{
+			foreach (NPC p in parts)
+			{
+				Vector2? offset = p.type switch
+				{
+					NPCID.PrimeCannon => new Vector2(-170f, -40f),
+					NPCID.PrimeSaw => new Vector2(-130f, 120f),
+					NPCID.PrimeLaser => new Vector2(170f, -40f),
+					NPCID.PrimeVice => new Vector2(130f, 120f),
+					_ => null,
+				};
+				p.rotation = 0f;
+				if (offset is Vector2 o)
+					p.Center = anchor.Center + o;
+			}
+		}
+
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			Bullet saw(Vector2 p, Vector2 d) => Shots.Npc(NPCID.PrimeSaw, p, Vector2.Zero, 0.7f, 1.1f, new Vector2(24, 24), rotate: false).Spin(0.4f);
