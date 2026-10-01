@@ -69,6 +69,8 @@ namespace MercyMode.Battle
 
 		/// <summary>Extra behaviour, called every tick before moving.</summary>
 		public Action<Bullet> OnUpdate;
+		/// <summary>Plays the attack sound when spawned even though it's custom-drawn (custom drawing is usually a warning or beam).</summary>
+		public bool SoundOnSpawn;
 		/// <summary>Custom drawing instead of the sprite.</summary>
 		public Action<Bullet> OnDraw;
 		/// <summary>Custom collision (beams and other shapes that aren't a box around Position).</summary>
