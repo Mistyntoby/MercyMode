@@ -44,8 +44,15 @@ namespace MercyMode.Battle
 		}
 
 		public override bool PreDraw(NPC npc, SpriteBatch spriteBatch, Vector2 screenPos, Color drawColor)
-			// The battle screen draws this one (gliding in and out of its world spot)
-			=> !BattleSystem.IsBattleSprite(npc);
+			// The battle screen draws this one (gliding in and out of its world spot); the world copy stays hidden
+			=> BattleSystem.DrawingEnemy || !BattleSystem.IsBattleSprite(npc);
+
+		public override void DrawEffects(NPC npc, ref Color drawColor)
+		{
+			// On the battle screen: full-bright, or the world's light while gliding in or out
+			if (BattleSystem.DrawingEnemy)
+				drawColor = BattleSystem.Tint(Color.White, BattleSystem.EnemyLight);
+		}
 
 		public override void EditSpawnRate(Player player, ref int spawnRate, ref int maxSpawns)
 		{

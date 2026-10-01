@@ -208,8 +208,16 @@ Resolution 640x480. All sizes below in those pixels.
   those, so the HP bar falls and the fight ends; the real death runs once the world unfreezes. Its parts have no
   contact damage -> Damage 70 x EnemyDamageMultiplier. Golem's body shield and Moon Lord's core shield are dropped
   in StrikeTarget (paused AI). Spare keeps the loot part (Golem body, Moon Lord core, Prime head).
-  Sprites drawn from TextureAssets.Npc: Empress and Moon Lord are drawn in pieces in vanilla, so their battle
-  sprite may look odd (untested).
+  Multi-part / special-drawn bosses (Skeletron, Deerclops, Queen Slime, Twins, Prime, Golem, Empress, Moon Lord) set
+  Encounter.DrawWithTerraria: `BattleSystem.EnemyDraw.cs` draws every DrawParts() NPC with Main.DrawNPCDirect in one
+  batch whose matrix maps world pixels around the anchor NPC to the battle screen (scaled to fit ~230x210), with
+  Main.screenPosition pointed at it (some draw code reads it instead of the argument) and Main.gameMenu set so
+  Lighting.GetColor returns white (chains, arms). GlobalNPC.DrawEffects tints for the glide; PreDraw lets these
+  through while BattleSystem.DrawingEnemy and hides the world copies otherwise. ForceOpaque (Empress) zeroes alpha
+  for the draw: the battle can freeze her mid fade-in. No selection flash or afterimages on these; spare/death
+  animations use the main part's sprite only.
+- `/mmbattle npc` matches internal names (spaces ignored: "moon lord core") and, when display names collide
+  ("Moon Lord" is the head, hands and core), prefers the boss / custom-encounter type.
 - Enemy families: Water (Piranha, Jellyfish), Spider (Spider, Herpling), Mimic (+ biome mimics), Charger (Unicorn,
   Giant Tortoise, Sand Shark), Spirit (Cursed Skull, Dungeon Spirit, Ancient Vision), Blade (Enchanted Sword),
   Snapper (Man Eater, Antlion).

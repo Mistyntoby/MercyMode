@@ -1169,7 +1169,7 @@ namespace MercyMode.Battle
 				float left = -ox / scale, top = -oy / scale, width = Main.screenWidth / scale, height = Main.screenHeight / scale;
 				DrawBackground(left - BackgroundBleed, top - BackgroundBleed,
 					width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
-				DrawEnemy();
+				DrawEnemy(sb, m);
 				DrawHero(sb, m);
 				DrawEffects();
 				if (arenaBlend > 0f)
@@ -1227,12 +1227,17 @@ namespace MercyMode.Battle
 			tiled((float)Math.Round(-200 - siner2), (float)Math.Round(-210 - siner2), screenFade);
 		}
 
-		private void DrawEnemy()
+		private void DrawEnemy(SpriteBatch sb, Matrix m)
 		{
 			if (enemyOverride != null)
 			{
 				enemyOverride.Draw();
 				DrawSlash(enemySnap.Position);
+				return;
+			}
+			if (encounter != null && encounter.DrawWithTerraria)
+			{
+				DrawEnemyComposite(sb, m);
 				return;
 			}
 			NPC npc = encounter?.DrawNpc;
