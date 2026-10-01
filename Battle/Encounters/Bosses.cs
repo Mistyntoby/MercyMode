@@ -76,7 +76,7 @@ namespace MercyMode.Battle.Encounters
 		}
 
 		/// <summary>
-		/// Lays a worm out as a still S: the head stays put and leads to the left (toward the party), each
+		/// Lays a worm out as an S with a gentle wave running down it: the head stays put and leads to the left (toward the party), each
 		/// segment follows a travelling wave behind it, turned along the body like Terraria turns them.
 		/// </summary>
 		public static void PoseWorm(List<NPC> chain, int time, float attacking)
@@ -84,8 +84,8 @@ namespace MercyMode.Battle.Encounters
 			if (chain.Count == 0)
 				return;
 			NPC head = chain[0];
-			// Held still in its S (animating it looked wrong)
-			const float t = 0f;
+			// Only the wiggle moves: a gentle wave down the body, a little quicker while attacking
+			float t = time / 32f * (1f + attacking * 0.3f);
 			// Segments sit one width apart, as Terraria's worm AI keeps them (the sprite sheet's frame height can be
 			// several segments tall, which left gaps)
 			float SpriteLength(NPC n) => n.width * n.scale;
@@ -183,6 +183,7 @@ namespace MercyMode.Battle.Encounters
 		public override bool ForceOpaque => true;
 		// Its head just right of the bullet box at the hero's scale, the body coming out of the screen's right edge
 		public override bool LeadWithDrawNpc => true;
+		public override float LeadScale => 1.2f;
 		public override Vector2 DrawCenter => new(440f, 170f);
 		public override bool SwayParts => false;
 		public override IEnumerable<NPC> DrawParts() => BossKit.WormChain(DrawNpc, 10);

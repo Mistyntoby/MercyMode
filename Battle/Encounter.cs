@@ -160,6 +160,8 @@ namespace MercyMode.Battle
 		/// centring the whole group: a worm's head on its spot with the body trailing off the screen's right edge.
 		/// </summary>
 		public virtual bool LeadWithDrawNpc => false;
+		/// <summary>The scale <see cref="LeadWithDrawNpc"/> draws at (the hero's is 1.5).</summary>
+		public virtual float LeadScale => BattleConstants.BattleCharacterScale;
 		/// <summary>Each part floats on its own rhythm while idle, and the whole body breathes and bobs (off for worms: they hold still).</summary>
 		public virtual bool SwayParts => true;
 		/// <summary>Draw fully opaque even if the battle froze it mid fade-in (the Empress).</summary>
