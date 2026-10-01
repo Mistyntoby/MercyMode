@@ -1291,13 +1291,22 @@ namespace MercyMode.Battle
 				DrawEnemy();
 				DrawHero(sb, m);
 				DrawEffects();
-				// A full-screen attack: the world of the battle goes dark around the arena
 				if (arenaBlend > 0f)
+				{
+					// A full-screen attack: everything, the HUD included, goes black; only the arena's border,
+					// the SOUL and the attacks are left
+					DrawTPBar();
+					DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f);
 					DrDraw.Rect(left - BackgroundBleed, top - BackgroundBleed, width + BackgroundBleed * 2f, height + BackgroundBleed * 2f,
-						Color.Black * (0.85f * arenaBlend));
-				DrawBox();
-				DrawTPBar();
-				DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f);
+						Color.Black * arenaBlend);
+					DrawBox();
+				}
+				else
+				{
+					DrawBox();
+					DrawTPBar();
+					DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f);
+				}
 				DrawSoulDeath(left - BackgroundBleed, top - BackgroundBleed, width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
 			}
 			finally

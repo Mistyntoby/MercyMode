@@ -43,8 +43,11 @@ namespace MercyMode.Battle
 		public const int BoxGrowTicks = 15 * TicksPerFrame;
 		public const float BoxCenterX = 320f;
 		public const float BoxCenterY = 170f;
-		/// <summary>A full-screen attack's arena: everything above the bottom panel, right of the TP bar.</summary>
-		public static readonly Microsoft.Xna.Framework.Rectangle FullScreenArena = new(72, 16, 548, 304);
+		/// <summary>
+		/// A full-screen attack's arena: the whole 640x480 battle screen, inset a little so its border (the edge of
+		/// the play area) stays visible however the window is shaped.
+		/// </summary>
+		public static readonly Microsoft.Xna.Framework.Rectangle FullScreenArena = new(10, 10, 620, 460);
 		/// <summary>How fast the box opens into the arena (and closes again), per Deltarune frame.</summary>
 		public const float ArenaEase = 0.22f;
 
