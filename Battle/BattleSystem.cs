@@ -1307,6 +1307,10 @@ namespace MercyMode.Battle
 				else
 					IngameOptions.Open();
 			}
+			// Closing the pause menu (Esc or its button) opens the inventory, which the battle hides; with auto-pause on
+			// that paused the game for good. There's no inventory in a battle
+			if (!Main.ingameOptionsWindow)
+				Main.playerInventory = false;
 		}
 
 		public override void ModifyInterfaceLayers(List<GameInterfaceLayer> layers)
