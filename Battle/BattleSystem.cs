@@ -24,7 +24,7 @@ namespace MercyMode.Battle
 	/// </summary>
 	public partial class BattleSystem : ModSystem
 	{
-		public enum Phase { None, Intro, Menu, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro }
+		public enum Phase { None, Intro, Menu, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death }
 		private enum Choice { Fight, Act, Item, Spare, Defend }
 
 		public static BattleSystem Instance => ModContent.GetInstance<BattleSystem>();
@@ -182,6 +182,9 @@ namespace MercyMode.Battle
 			patternSoundCooldown = 0;
 			musicVolumeCurrent = 0f;
 			musicStarted = false;
+			deathPending = false;
+			deathReason = null;
+			soulShards.Clear();
 			var mp = Player.GetModPlayer<MercyPlayer>();
 			tpApparent = tpCurrent = mp.TP / TensionToTP;
 
@@ -207,9 +210,9 @@ namespace MercyMode.Battle
 			Mod.Logger.Info($"Battle started with {boss.FullName} as {encounter.GetType().Name} ({encounter.Life}/{encounter.LifeMax} HP) by {reason}");
 		}
 
-		private void End()
+		private void End(bool killPlayer = false)
 		{
-			Mod.Logger.Info($"Battle ended (enemy alive: {encounter?.Alive}, player dead: {Player.dead})");
+			Mod.Logger.Info($"Battle ended (enemy alive: {encounter?.Alive}, player dead: {Player.dead}, killed by the battle: {killPlayer})");
 			lastEndTick = (uint)Main.GameUpdateCount;
 			// Put everything back in motion where it was
 			foreach (var (i, (type, vel)) in npcVelocities)
@@ -235,6 +238,16 @@ namespace MercyMode.Battle
 			phase = Phase.None;
 			encounter = null;
 			boss = null;
+
+			if (killPlayer)
+			{
+				// The SOUL has shattered: now the player really dies, in the world, with Terraria's own death
+				PlayerDeathReason reason = deathReason ?? PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral($"{Player.name} was defeated."));
+				deathReason = null;
+				Player.statLife = 0;
+				Player.KillMe(reason, Math.Max(1.0, deathDamage), 0);
+				return;
+			}
 
 			// A moment of mercy so the boss can't hit you the instant the world unfreezes
 			if (!Player.dead)
@@ -341,7 +354,7 @@ namespace MercyMode.Battle
 				return;
 			}
 			// Enemy gone without us ending the battle (despawned, killed some other way)
-			if (!encounter.Alive && phase != Phase.Outro && phase != Phase.Message && phase != Phase.FightResult)
+			if (!encounter.Alive && phase != Phase.Outro && phase != Phase.Message && phase != Phase.FightResult && phase != Phase.Death)
 			{
 				battleOver = true;
 				StartOutro();
@@ -349,9 +362,10 @@ namespace MercyMode.Battle
 
 			time++;
 			phaseTicks++;
-			if (music != null && musicStarted && phase != Phase.Outro)
+			// Full volume from the first beat; only the end of the battle fades it (and the volume setting still applies live)
+			if (music != null && musicStarted && phase != Phase.Outro && phase != Phase.Death)
 			{
-				musicVolumeCurrent = MathHelper.Lerp(musicVolumeCurrent, DeltaruneAssets.BattleMusicVolume, 0.08f);
+				musicVolumeCurrent = DeltaruneAssets.BattleMusicVolume;
 				music.Volume = musicVolumeCurrent;
 			}
 
@@ -400,6 +414,7 @@ namespace MercyMode.Battle
 				case Phase.EnemyTurn: UpdateEnemyTurn(); break;
 				case Phase.EnemyOutro: UpdateEnemyOutro(); break;
 				case Phase.Outro: UpdateOutro(); break;
+				case Phase.Death: UpdateSoulDeath(); break;
 			}
 		}
 
@@ -515,6 +530,8 @@ namespace MercyMode.Battle
 				SetHeroPose(HeroPose.Idle);
 				if (music != null)
 				{
+					musicVolumeCurrent = DeltaruneAssets.BattleMusicVolume;
+					music.Volume = musicVolumeCurrent;
 					music.Play();
 					musicStarted = true;
 				}
@@ -636,7 +653,7 @@ namespace MercyMode.Battle
 			List<string> lines = act.Run(this);
 			SetHeroPose(HeroPose.Act);
 			if (lastHeal >= 0)
-				QueueHealFx(lastHeal, 8);
+				QueueHealFx(lastHeal, ActHealFrame);
 			ShowMessages(lines, StartEnemyTurn);
 		}
 
@@ -719,11 +736,10 @@ namespace MercyMode.Battle
 			}
 
 			int healed = HealPlayer(heal);
-			Sfx("heal");
-			// obj_heroparent state 4: the item is used 15 frames into the animation
+			// The heal sound plays with the sparkles and the green number (PlayHealFx), not on the key press
 			usedItemType = type;
 			SetHeroPose(HeroPose.Item);
-			QueueHealFx(healed, 15);
+			QueueHealFx(healed, ItemUseFrame);
 
 			string result = Player.statLife >= Player.statLifeMax2 ? "* Your HP was maxed out." : $"* You recovered {healed} HP!";
 			ShowMessages(new[] { $"* {Player.name} used the {name}!\n{result}" }, StartEnemyTurn);
@@ -1003,6 +1019,11 @@ namespace MercyMode.Battle
 					Graze(b, mp);
 			}
 			Bullets.RemoveAll(b => b.Dead);
+			if (deathPending)
+			{
+				BeginSoulDeath();
+				return;
+			}
 
 			turnTimer--;
 			if (turnTimer <= 0 && !Player.dead)
@@ -1125,7 +1146,8 @@ namespace MercyMode.Battle
 		{
 			if (music != null)
 				music.Volume *= 0.9f;
-			if (panel <= 0 && screenFade <= 0f && phaseTicks >= GlideTicks)
+			// Wait for the last afterimages to fade on their own, so the trail never just vanishes
+			if (panel <= 0 && screenFade <= 0f && phaseTicks >= GlideTicks && trail.Count == 0)
 				End();
 		}
 
@@ -1197,6 +1219,7 @@ namespace MercyMode.Battle
 				DrawBox();
 				DrawTPBar();
 				DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f);
+				DrawSoulDeath(left - BackgroundBleed, top - BackgroundBleed, width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
 			}
 			finally
 			{
@@ -1269,7 +1292,9 @@ namespace MercyMode.Battle
 			float attackMotion = phase == Phase.EnemyTurn ? MathHelper.Clamp(enemyAttackEnergy, 0f, 1f) : 0f;
 			float rotation = MathHelper.Lerp(enemyWorldRotation, encounter.DrawRotation(time), glide)
 				- enemyAttackDirection.X * attackMotion * 0.055f;
-			Color baseColor = encounter.DrawColor(npc);
+			// Lit like the world while gliding in or out, so it turns into the real NPC without a jump in brightness
+			Color worldLight = WorldLightTint(npc.Center);
+			Color baseColor = Tint(encounter.DrawColor(npc), worldLight);
 			// Afterimages left behind while gliding, fading out
 			foreach (var t in trail)
 			{
@@ -1284,7 +1309,7 @@ namespace MercyMode.Battle
 				pos.X += (enemyShake % 4 < 2 ? 1 : -1) * enemyShake / 2f;
 			float alpha = 1f;
 			bool selecting = phase == Phase.EnemySelect || phase == Phase.ActSelect;
-			Color color = encounter.DrawColor(npc) * alpha;
+			Color color = Tint(encounter.DrawColor(npc), worldLight) * alpha;
 			DrDraw.Sb.Draw(tex, pos, frame, color, rotation, frame.Size() / 2f, spriteScale, SpriteEffects.None, 0f);
 			enemySnap = new EnemySnapshot
 			{
