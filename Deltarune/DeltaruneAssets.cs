@@ -74,6 +74,8 @@ namespace MercyMode.Deltarune
 			["item"] = new[] { "snd_item" },
 			["boost"] = new[] { "snd_boost" },
 			["mercyadd"] = new[] { "snd_mercyadd" },
+			// a SOUL changing mode: the bell (Undertale's blue-SOUL ding; chapter 5 has it)
+			["soulchange"] = new[] { "snd_bell", "snd_bell_bc" },
 			// the yellow SOUL (chapter 2)
 			["chargeshot"] = new[] { "snd_chargeshot_charge" },
 			["chargefire"] = new[] { "snd_chargeshot_fire" },
@@ -104,25 +106,19 @@ namespace MercyMode.Deltarune
 		public static readonly string[] FontNames = { "fnt_mainbig", "fnt_main", "fnt_small" };
 
 		/// <summary>
-		/// Coloured SOULs for the SOUL modes, found by name: the shortest sprite name with "heart" and the colour in it
-		/// (and none of the effect words), from whichever chapter has one. Stored as "soul_blue" etc.
+		/// Coloured SOULs and other sprites whose names vary by chapter. Each takes the first exact name any chapter has,
+		/// else a name matching the pattern (kept strict: a loose keyword search picked spr_bhero_shield, a party member's
+		/// shield, for the green SOUL's). Chapter 5 has spr_yellowheart and spr_purpleheart; no blue or green heart, bone or
+		/// SOUL shield (2026-10-01 asset list), so those may come from another chapter or stay drawn by the mod.
 		/// </summary>
-		public static readonly (string key, string colour)[] SoulModeSprites =
+		public static readonly (string key, string[] exact, string pattern)[] SearchedSprites =
 		{
-			("soul_blue", "blue"), ("soul_green", "green"), ("soul_purple", "purple"), ("soul_yellow", "yellow"),
-		};
-		private static readonly string[] NotASoul = { "shot", "charge", "break", "shard", "outline", "graze", "trail", "burst", "spawn", "marker", "hit", "anim", "flash" };
-		/// <summary>
-		/// Other sprites found by searching names, since their exact names vary by chapter: a bone bullet and the green
-		/// SOUL's shield. Each tries exact names first, then the shortest name with all the keywords and none of the
-		/// excluded words.
-		/// </summary>
-		public static readonly (string key, string[] exact, string[] keywords, string[] exclude)[] SearchedSprites =
-		{
-			("bone", new[] { "spr_bone", "spr_s_bone", "spr_bonebullet", "spr_bone_bullet", "spr_papyrus_bone" },
-				new[] { "bone" }, new[] { "bird", "dog", "pile", "bonus", "trombone", "head", "face", "body", "walk", "idle", "talk", "fight" }),
-			("shield", new[] { "spr_greenshield", "spr_heart_shield", "spr_soulshield", "spr_shield" },
-				new[] { "shield" }, new[] { "icon", "item", "menu", "face", "walk", "idle", "talk", "hp", "break" }),
+			("soul_blue", new[] { "spr_blueheart", "spr_heart_blue", "spr_blueheart_centered" }, @"^spr_(blue_?heart|heart_?blue|blue_?soul|soul_?blue)$"),
+			("soul_green", new[] { "spr_greenheart", "spr_heart_green", "spr_greenheart_centered" }, @"^spr_(green_?heart|heart_?green|green_?soul|soul_?green)$"),
+			("soul_purple", new[] { "spr_purpleheart", "spr_heart_purple" }, @"^spr_(purple_?heart|heart_?purple|purple_?soul|soul_?purple)$"),
+			("soul_yellow", new[] { "spr_yellowheart", "spr_heart_yellow" }, @"^spr_(yellow_?heart|heart_?yellow)$"),
+			("bone", new[] { "spr_bone", "spr_s_bone", "spr_bonebullet", "spr_bone_bullet", "spr_papyrus_bone", "spr_bullet_bone" }, @"^spr_(bullet_?)?bone(_?bullet)?(_v|_vertical|_h|_horizontal)?$"),
+			("shield", new[] { "spr_greenshield", "spr_heart_shield", "spr_soulshield", "spr_shield_soul", "spr_greenheart_shield" }, @"^spr_.*(heart|soul|green).*shield.*$|^spr_.*shield.*(heart|soul|green).*$"),
 		};
 
 		/// <summary>Which Deltarune sprite each coloured SOUL (and searched sprite) came from (for /drassets).</summary>
@@ -284,31 +280,12 @@ namespace MercyMode.Deltarune
 						rawSprites[n] = s;
 				}
 
-				foreach (var (key, colour) in SoulModeSprites)
-				{
-					if (rawSprites.ContainsKey(key))
-						continue;
-					string best = data.Sprites.Keys
-						.Where(n => n.Contains("heart", StringComparison.OrdinalIgnoreCase) && n.Contains(colour, StringComparison.OrdinalIgnoreCase)
-							&& !NotASoul.Any(w => n.Contains(w, StringComparison.OrdinalIgnoreCase)))
-						.OrderBy(n => n.Length).ThenBy(n => n).FirstOrDefault();
-					if (best == null)
-						continue;
-					RawSprite s = TryRead(() => data.ReadSprite(best), best, log);
-					if (s != null && s.Frames.Count > 0)
-					{
-						rawSprites[key] = s;
-						SoulModeSources[key] = $"{best} (chapter {chapter})";
-					}
-				}
-
-				foreach (var (key, exact, keywords, exclude) in SearchedSprites)
+				foreach (var (key, exact, pattern) in SearchedSprites)
 				{
 					if (rawSprites.ContainsKey(key))
 						continue;
 					string best = exact.FirstOrDefault(data.Sprites.ContainsKey) ?? data.Sprites.Keys
-						.Where(n => keywords.All(k => n.Contains(k, StringComparison.OrdinalIgnoreCase))
-							&& !exclude.Any(w => n.Contains(w, StringComparison.OrdinalIgnoreCase)))
+						.Where(n => System.Text.RegularExpressions.Regex.IsMatch(n, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
 						.OrderBy(n => n.Length).ThenBy(n => n).FirstOrDefault();
 					if (best == null)
 						continue;
@@ -329,14 +306,20 @@ namespace MercyMode.Deltarune
 						rawFonts[n] = f;
 				}
 
-				if (chapter > 0 && DumpPath == "")
-					DumpPath = WriteDump(data, chapter);
+				// A name list per chapter (the newest one is the one /drassets mentions)
+				if (chapter >= 0)
+				{
+					string dump = WriteDump(data, chapter);
+					if (DumpPath == "" && chapter > 0)
+						DumpPath = dump;
+				}
 				data.ClearPageCache();
 
 				if (rawSounds.Count + rawSprites.Count + rawFonts.Count + (soulFrame != null ? 1 : 0) > before)
 					usedChapters.Add(chapter);
 
-				if (soulFrame != null && rawSounds.Count == SoundRoles.Count && SpriteNames.All(rawSprites.ContainsKey) && rawFonts.Count == FontNames.Length)
+				if (soulFrame != null && rawSounds.Count == SoundRoles.Count && SpriteNames.All(rawSprites.ContainsKey)
+					&& SearchedSprites.All(x => rawSprites.ContainsKey(x.key)) && rawFonts.Count == FontNames.Length)
 					break;
 			}
 
