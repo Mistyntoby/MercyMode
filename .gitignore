@@ -2,3 +2,8 @@ bin/
 obj/
 .vs/
 Properties/launchSettings.json
+MercyMode.txt
+*.tmod
+.env
+.env.*
+*.env
