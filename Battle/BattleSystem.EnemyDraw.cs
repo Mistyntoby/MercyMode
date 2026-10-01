@@ -69,11 +69,20 @@ namespace MercyMode.Battle
 			if (enemyShake > 0)
 				p.X += (enemyShake % 4 < 2 ? 1 : -1) * enemyShake / 2f;
 
+			// Idle animation (the battle freezes the boss's AI): the whole body breathes, and every part other than
+			// the anchor floats on its own rhythm. Arms and chains follow, since Terraria draws them between the parts.
+			float breathe = 1f + (float)Math.Sin(time / 45f) * 0.015f;
+			float sway = Math.Max(bounds.Width, bounds.Height) * 0.018f;
+			Vector2 PartSway(int i) => new(
+				(float)Math.Sin(time / 37f + i * 1.9f) * sway,
+				(float)Math.Cos(time / 29f + i * 2.7f) * sway * 0.8f);
+
 			// World pixels around the anchor -> battle pixels around p, scaled by s
-			Matrix local = Matrix.CreateTranslation(-p.X, -p.Y, 0f) * Matrix.CreateScale(s, s, 1f) * Matrix.CreateTranslation(p.X, p.Y, 0f) * baseMatrix;
+			Matrix local = Matrix.CreateTranslation(-p.X, -p.Y, 0f) * Matrix.CreateScale(s * breathe, s * breathe, 1f) * Matrix.CreateTranslation(p.X, p.Y, 0f) * baseMatrix;
 			Vector2 savedScreen = Main.screenPosition;
 			bool savedMenu = Main.gameMenu;
 			int[] savedAlpha = parts.Select(n => n.alpha).ToArray();
+			Vector2[] savedPosition = parts.Select(n => n.position).ToArray();
 			EnemyLight = WorldLightTint(anchor);
 
 			sb.End();
@@ -85,19 +94,27 @@ namespace MercyMode.Battle
 				// Lighting.GetColor returns white, so chains and arms are full-bright like the rest of the battle
 				Main.screenPosition = anchor - p;
 				Main.gameMenu = true;
+				// Move every part first: a part's drawing can reach for another's position (hands draw their arms
+				// to the core)
 				for (int i = 0; i < parts.Count; i++)
 				{
 					if (encounter.ForceOpaque)
 						parts[i].alpha = 0;
-					Main.instance.DrawNPCDirect(sb, parts[i], parts[i].behindTiles, Main.screenPosition);
+					if (parts[i] != anchorNpc)
+						parts[i].position += PartSway(i);
 				}
+				for (int i = 0; i < parts.Count; i++)
+					Main.instance.DrawNPCDirect(sb, parts[i], parts[i].behindTiles, Main.screenPosition);
 			}
 			finally
 			{
 				Main.gameMenu = savedMenu;
 				Main.screenPosition = savedScreen;
 				for (int i = 0; i < parts.Count; i++)
+				{
 					parts[i].alpha = savedAlpha[i];
+					parts[i].position = savedPosition[i];
+				}
 				DrawingEnemy = false;
 				EnemyLight = Color.White;
 				sb.End();

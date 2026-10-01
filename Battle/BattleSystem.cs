@@ -340,6 +340,7 @@ namespace MercyMode.Battle
 		// ================================================================== update
 
 		private int queuedNpc = -1;
+		private const int QueueRetryTicks = 300;
 		private int queuedTicks;
 
 		/// <summary>Starts a battle with this NPC after a few ticks (test command).</summary>
@@ -354,9 +355,17 @@ namespace MercyMode.Battle
 			if (queuedNpc >= 0 && --queuedTicks <= 0)
 			{
 				NPC q = Main.npc[queuedNpc];
-				queuedNpc = -1;
-				if (q.active)
+				// Some bosses aren't ready right away (the Moon Lord spends a second rising before its head and
+				// hands exist): keep trying for a few seconds
+				if (q.active && CanStart(EncounterRegistry.ResolveRoot(q), Player, ignoreGrace: true))
+				{
+					queuedNpc = -1;
 					TryStart(q, Player, "command");
+				}
+				else if (!q.active || queuedTicks < -QueueRetryTicks)
+				{
+					queuedNpc = -1;
+				}
 			}
 			if (phase == Phase.None)
 				return;
