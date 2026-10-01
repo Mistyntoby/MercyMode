@@ -188,28 +188,37 @@ namespace MercyMode.Battle.Encounters
 		{
 			if (Npc.active)
 				yield return Npc;
+			// Only this head's arms (ai[1] = the head), not another Prime's
 			foreach (NPC arm in BossKit.OfTypes(Arms))
-				yield return arm;
+				if ((int)arm.ai[1] == Npc.whoAmI)
+					yield return arm;
 		}
 
 		public override NPC DrawNpc => Npc.active ? Npc : base.DrawNpc;
 
-		/// <summary>Head upright; cannon and laser up on either side, saw and vice lower down.</summary>
+		/// <summary>
+		/// Head upright, arms where their AI parks them (AI styles 33-36; side from each arm's ai[0]): saw and vice
+		/// 200 across and 230 below the head's top, cannon and laser 120 across and 100 above. Their bones are drawn
+		/// toward fixed points by the head, so anywhere else they come apart. Cannon and laser aim at the party.
+		/// </summary>
 		public override void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking)
 		{
 			foreach (NPC p in parts)
 			{
-				Vector2? offset = p.type switch
+				p.rotation = 0f;
+				(float across, float down)? rest = p.type switch
 				{
-					NPCID.PrimeCannon => new Vector2(-170f, -40f),
-					NPCID.PrimeSaw => new Vector2(-130f, 120f),
-					NPCID.PrimeLaser => new Vector2(170f, -40f),
-					NPCID.PrimeVice => new Vector2(130f, 120f),
+					NPCID.PrimeSaw or NPCID.PrimeVice => (200f, 230f),
+					NPCID.PrimeCannon or NPCID.PrimeLaser => (120f, -100f),
 					_ => null,
 				};
-				p.rotation = 0f;
-				if (offset is Vector2 o)
-					p.Center = anchor.Center + o;
+				if (rest is not (float across, float down))
+					continue;
+				p.position.X = anchor.Center.X - across * p.ai[0] - p.width / 2f;
+				p.position.Y = anchor.position.Y + down;
+				// Pointing left, at the party (their sprites point down at rotation 0)
+				if (p.type is NPCID.PrimeCannon or NPCID.PrimeLaser)
+					p.rotation = MathHelper.PiOver2;
 			}
 		}
 
