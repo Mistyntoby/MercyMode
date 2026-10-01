@@ -1639,8 +1639,9 @@ namespace MercyMode.Battle
 			// Two rows, HP and MP: label, bar, then the numbers to the right of the bar in one shared size (as big as
 			// fits the end of the nameplate)
 			const int labelX = 112, barX = 130, barWidth = 28, numberX = barX + barWidth + 3, numberRoom = 208 - numberX;
-			const int hpBarY = 7, hpBarHeight = 8;
-			const int manaBarY = 21, manaBarHeight = 6;
+			const int hpBarY = 6, hpBarHeight = 12;
+			// Right under the HP bar
+			const int manaBarY = hpBarY + hpBarHeight + 3, manaBarHeight = 6;
 			// The small font at (nearly) its own pixel size reads better here than the big one shrunk down
 			const float maxNumberScale = 1f;
 			bool hasMana = Player.statManaMax2 > 0;
@@ -1652,7 +1653,7 @@ namespace MercyMode.Battle
 			float numberScale = Math.Min(maxNumberScale, numberRoom / Math.Max(1f, widest));
 			float numberHeight = DrDraw.LineHeight(DrDraw.SmallFont) * numberScale;
 
-			if (!DrDraw.Sprite("spr_hpname", 0, r.X + labelX, r.Y + hpBarY - 1, Color.White))
+			if (!DrDraw.Sprite("spr_hpname", 0, r.X + labelX, r.Y + hpBarY + 2, Color.White))
 				DrDraw.Text("HP", r.X + labelX - 4, r.Y + hpBarY - 3, Color.White, DrDraw.SmallFont);
 			DrDraw.Rect(r.X + barX, r.Y + hpBarY, barWidth, hpBarHeight, new Color(128, 0, 0));
 			DrDraw.Rect(r.X + barX, r.Y + hpBarY, (float)Math.Ceiling(ratio * barWidth), hpBarHeight, KrisCyan);
@@ -1663,7 +1664,7 @@ namespace MercyMode.Battle
 			if (hasMana)
 			{
 				float mana = MathHelper.Clamp(Player.statMana / (float)Player.statManaMax2, 0f, 1f);
-				const float mpLabelScale = 0.6f;
+				const float mpLabelScale = 0.8f;
 				float mpLabelHeight = DrDraw.LineHeight(DrDraw.SmallFont) * mpLabelScale;
 				DrDraw.Text("MP", r.X + labelX + 1, r.Y + manaBarY + manaBarHeight / 2f - mpLabelHeight / 2f, ManaBlue, DrDraw.SmallFont, mpLabelScale);
 				DrDraw.Rect(r.X + barX, r.Y + manaBarY, barWidth, manaBarHeight, new Color(20, 28, 90));
