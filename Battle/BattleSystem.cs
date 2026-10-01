@@ -115,6 +115,12 @@ namespace MercyMode.Battle
 		private float partyLift;
 		private float musicVolumeCurrent;
 		private PlayerHeadDrawRenderTargetContent playerHeadPortrait;
+		/// <summary>
+		/// global.faceaction: the nameplate shows an icon for the chosen command instead of the head (a frame of
+		/// spr_headkris) from the moment it's chosen until the next player turn.
+		/// </summary>
+		private int faceAction;
+		private const int FaceNone = 0, FaceFight = 1, FaceItem = 3, FaceDefend = 4, FaceAct = 6, FaceSpare = 10;
 
 		/// <summary>Sets the HP the battle holds the player at (test command).</summary>
 		public void SetBattleLife(int life) => battleLife = life;
@@ -169,6 +175,7 @@ namespace MercyMode.Battle
 			shake = 0;
 			pendingHealFx = -1;
 			usedItemType = 0;
+			faceAction = FaceNone;
 			attackPending = -1;
 			// The party and the enemy fly in from where they stood in the world
 			CaptureWorldPositions(root);
@@ -556,6 +563,7 @@ namespace MercyMode.Battle
 		private void BeginPlayerTurn(bool keepText = false)
 		{
 			defending = false;
+			faceAction = FaceNone;
 			if (heroPose == HeroPose.Defend)
 				SetHeroPose(HeroPose.Idle);
 			tpPreview = 0;
@@ -619,6 +627,7 @@ namespace MercyMode.Battle
 			switch (pendingChoice)
 			{
 				case Choice.Fight:
+					faceAction = FaceFight;
 					StartFightBar();
 					break;
 				case Choice.Act:
@@ -659,6 +668,7 @@ namespace MercyMode.Battle
 				return;
 			}
 			Sfx("select");
+			faceAction = FaceAct;
 			tpPreview = 0;
 			mp.TP -= act.TPCost;
 			lastHeal = -1;
@@ -750,6 +760,7 @@ namespace MercyMode.Battle
 			int healed = HealPlayer(heal);
 			// The heal sound plays with the sparkles and the green number (PlayHealFx), not on the key press
 			usedItemType = type;
+			faceAction = FaceItem;
 			SetHeroPose(HeroPose.Item);
 			QueueHealFx(healed, ItemUseFrame);
 
@@ -761,6 +772,7 @@ namespace MercyMode.Battle
 
 		private void DoSpare()
 		{
+			faceAction = FaceSpare;
 			string spared = $"* {Player.name} spared {encounter.Name}!";
 			if (encounter.Mercy >= 100f)
 			{
@@ -777,6 +789,7 @@ namespace MercyMode.Battle
 
 		private void DoDefend()
 		{
+			faceAction = FaceDefend;
 			defending = true;
 			SetHeroPose(HeroPose.Defend);
 			var mp = Player.GetModPlayer<MercyPlayer>();
@@ -1575,16 +1588,10 @@ namespace MercyMode.Battle
 			DrDraw.Rect(r.Right - edge, r.Y - edge, edge, 34f + edge, frame);
 			DrDraw.Rect(r.X, r.Y + 34f - edge, r.Width, edge, frame);
 
-			// The player's own head, enlarged and shifted left to leave clear space before the name.
-			if (playerHeadPortrait?.IsReady == true)
-			{
-				DrDraw.Sb.Draw(playerHeadPortrait.GetTarget(), new Vector2(r.X + 16, r.Y + 15), null,
-					new Color(110, 220, 255), 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
-			}
-			else
-			{
-				DrDraw.HeartShapeAt(r.X + 10, r.Y + 5, 17, new Color(64, 220, 255));
-			}
+			// The chosen command's icon (spr_headkris frames: sword, ACT waves, bag, shield, X), centred where
+			// the head sits; otherwise the player's own head, enlarged and shifted left to clear the name.
+			if (faceAction == FaceNone || !DrDraw.Sprite("spr_headkris", faceAction, r.X + 3, r.Y + 4, Color.White))
+				DrawPlayerHead(new Vector2(r.X + 16, r.Y + 15), 1f);
 			DrDraw.Text(Player.name.ToUpperInvariant(), r.X + 40, r.Y + 7, Color.White, DrDraw.BigFont, 0.68f);
 			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + 22, Color.White))
 				DrDraw.Text("HP", r.X + 108, r.Y + 19, Color.White, DrDraw.SmallFont);
@@ -1669,13 +1676,35 @@ namespace MercyMode.Battle
 				DrDraw.Text($"{(int)act.TPCost}% TP", 500, y + 60, Orange);
 		}
 
+		/// <summary>How much of spr_pressfront is Kris's head (the rest is the "Z").</summary>
+		private const int PressFrontHeadWidth = 40;
+
+		/// <summary>The player's head portrait centred on a point (a cyan heart until it's rendered).</summary>
+		private void DrawPlayerHead(Vector2 center, float alpha)
+		{
+			if (playerHeadPortrait?.IsReady == true)
+			{
+				DrDraw.Sb.Draw(playerHeadPortrait.GetTarget(), center, null,
+					new Color(110, 220, 255) * alpha, 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
+			}
+			else
+			{
+				DrDraw.HeartShapeAt(center.X - 6f, center.Y - 10f, 17, new Color(64, 220, 255) * alpha);
+			}
+		}
+
 		private void DrawFightBar()
 		{
 			float x = FightBarX, y = FightBarY;
 			float alpha = 1f - MathHelper.Clamp(fightFade, 0f, 1f);
 			Color blue = new Color(0, 0, 255) * alpha;
-			if (!DrDraw.Sprite("spr_pressfront", 0, x, y, Color.White, 1f, 0f, alpha))
-				DrDraw.Text(Player.name.Length > 0 ? Player.name.Substring(0, 1) : "*", x + 20, y + 4, Color.White * alpha);
+			// spr_pressfront is Kris's head + "Z" (75x38): keep the Z, put the player's own head where Kris's was
+			DrSprite press = DeltaruneAssets.Sprite("spr_pressfront");
+			if (press != null)
+				DrDraw.SpritePart("spr_pressfront", 0, x, y, new Rectangle(PressFrontHeadWidth, 0, press.Width - PressFrontHeadWidth, press.Height), Color.White * alpha);
+			else
+				DrDraw.Text("Z", x + 50, y + 4, KrisCyan * alpha);
+			DrawPlayerHead(new Vector2(x + 19, y + 20), alpha);
 			DrDraw.Outline(x + 78, y, FightBoxWidth + 3, 37, blue);
 			DrDraw.Outline(x + 79, y + 1, FightBoxWidth + 1, 35, blue);
 			if (!DrDraw.Sprite("spr_pressspot", 0, x + 80, y, Color.White, 1f, 0f, alpha))

@@ -94,7 +94,7 @@ namespace MercyMode.Deltarune
 			"spr_grazeappear", "spr_hpname", "spr_numbersfontbig", "spr_numbersfontbig_gold",
 			"spr_ponman_eyebullet", "spr_smallbullet", "spr_healsparkle", "spr_sparestar",
 			"bg_battleback1", "spr_battlemsg", "spr_heartoutline", "spr_heartoutline2", "spr_sparestar_anim", "spr_lightfairy",
-			"spr_heartbreak", "spr_heartshards",
+			"spr_heartbreak", "spr_heartshards", "spr_headkris",
 		};
 
 		public static readonly string[] FontNames = { "fnt_mainbig", "fnt_main", "fnt_small" };
