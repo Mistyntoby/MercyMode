@@ -184,64 +184,100 @@ namespace MercyMode.Battle
 	public sealed class MercyGainPopup : BattleEffect
 	{
 		private readonly string amount;
-		private Vector2 position;
-		private int age;
+		private float x, y;
+		private readonly float ystart;
+		private float vspeed, hspeed, vstart;
+		private int bounces;
+		private float stretch = 0.2f;
+		private bool stretchGo = true;
+		private float kill;
+		private int killTimer;
+		private bool killActive;
+		private int delayTimer;
 
 		public MercyGainPopup(Vector2 center, float amount)
 		{
-			position = center;
-			this.amount = amount.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+			x = center.X - 30f;
+			y = ystart = center.Y;
+			this.amount = Math.Round(amount).ToString(System.Globalization.CultureInfo.InvariantCulture);
 		}
 
 		public override void Frame()
 		{
-			age++;
-			position.Y -= 1.25f;
-			if (age >= 36)
+			delayTimer++;
+			if (delayTimer == 2)
+			{
+				vspeed = -5f - Main.rand.NextFloat(2f);
+				hspeed = 10f;
+				vstart = vspeed;
+			}
+			if (delayTimer < 2)
+				return;
+
+			if (hspeed > 0f)
+				hspeed -= 1f;
+			if (Math.Abs(hspeed) < 1f)
+				hspeed = 0f;
+			if (bounces < 2)
+				vspeed += 1f;
+			if (y > ystart && bounces < 2 && !killActive)
+			{
+				y = ystart;
+				vspeed = vstart / 2f;
+				bounces++;
+			}
+			if (bounces >= 2 && !killActive)
+			{
+				vspeed = 0f;
+				y = ystart;
+			}
+			if (stretchGo)
+				stretch += 0.4f;
+			if (stretch >= 1.2f)
+			{
+				stretch = 1f;
+				stretchGo = false;
+			}
+			killTimer++;
+			if (killTimer > 35)
+				killActive = true;
+			if (killActive)
+			{
+				kill += 0.08f;
+				y -= 4f;
+			}
+			if (kill > 1f)
 				Done = true;
+			x += hspeed;
+			y += vspeed;
 		}
 
 		public override void Draw()
 		{
-			float alpha = 1f - MathHelper.Clamp((age - 18) / 18f, 0f, 1f);
+			if (delayTimer < 2)
+				return;
+			Vector2 scale = new(2f - stretch, stretch + kill);
+			float alpha = 1f - kill;
 			DrSprite digits = DeltaruneAssets.Sprite("spr_numbersfontbig_gold");
-			float digitWidth = DrDraw.Measure(amount, DrDraw.BigFont);
-			if (digits != null && digits.Frames.Length >= 10)
+			const string goldCharacters = "0123456789+-%";
+			if (digits != null && digits.Frames.Length >= goldCharacters.Length)
 			{
-				digitWidth = 0f;
-				foreach (char ch in amount)
-					digitWidth += ch is >= '0' and <= '9' ? digits.Width : DrDraw.Measure(ch.ToString(), DrDraw.BigFont);
-			}
-			float plusWidth = DrDraw.Measure("+", DrDraw.BigFont);
-			float percentWidth = DrDraw.Measure("%", DrDraw.BigFont);
-			float x = position.X - (plusWidth + digitWidth + percentWidth) / 2f;
-			Color gold = MercyMode.MercyYellow * alpha;
-			DrDraw.Text("+", x, position.Y, gold);
-			x += plusWidth;
-
-			if (digits != null && digits.Frames.Length >= 10)
-			{
-				foreach (char ch in amount)
+				string text = "+" + amount + "%";
+				float right = x + 30f;
+				float px = right - text.Length * digits.Width * scale.X;
+				foreach (char ch in text)
 				{
-					if (ch is >= '0' and <= '9')
-					{
-						DrDraw.Sb.Draw(digits.Frame(ch - '0'), new Vector2(x, position.Y), Color.White * alpha);
-						x += digits.Width;
-					}
-					else
-					{
-						DrDraw.Text(ch.ToString(), x, position.Y, gold);
-						x += DrDraw.Measure(ch.ToString(), DrDraw.BigFont);
-					}
+					int frame = goldCharacters.IndexOf(ch);
+					if (frame >= 0)
+						DrDraw.Sb.Draw(digits.Frame(frame), new Vector2(px, y), null,
+							Color.White * alpha, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+					px += digits.Width * scale.X;
 				}
+				return;
 			}
-			else
-			{
-				DrDraw.Text(amount, x, position.Y, gold);
-				x += digitWidth;
-			}
-
-			DrDraw.Text("%", x, position.Y, gold);
+			string fallback = "+" + amount + "%";
+			DrDraw.Text(fallback, x + 30f - DrDraw.Measure(fallback, DrDraw.BigFont) * scale.X,
+				y, MercyMode.MercyYellow * alpha, DrDraw.BigFont, scale.X);
 		}
 	}
 
