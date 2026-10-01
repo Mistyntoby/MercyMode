@@ -112,6 +112,7 @@ namespace MercyMode.Battle
 		private float soulAlpha = 1f;
 		private float partyLift;
 		private float musicVolumeCurrent;
+		private PlayerHeadDrawRenderTargetContent playerHeadPortrait;
 
 		/// <summary>Heals the player during the battle. Returns how much HP was actually restored.</summary>
 		public int HealPlayer(int amount)
@@ -192,6 +193,7 @@ namespace MercyMode.Battle
 				projVelocities[p.whoAmI] = (p.type, p.velocity);
 			playerPosition = Player.position;
 			battleLife = Player.statLife;
+			CreatePlayerHeadPortrait();
 
 			if (DeltaruneAssets.BattleMusic != null)
 			{
@@ -228,6 +230,7 @@ namespace MercyMode.Battle
 			music?.Stop();
 			music?.Dispose();
 			music = null;
+			ReleasePlayerHeadPortrait();
 			Bullets.Clear();
 			phase = Phase.None;
 			encounter = null;
@@ -241,8 +244,30 @@ namespace MercyMode.Battle
 			}
 		}
 
+		private void CreatePlayerHeadPortrait()
+		{
+			playerHeadPortrait ??= new PlayerHeadDrawRenderTargetContent();
+			playerHeadPortrait.UsePlayer(Player);
+			playerHeadPortrait.UseColor(KrisCyan);
+			if (!Main.ContentThatNeedsRenderTargets.Contains(playerHeadPortrait))
+				Main.ContentThatNeedsRenderTargets.Add(playerHeadPortrait);
+			playerHeadPortrait.Request();
+		}
+
+		private void ReleasePlayerHeadPortrait()
+		{
+			if (playerHeadPortrait == null)
+				return;
+
+			Main.ContentThatNeedsRenderTargets.Remove(playerHeadPortrait);
+			playerHeadPortrait.GetTarget()?.Dispose();
+			playerHeadPortrait.Reset();
+			playerHeadPortrait = null;
+		}
+
 		public override void OnWorldUnload()
 		{
+			ReleasePlayerHeadPortrait();
 			if (phase != Phase.None)
 			{
 				music?.Stop();
@@ -308,6 +333,7 @@ namespace MercyMode.Battle
 			}
 			if (phase == Phase.None)
 				return;
+			playerHeadPortrait?.Request();
 
 			if (boss == null || Player.dead)
 			{
@@ -1442,26 +1468,30 @@ namespace MercyMode.Battle
 			bool raised = partyLift > 1f;
 			if (raised)
 			{
-				// Deltarune's thin cyan nameplate frame with short, dim edge glints.
+				// Deltarune's thin cyan nameplate frame with one fast-fading bar on each side of the buttons.
 				float pulse = 0.72f + 0.18f * (0.5f + 0.5f * (float)Math.Sin(selectedBarPhase / 12f));
 				DrDraw.Rect(r.X, r.Y - 2, r.Width, 2, KrisCyan * pulse);
 				DrDraw.Rect(r.X, r.Y, 1, r.Height + 32, KrisCyan * 0.8f);
 				DrDraw.Rect(r.Right - 1, r.Y, 1, r.Height + 32, KrisCyan * 0.8f);
 				DrDraw.Rect(r.X + 1, r.Y, r.Width - 2, r.Height + 32, Color.Black);
-				for (int i = 0; i < 3; i++)
-				{
-					float progress = (selectedBarPhase / 26f + i / 3f) % 1f;
-					float travel = progress * 8f;
-					float alpha = 0.34f * (1f - progress);
-					float y = r.Y + 4 + i * 13f;
-					DrDraw.Rect(r.X + 1 + travel, y, 1, 5, KrisCyan * alpha);
-					DrDraw.Rect(r.Right - 2 - travel, y, 1, 5, KrisCyan * alpha);
-				}
+				float progress = (selectedBarPhase / 11f) % 1f;
+				float travel = progress * 10f;
+				float alpha = 0.55f * (1f - progress);
+				float buttonY = r.Y + r.Height + 4f;
+				DrDraw.Rect(r.X + 1 + travel, buttonY, 2, 29, KrisCyan * alpha);
+				DrDraw.Rect(r.Right - 3 - travel, buttonY, 2, 29, KrisCyan * alpha);
 			}
 
-			// Kris's portrait and name anchor the left side, as in the original battle HUD.
-			if (!DrDraw.Sprite("spr_headkris", 0, r.X + 8, r.Y + 18, Color.White))
-				DrDraw.HeartShapeAt(r.X + 12, r.Y + 8, 16, new Color(64, 220, 255));
+			// The player's own head, tinted Deltarune cyan and raised slightly within the panel.
+			if (playerHeadPortrait?.IsReady == true)
+			{
+				DrDraw.Sb.Draw(playerHeadPortrait.GetTarget(), new Vector2(r.X + 20, r.Y + 17), null,
+					new Color(110, 220, 255), 0f, new Vector2(42f), 0.5f, SpriteEffects.None, 0f);
+			}
+			else
+			{
+				DrDraw.HeartShapeAt(r.X + 10, r.Y + 5, 17, new Color(64, 220, 255));
+			}
 			DrDraw.Text(Player.name.ToUpperInvariant(), r.X + 32, r.Y + 10, Color.White, DrDraw.SmallFont);
 			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + 20, Color.White))
 				DrDraw.Text("HP", r.X + 108, r.Y + 15, Color.White, DrDraw.SmallFont);
