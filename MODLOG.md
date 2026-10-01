@@ -232,6 +232,8 @@ Resolution 640x480. All sizes below in those pixels.
   body into the screen corner and broke our matrix. ForceOpaque also on Golem (head was half transparent).
 - Single-sprite enemies: DrawScale = npc.scale x 1.5 (the hero's scale), capped to fit 220x200. Was hitbox height
   x 1.5 / frame height, which made most enemies (Eater of Souls...) too small since sprites exceed hitboxes.
+- PoseForBattle runs before the bounds are measured (it used to run after, so centring used the unposed world
+  layout and Skeletron sat low). Skeletron's hands pulled in to -90 * ai[0], +175.
 - Encounter.PoseForBattle poses composite parts for the draw (position, rotation, frame, spriteDirection; all
   restored). Arms/hands use their AI's rest spots, since the bones are drawn from the part toward fixed points by
   the head (Main.DrawNPCDirect: segments of 92 + 60 px aimed at head -200/-50 * ai[0], +130/+80) and come apart
