@@ -33,6 +33,11 @@ namespace MercyMode.Battle
 			return true;
 		}
 
+		// During a battle only FIGHT hurts enemies (SimpleStrikeNPC skips these): no leftover swing or shot in the world
+		public override bool? CanBeHitByItem(NPC npc, Player player, Item item) => BattleSystem.Active ? false : null;
+
+		public override bool? CanBeHitByProjectile(NPC npc, Projectile projectile) => BattleSystem.Active ? false : null;
+
 		public override void OnHitByItem(NPC npc, Player player, Item item, NPC.HitInfo hit, int damageDone)
 			=> BattleSystem.TryStart(npc, player, "hit by " + item.Name);
 

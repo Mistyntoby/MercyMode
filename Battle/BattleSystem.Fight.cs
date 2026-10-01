@@ -496,6 +496,8 @@ namespace MercyMode.Battle
 				PlayEnemyDeath();
 				targetEnemy.Out = true;
 				OnEnemyDefeated(targetEnemy);
+				// The rest of a multi-hit attack carries on into the next enemy
+				RetargetIfNeeded();
 			}
 
 			if (dealt > 0)

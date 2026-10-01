@@ -199,6 +199,14 @@ namespace MercyMode.Battle
 			var mp = Player.GetModPlayer<MercyPlayer>();
 			tpApparent = tpCurrent = mp.TP / TensionToTP;
 
+			// The swing or shot that started the battle stops here: no frozen mid-swing pose, no hits in the background
+			Player.itemAnimation = 0;
+			Player.itemTime = 0;
+			Player.channel = false;
+			foreach (Projectile p in Main.ActiveProjectiles)
+				if (p.owner == Player.whoAmI && p.friendly && !p.npcProj && !p.minion && !p.sentry)
+					p.Kill();
+
 			npcVelocities.Clear();
 			foreach (NPC n in Main.ActiveNPCs)
 				npcVelocities[n.whoAmI] = (n.type, n.velocity);

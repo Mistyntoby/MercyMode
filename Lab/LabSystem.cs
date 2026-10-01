@@ -154,6 +154,11 @@ namespace MercyMode.Lab
 				("act-second-target", ActSecondTarget),
 				("boss-fights-alone", BossAlone),
 				("single-enemy", SingleEnemy),
+				("boss-kill", () => BossKill(NPCID.EyeofCthulhu)),
+				("boss-kill-king-slime", () => BossKill(NPCID.KingSlime)),
+				("boss-spare", BossSpare),
+				("no-world-hits", NoWorldHits),
+				("multi-hit-spills-over", MultiHitSpillsOver),
 			};
 			string want = Wanted.Trim().ToLowerInvariant();
 			foreach (var s in all)
@@ -557,6 +562,80 @@ namespace MercyMode.Lab
 			foreach (NPC m in B.LabTarget.Members().ToList())
 				m.active = false;
 			yield return WaitForEnd();
+		}
+
+		private IEnumerable BossKill(int type)
+		{
+			yield return StartWith(type);
+			Check(B.LabEnemies.Count == 1 && B.LabTarget.Slot == null, "a boss should fight alone, in its own spot");
+			yield return Menu();
+			yield return FightAndKill(0);
+			yield return Until(() => B.LabPhase == Phase.Message, "the win message", skipText: false);
+			Check(B.LabText.Contains("YOU WON"), $"expected the win text, got \"{B.LabText}\"");
+			yield return WaitForEnd();
+		}
+
+		private IEnumerable BossSpare()
+		{
+			yield return StartWith(NPCID.EyeofCthulhu);
+			yield return Menu();
+			B.LabTarget.Mercy = 100f;
+			NPC.downedBoss1 = false;
+			bool before = NPC.downedBoss1;
+			yield return Spare(0);
+			yield return WaitForEnd();
+			Check(NPC.downedBoss1, "sparing the Eye didn't count it as beaten");
+			Check(!Main.npc.Any(n => n.active && n.type == NPCID.EyeofCthulhu), "the Eye is still around after the spare");
+			Log($"  downedBoss1 {before} -> {NPC.downedBoss1}");
+		}
+
+		/// <summary>A swing or shot from before the battle (or still in the world) never hurts the enemy during it.</summary>
+		private IEnumerable NoWorldHits()
+		{
+			// Mid-swing and with an arrow already flying when the battle starts
+			P.itemAnimation = P.itemAnimationMax = 30;
+			int arrow = Projectile.NewProjectile(P.GetSource_FromThis(), P.Center + new Vector2(300f, 0f), Vector2.Zero, ProjectileID.WoodenArrowFriendly, 20, 0f, 0);
+			yield return StartWith(NPCID.Zombie);
+			Check(P.itemAnimation == 0, $"the swing kept going into the battle ({P.itemAnimation})");
+			Check(!Main.projectile[arrow].active, "the arrow from before the battle is still flying");
+			NPC z = B.LabTarget.Npc;
+			int life = z.life;
+			// A friendly shot sitting right on the enemy for a second
+			int shot = Projectile.NewProjectile(P.GetSource_FromThis(), z.Center, Vector2.Zero, ProjectileID.WoodenArrowFriendly, 20, 0f, 0);
+			yield return Wait(60);
+			Main.projectile[shot].active = false;
+			Check(z.life == life, $"the enemy took damage outside FIGHT ({life} -> {z.life})");
+			yield return Menu();
+			yield return FightAndKill(0);
+			yield return WaitForEnd();
+		}
+
+		/// <summary>A fast weapon's later hits move on to the next enemy once its target is down.</summary>
+		private IEnumerable MultiHitSpillsOver()
+		{
+			Item saved = P.inventory[0];
+			P.inventory[0] = new Item(ItemID.CopperShortsword);
+			try
+			{
+				yield return StartWith(NPCID.Zombie, NPCID.Zombie, NPCID.Zombie);
+				yield return Menu();
+				foreach (Encounter e in Living())
+					foreach (NPC m in e.Members())
+						m.life = 1;
+				yield return FightAndKill(0);
+				yield return Until(() => B.LabPhase != Phase.FightResult, "the end of the FIGHT", skipText: false);
+				int down = B.LabEnemies.Count(e => !e.E.Alive);
+				Log($"  one FIGHT with a Copper Shortsword took down {down} of 3");
+				Check(down >= 2, "the later hits didn't carry on to the next enemy");
+				foreach (NPC n in Main.npc)
+					if (n.active && n.type == NPCID.Zombie)
+						n.active = false;
+				yield return WaitForEnd();
+			}
+			finally
+			{
+				P.inventory[0] = saved;
+			}
 		}
 
 		private IEnumerable SingleEnemy()

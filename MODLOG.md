@@ -297,6 +297,11 @@ Resolution 640x480. All sizes below in those pixels.
   enrages the rest (`EnemyEncounter.Enraged`: attacks as Hard).
 - Spared regular enemies go through `NPC.checkDead` (death sound muted) instead of `NPCLoot`, so they count toward
   invasion / event progress like kills. Bosses keep `NPCLoot`.
+- Defeating one of a group skips the "was defeated" box and goes straight to the enemy turn; the rest of a multi-hit
+  FIGHT carries on into the next living enemy. The slash only draws on the enemy hit.
+- During a battle enemies can't be hit by items or projectiles (`CanBeHitByItem/Projectile`); only FIGHT's
+  SimpleStrikeNPC hurts them. Starting a battle cancels the player's swing and removes their in-flight shots
+  (the swing that started a battle used to keep hitting the frozen enemy in the background).
 - `/mmbattle group 3 zombie` or `/mmbattle group goblin peon, goblin archer, goblin sorcerer` spawns a squad and
   starts the battle; `/mmbattle end` ends every enemy in it.
 
@@ -311,7 +316,8 @@ Resolution 640x480. All sizes below in those pixels.
   stand-in (`Asset<Texture2D>.DefaultValue`). No drawing or sound is tested; every battle rule is.
 - Scenarios: `squad-fight` (3 zombies, kill one at a time, 2 then 1 attackers), `goblin-squad-spare` (morale line,
   +30 MERCY, invasion 80 -> 77), `army-enrage` (pirates), `act-second-target`, `boss-fights-alone` (EoC ignores
-  nearby zombies), `single-enemy`. All pass (2026-10-01, tML 2026.8.3.0).
+  nearby zombies), `single-enemy`, `boss-kill`, `boss-kill-king-slime`, `boss-spare`, `no-world-hits`,
+  `multi-hit-spills-over`. All pass (2026-10-01, tML 2026.8.3.0).
 - Bugs the lab caught on the way: none in battle rules; server-only crashes (texture sizes, view matrix, fonts) now
   have fallbacks (`Main.dedServ`).
 
