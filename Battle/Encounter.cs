@@ -130,7 +130,7 @@ namespace MercyMode.Battle
 		/// </summary>
 		public virtual Vector2 CompositeSize => Vector2.Zero;
 		/// <summary>The battle-screen area the drawn boss is fitted into.</summary>
-		public virtual Vector2 CompositeArea => new(230f, 210f);
+		public virtual Vector2 CompositeArea => new(260f, 250f);
 
 		/// <summary>Ends the fight peacefully: removes every other part, then drops the loot from one.</summary>
 		public virtual void Spare()

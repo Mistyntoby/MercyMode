@@ -217,9 +217,10 @@ Resolution 640x480. All sizes below in those pixels.
   for the draw: the battle can freeze her mid fade-in. No selection flash or afterimages on these; spare/death
   animations use the main part's sprite only.
 - Composite sizing: hitboxes/frames badly underestimate what's drawn (Moon Lord's torso filled the whole screen),
-  so Encounter.CompositeSize sets a minimum world size per boss (Moon Lord 1400x1150 into a 380x310 area at
-  (440,160); Prime/Empress 560x420; Golem 440x380; Skeletron 420x300; Twins 300x200; Deerclops 230x290; Queen
-  Slime 220x200). The overhead MERCY bar (MercyGlobalNPC.PostDraw) is skipped while DrawingEnemy.
+  so Encounter.CompositeSize sets a minimum world size per boss, fitted into CompositeArea (default 260x250, capped
+  at the hero's 1.5x). Measured from screenshots: Empress ~180x200, Golem ~250x250 (first guesses were ~2x too
+  big, so they came out tiny). Now: Empress 190x200, Golem 260x250, Prime 320x260, Skeletron 300x220, Twins
+  240x160, Deerclops 200x240, Queen Slime 180x150; Moon Lord 1400x1150 into 380x310 at (440,160). The overhead MERCY bar (MercyGlobalNPC.PostDraw) is skipped while DrawingEnemy.
 - Moon Lord core: ai[0] = -1 for its first 60 ticks (rising), then it spawns the hands (800 px apart, 100 up) and
   head (400 up). Battles wait for ai[0] >= 0 (Eligible); `/mmbattle npc` retries for up to 5 s instead of starting
   at 20 ticks. Head and hands have npc.hide (the normal pass skips them; Main.CacheNPCDraws draws them with the
