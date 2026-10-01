@@ -1004,7 +1004,7 @@ namespace MercyMode.Battle
 			if (soulMode != SoulMode.Red && phaseTicks == 8 * TicksPerFrame)
 			{
 				AddEffect(new Shockwave(SoulStart + new Vector2(SoulSize / 2f), soulMode.Color(), 34f));
-				AttackSfx.Vanilla(Terraria.ID.SoundID.Item35, 0.5f, 0.4f);
+				DeltaruneAssets.Play("soulchange", Terraria.ID.SoundID.Item35 with { Volume = 0.5f, Pitch = 0.4f });
 			}
 			soulAlpha = Math.Min(1f, phaseTicks / (float)TicksPerFrame * 0.334f);
 			if (boxTimer >= BoxGrowTicks)
