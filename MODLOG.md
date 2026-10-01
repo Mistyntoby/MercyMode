@@ -216,6 +216,11 @@ Resolution 640x480. All sizes below in those pixels.
   through while BattleSystem.DrawingEnemy and hides the world copies otherwise. ForceOpaque (Empress) zeroes alpha
   for the draw: the battle can freeze her mid fade-in. No selection flash or afterimages on these; spare/death
   animations use the main part's sprite only.
+- Composite sizing: hitboxes/frames badly underestimate what's drawn (Moon Lord's torso filled the whole screen),
+  so Encounter.CompositeSize sets a minimum world size per boss (Moon Lord 1400x1150 into a 380x310 area at
+  (440,160); Prime/Empress 560x420; Golem 440x380; Skeletron 420x300; Twins 300x200; Deerclops 230x290; Queen
+  Slime 220x200). The overhead MERCY bar (MercyGlobalNPC.PostDraw) is skipped while DrawingEnemy.
+- Widescreen / rounded-down scale: the bottom panel's black now reaches the window bottom (DrawPanel(bottom)).
 - `/mmbattle npc` matches internal names (spaces ignored: "moon lord core") and, when display names collide
   ("Moon Lord" is the head, hands and core), prefers the boss / custom-encounter type.
 - Enemy families: Water (Piranha, Jellyfish), Spider (Spider, Herpling), Mimic (+ biome mimics), Charger (Unicorn,

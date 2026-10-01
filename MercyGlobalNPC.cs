@@ -42,6 +42,9 @@ namespace MercyMode
 
 		public override void PostDraw(NPC npc, SpriteBatch spriteBatch, Vector2 screenPos, Color drawColor)
 		{
+			// Not on the battle screen: the battle has its own MERCY display
+			if (Battle.BattleSystem.DrawingEnemy)
+				return;
 			if (!npc.boss || npc.realLife >= 0 && npc.realLife != npc.whoAmI)
 				return;
 
