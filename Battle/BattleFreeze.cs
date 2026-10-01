@@ -1,0 +1,101 @@
+using Microsoft.Xna.Framework;
+using Terraria;
+using Terraria.DataStructures;
+using Terraria.ModLoader;
+
+namespace MercyMode.Battle
+{
+	/// <summary>Starts battles on contact or hit, and holds every NPC still while one is open.</summary>
+	public class BattleFreezeNPC : GlobalNPC
+	{
+		public override bool PreAI(NPC npc)
+		{
+			if (!BattleSystem.Active)
+				return true;
+			// AI is skipped, but Terraria still adds velocity to position afterwards
+			npc.velocity = Vector2.Zero;
+			return false;
+		}
+
+		public override bool CheckActive(NPC npc) => !BattleSystem.Active;
+
+		public override bool CanHitPlayer(NPC npc, Player target, ref int cooldownSlot)
+		{
+			if (BattleSystem.Active)
+				return false;
+			if (BattleSystem.CanStart(npc, target))
+			{
+				BattleSystem.TryStart(npc, target);
+				return false;
+			}
+			return true;
+		}
+
+		public override void OnHitByItem(NPC npc, Player player, Item item, NPC.HitInfo hit, int damageDone)
+			=> BattleSystem.TryStart(npc, player);
+
+		public override void OnHitByProjectile(NPC npc, Projectile projectile, NPC.HitInfo hit, int damageDone)
+		{
+			if (projectile.owner >= 0 && projectile.owner < Main.maxPlayers)
+				BattleSystem.TryStart(npc, Main.player[projectile.owner]);
+		}
+
+		public override void EditSpawnRate(Player player, ref int spawnRate, ref int maxSpawns)
+		{
+			if (BattleSystem.Active)
+				maxSpawns = 0;
+		}
+	}
+
+	public class BattleFreezeProjectile : GlobalProjectile
+	{
+		public override bool PreAI(Projectile projectile)
+		{
+			if (!BattleSystem.Active)
+				return true;
+			projectile.velocity = Vector2.Zero;
+			projectile.timeLeft++; // don't expire while frozen
+			return false;
+		}
+
+		public override bool CanHitPlayer(Projectile projectile, Player target) => !BattleSystem.Active;
+	}
+
+	/// <summary>Locks the player in place during a battle. Only the battle itself can hurt them.</summary>
+	public class BattlePlayer : ModPlayer
+	{
+		public override void SetControls()
+		{
+			if (!BattleSystem.Active || Player.whoAmI != Main.myPlayer)
+				return;
+			Player.controlLeft = Player.controlRight = Player.controlUp = Player.controlDown = false;
+			Player.controlJump = Player.controlUseItem = Player.controlUseTile = Player.controlThrow = false;
+			Player.controlHook = Player.controlMount = Player.controlQuickHeal = Player.controlQuickMana = false;
+			Player.controlSmart = Player.controlTorch = Player.controlInv = Player.controlMap = false;
+		}
+
+		public override bool CanUseItem(Item item) => !BattleSystem.Active;
+
+		public override bool CanBeHitByNPC(NPC npc, ref int cooldownSlot) => !BattleSystem.Active;
+
+		public override bool CanBeHitByProjectile(Projectile proj) => !BattleSystem.Active;
+
+		public override bool ImmuneTo(PlayerDeathReason damageSource, int cooldownCounter, bool dodgeable)
+			=> BattleSystem.Active && !BattleSystem.HurtingPlayer;
+
+		public override void ModifyHurt(ref Player.HurtModifiers modifiers)
+		{
+			// DEFEND: tdamage = ceil(2 * tdamage / 3)
+			if (BattleSystem.HurtingPlayer && BattleSystem.Defending)
+				modifiers.FinalDamage *= BattleConstants.DefendDamageMult;
+		}
+	}
+
+	/// <summary>Silences Terraria's music while Rude Buster plays.</summary>
+	public class BattleMusicScene : ModSceneEffect
+	{
+		public override int Music => Deltarune.DeltaruneAssets.BattleMusic != null ? 0 : -1;
+		public override SceneEffectPriority Priority => SceneEffectPriority.BossHigh;
+		public override bool IsSceneEffectActive(Player player) => BattleSystem.Active;
+	}
+}

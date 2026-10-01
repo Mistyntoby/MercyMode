@@ -23,6 +23,20 @@ namespace MercyMode.Deltarune
 		public List<RawFrame> Frames = new();
 	}
 
+	public struct RawGlyph
+	{
+		public char Character;
+		public int X, Y, Width, Height, Shift, Offset;
+	}
+
+	/// <summary>A GameMaker font: glyph rectangles into one texture frame.</summary>
+	public sealed class RawFont
+	{
+		public string Name;
+		public RawFrame Texture;
+		public readonly Dictionary<char, RawGlyph> Glyphs = new();
+	}
+
 	/// <summary>Raw sound bytes. Either a WAV (RIFF) or OGG file.</summary>
 	public sealed class RawSound
 	{
@@ -69,7 +83,11 @@ namespace MercyMode.Deltarune
 
 			IndexNames("SPRT", Sprites);
 			IndexNames("SOND", Sounds);
+			IndexNames("FONT", Fonts);
 		}
+
+		/// <summary>Font name -> FONT entry address.</summary>
+		public readonly Dictionary<string, long> Fonts = new();
 
 		public void Dispose()
 		{
@@ -269,6 +287,49 @@ namespace MercyMode.Deltarune
 			using (var bz = new Ionic.BZip2.BZip2InputStream(fs, true))
 				bz.CopyTo(output);
 			return Qoi.Decode(output.ToArray());
+		}
+
+		// ---------- fonts ----------
+
+		public RawFont ReadFont(string name)
+		{
+			if (!Fonts.TryGetValue(name, out long a))
+				return null;
+
+			// name, display name, em size, bold, italic, range start/charset/aa, range end, texture, scale x/y,
+			// then a few fields that depend on the GameMaker version, then the glyph pointer list.
+			// Find the list instead of guessing the version: a count followed by pointers that start right after it.
+			long list = -1;
+			for (int off = 40; off <= 80; off += 4)
+			{
+				uint count = U32(a + off);
+				if (count > 0 && count < 70000 && U32(a + off + 4) == a + off + 4 + 4 * count)
+				{
+					list = a + off;
+					break;
+				}
+			}
+			if (list < 0)
+				return null;
+
+			var font = new RawFont { Name = name, Texture = ReadFrame(U32(a + 28)) };
+			uint n = U32(list);
+			for (int i = 0; i < n; i++)
+			{
+				uint g = U32(list + 4 + 4 * i);
+				var glyph = new RawGlyph
+				{
+					Character = (char)U16(g),
+					X = U16(g + 2),
+					Y = U16(g + 4),
+					Width = U16(g + 6),
+					Height = U16(g + 8),
+					Shift = I16(g + 10),
+					Offset = I16(g + 12),
+				};
+				font.Glyphs[glyph.Character] = glyph;
+			}
+			return font;
 		}
 
 		// ---------- sounds ----------
