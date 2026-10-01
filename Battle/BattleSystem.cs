@@ -1472,12 +1472,13 @@ namespace MercyMode.Battle
 
 		private void DrawBoxShape(float scale, float angle, float alpha)
 		{
-			// Opening into (or out of) a full-screen arena: a plain rectangle that follows Box
+			// Opening into (or out of) a full-screen arena: a plain rectangle that follows Box. Its border fades out
+			// as it opens, so a full-screen attack is just black; the arena's edges still stop the SOUL
 			if (arenaBlend > 0.01f)
 			{
 				Rectangle box = Box;
 				DrDraw.Rect(box.X, box.Y, box.Width, box.Height, Color.Black * alpha);
-				DrDraw.Outline(box.X, box.Y, box.Width, box.Height, BoxGreen * alpha, 3);
+				DrDraw.Outline(box.X, box.Y, box.Width, box.Height, BoxGreen * (alpha * (1f - arenaBlend)), 3);
 				return;
 			}
 			float centerX = BoxCenterX, centerY = BoxCenterY;
