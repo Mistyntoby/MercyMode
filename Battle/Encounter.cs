@@ -155,6 +155,8 @@ namespace MercyMode.Battle
 		public virtual bool DrawWithTerraria => false;
 		/// <summary>The NPCs drawn together when <see cref="DrawWithTerraria"/> is on.</summary>
 		public virtual IEnumerable<NPC> DrawParts() => Members();
+		/// <summary>Each part floats on its own rhythm while idle (off for worms: their segments have to stay joined).</summary>
+		public virtual bool SwayParts => true;
 		/// <summary>Draw fully opaque even if the battle froze it mid fade-in (the Empress).</summary>
 		public virtual bool ForceOpaque => false;
 		/// <summary>
