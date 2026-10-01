@@ -36,6 +36,12 @@ namespace MercyMode
 		[DefaultValue(true)]
 		public bool BossBattleMusic;
 
+		/// <summary>How much louder the boss's music plays during its battle (capped at full volume).</summary>
+		[Range(1f, 3f)]
+		[Increment(0.1f)]
+		[DefaultValue(1.6f)]
+		public float BossMusicBoost;
+
 		[Range(0.1f, 10f)]
 		[Increment(0.1f)]
 		[DefaultValue(1f)]

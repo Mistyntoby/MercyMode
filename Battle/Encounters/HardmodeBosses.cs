@@ -188,10 +188,15 @@ namespace MercyMode.Battle.Encounters
 		{
 			if (Npc.active)
 				yield return Npc;
-			// Only this head's arms (ai[1] = the head), not another Prime's
-			foreach (NPC arm in BossKit.OfTypes(Arms))
-				if ((int)arm.ai[1] == Npc.whoAmI)
+			// One arm of each kind: this head's (ai[1] = the head), nearest to it. Arms left over from an earlier
+			// Prime can point at a reused head slot and float around as extras.
+			foreach (int type in Arms)
+			{
+				NPC arm = BossKit.OfTypes(type).Where(a => (int)a.ai[1] == Npc.whoAmI)
+					.OrderBy(a => a.DistanceSQ(Npc.Center)).FirstOrDefault();
+				if (arm != null)
 					yield return arm;
+			}
 		}
 
 		public override NPC DrawNpc => Npc.active ? Npc : base.DrawNpc;

@@ -402,6 +402,74 @@ namespace MercyMode.Deltarune
 			}
 		}
 
+		private sealed class FadingSound
+		{
+			public SoundEffectInstance Instance;
+			public ReLogic.Utilities.SlotId Slot;
+			public float Volume;
+			public int Age, Hold, Fade;
+		}
+		private static readonly List<FadingSound> fadingSounds = new();
+
+		/// <summary>
+		/// Like <see cref="Play"/>, but the sound is cut short: it plays at full volume for <paramref name="hold"/> ticks,
+		/// then fades out over <paramref name="fade"/> ticks (long booms like explosions).
+		/// </summary>
+		public static void PlayFading(string role, SoundStyle fallback, float gain, int hold, int fade)
+		{
+			MercyConfig config = ModContent.GetInstance<MercyConfig>();
+			MercySoundRedirect redirect = SoundRedirectFor(role, config);
+			if (redirect == MercySoundRedirect.Silent)
+				return;
+			float roleGain = RoleGain(role) * gain;
+			if (redirect == MercySoundRedirect.Deltarune && sounds.TryGetValue(role, out var effect))
+			{
+				float vol = MathHelper.Clamp(Main.soundVolume * config.BattleSoundVolume * soundVolumes.GetValueOrDefault(role, 1f) * roleGain, 0f, 1f);
+				if (vol <= 0f)
+					return;
+				SoundEffectInstance instance = effect.CreateInstance();
+				instance.Volume = vol;
+				instance.Play();
+				fadingSounds.Add(new FadingSound { Instance = instance, Volume = vol, Hold = hold, Fade = Math.Max(1, fade) });
+				return;
+			}
+			SoundStyle style = redirect == MercySoundRedirect.Deltarune ? fallback : RedirectedStyle(redirect);
+			var slot = SoundEngine.PlaySound(style with { Volume = style.Volume * config.BattleSoundVolume * roleGain });
+			fadingSounds.Add(new FadingSound { Slot = slot, Volume = 1f, Hold = hold, Fade = Math.Max(1, fade) });
+		}
+
+		public override void PostUpdateEverything()
+		{
+			for (int i = fadingSounds.Count - 1; i >= 0; i--)
+			{
+				FadingSound s = fadingSounds[i];
+				s.Age++;
+				float t = s.Age <= s.Hold ? 1f : 1f - (s.Age - s.Hold) / (float)s.Fade;
+				if (s.Instance != null)
+				{
+					if (t <= 0f || s.Instance.State == SoundState.Stopped)
+					{
+						s.Instance.Stop();
+						s.Instance.Dispose();
+						fadingSounds.RemoveAt(i);
+						continue;
+					}
+					s.Instance.Volume = s.Volume * t;
+				}
+				else
+				{
+					// A Terraria sound: its ActiveSound.Volume is a multiplier on top of the style's volume
+					if (!SoundEngine.TryGetActiveSound(s.Slot, out var active) || t <= 0f)
+					{
+						active?.Stop();
+						fadingSounds.RemoveAt(i);
+						continue;
+					}
+					active.Volume = t;
+				}
+			}
+		}
+
 		/// <summary>Plays the real Deltarune sound for a role if we have it, otherwise the vanilla fallback.</summary>
 		public static void Play(string role, SoundStyle fallback, Vector2? position = null)
 		{

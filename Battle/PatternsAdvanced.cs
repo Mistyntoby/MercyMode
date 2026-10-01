@@ -18,9 +18,10 @@ namespace MercyMode.Battle
 		/// <summary>Bullets launching after a telegraph.</summary>
 		public static void Fire() => DeltaruneAssets.Play("bulletfire", SoundID.Item5 with { Volume = 0.8f });
 		/// <summary>Something heavy hitting the floor of the box.</summary>
-		public static void Impact() => DeltaruneAssets.Play("impact", SoundID.Item14 with { Volume = 0.7f, Pitch = -0.2f });
-		/// <summary>A shell bursting into bullets.</summary>
-		public static void Explosion() => DeltaruneAssets.Play("explosion", SoundID.Item14 with { Volume = 0.6f });
+		// Quieter and cut short with a fade: a full boom every slam was too much.
+		public static void Impact() => DeltaruneAssets.PlayFading("impact", SoundID.Item14 with { Volume = 0.7f, Pitch = -0.2f }, 0.7f, 10, 16);
+		/// <summary>A shell bursting into bullets. Quieter and faded out quickly so bursts don't pile up into a roar.</summary>
+		public static void Explosion() => DeltaruneAssets.PlayFading("explosion", SoundID.Item14 with { Volume = 0.6f }, 0.5f, 8, 14);
 
 		/// <summary>A Terraria sound (roars, lasers, stingers) at the battle's sound volume.</summary>
 		public static void Vanilla(SoundStyle style, float volume = 1f, float pitch = 0f)
