@@ -1282,7 +1282,6 @@ namespace MercyMode.Battle
 			}
 		}
 
-		private bool optionsWereOpen;
 
 		/// <summary>
 		/// While a battle runs: the scroll wheel and hotbar keys don't switch items underneath it, and Esc (the
@@ -1291,19 +1290,23 @@ namespace MercyMode.Battle
 		public override void PostUpdateInput()
 		{
 			if (phase == Phase.None || Main.gameMenu)
-			{
-				optionsWereOpen = Main.ingameOptionsWindow;
 				return;
-			}
 			PlayerInput.ScrollWheelDelta = 0;
 			PlayerInput.ScrollWheelDeltaForUI = 0;
 			foreach (TriggersSet set in new[] { PlayerInput.Triggers.Current, PlayerInput.Triggers.JustPressed })
 				foreach (string key in set.KeyStatus.Keys.Where(k => k.StartsWith("Hotbar") || k.StartsWith("DpadRadial")).ToList())
 					set.KeyStatus[key] = false;
-			// Opened on the press, not again on the press that closes it
-			if (PlayerInput.Triggers.JustPressed.Inventory && !Main.ingameOptionsWindow && !optionsWereOpen && !Main.drawingPlayerChat)
-				IngameOptions.Open();
-			optionsWereOpen = Main.ingameOptionsWindow;
+			// Esc opens and closes the pause menu, handled here entirely: Terraria's own inventory toggle would close
+			// the menu on the same press (while paused it reads the key directly), so it never sees a held Esc
+			if (PlayerInput.Triggers.Current.Inventory)
+				Main.LocalPlayer.releaseInventory = false;
+			if (PlayerInput.Triggers.JustPressed.Inventory && !Main.drawingPlayerChat)
+			{
+				if (Main.ingameOptionsWindow)
+					IngameOptions.Close();
+				else
+					IngameOptions.Open();
+			}
 		}
 
 		public override void ModifyInterfaceLayers(List<GameInterfaceLayer> layers)
