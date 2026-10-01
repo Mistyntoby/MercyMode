@@ -286,6 +286,20 @@ namespace MercyMode.Battle
 			public bool Alive = true;
 		}
 
+		/// <summary>
+		/// obj_attackpress leaves an obj_afterimage of each bolt every other frame where the bolt is (alpha 0.4), and
+		/// it stays put, fading 0.04 a frame; so the trail is a row of fading ghosts 16 px apart behind the bolt.
+		/// </summary>
+		private sealed class BoltGhost
+		{
+			/// <summary>Where it was left, in bar frames (boltframe - boltx at the time).</summary>
+			public float Ahead;
+			public float BoltX;
+			public float Alpha = 0.4f;
+		}
+
+		private readonly List<BoltGhost> boltGhosts = new();
+
 		private sealed class PendingHit
 		{
 			public int Points;
@@ -318,6 +332,7 @@ namespace MercyMode.Battle
 			hitsTried = hitsLanded = 0;
 			bestPoints = 0;
 			bolts.Clear();
+			boltGhosts.Clear();
 			pendingHits.Clear();
 			boltBursts.Clear();
 			// obj_attackpress: the first bolt reaches the line at frame 29, the next ones 12 or 18 frames apart
@@ -333,6 +348,17 @@ namespace MercyMode.Battle
 		private void UpdateFightBar()
 		{
 			boltX += 1f / TicksPerFrame;
+			// imagetimer: a ghost of every live bolt each second Deltarune frame; ghosts fade 0.04 a frame
+			if (phaseTicks % (2 * TicksPerFrame) == 0)
+				foreach (FightBolt b in bolts)
+					if (b.Alive && b.Frame - boltX >= 0f)
+						boltGhosts.Add(new BoltGhost { Ahead = b.Frame - boltX, BoltX = boltX });
+			for (int i = boltGhosts.Count - 1; i >= 0; i--)
+			{
+				boltGhosts[i].Alpha -= 0.04f / TicksPerFrame;
+				if (boltGhosts[i].Alpha <= 0f)
+					boltGhosts.RemoveAt(i);
+			}
 			// Deltarune checks presses once per frame, so score on the frame this tick belongs to
 			int now = (int)Math.Floor(boltX);
 

@@ -1849,8 +1849,6 @@ namespace MercyMode.Battle
 				DrDraw.Text($"{(int)act.TPCost}% TP", 500, y + 60, Orange);
 		}
 
-		/// <summary>How much of spr_pressfront is Kris's head (the rest is the "Z").</summary>
-		private const int PressFrontHeadWidth = 40;
 
 		/// <summary>The player's head portrait centred on a point (a cyan heart until it's rendered).</summary>
 		private void DrawPlayerHead(Vector2 center, float alpha)
@@ -1872,17 +1870,24 @@ namespace MercyMode.Battle
 			float alpha = 1f - MathHelper.Clamp(fightFade, 0f, 1f);
 			Color blue = new Color(0, 0, 255) * alpha;
 			// spr_pressfront is Kris's head + "Z" (75x38): keep the Z, put the player's own head where Kris's was
-			DrSprite press = DeltaruneAssets.Sprite("spr_pressfront");
-			if (press != null)
-				DrDraw.SpritePart("spr_pressfront", 0, x, y, new Rectangle(PressFrontHeadWidth, 0, press.Width - PressFrontHeadWidth, press.Height), Color.White * alpha);
-			else
-				DrDraw.Text("Z", x + 50, y + 4, KrisCyan * alpha);
+			// Always the Z: some chapters' spr_pressfront says PRESS instead (chapter 5 has none, so it came from an older one)
+			DrDraw.Text("Z", x + 50, y + 4, KrisCyan * alpha);
 			DrawPlayerHead(new Vector2(x + 19, y + 20), alpha);
 			DrDraw.Outline(x + 78, y, FightBoxWidth + 3, 37, blue);
 			DrDraw.Outline(x + 79, y + 1, FightBoxWidth + 1, 35, blue);
 			if (!DrDraw.Sprite("spr_pressspot", 0, x + 80, y, Color.White, 1f, 0f, alpha))
 				DrDraw.Rect(x + 80, y, 10, 38, new Color(0, 0, 255) * alpha);
 
+			// The ghosts the bolts left behind (they stay where they were left and fade)
+			foreach (BoltGhost g in boltGhosts)
+			{
+				float gx = x + 80 + g.Ahead * BoltSpeed;
+				if (gx > x + 80 + FightBoxWidth + 4)
+					continue;
+				float a = g.Alpha * alpha;
+				if (!DrDraw.Sprite("spr_attackspot", 0, gx, y, Color.White, 1f, 0f, a))
+					DrDraw.Rect(gx + 2, y, 6, 38, Color.White * a);
+			}
 			foreach (FightBolt bolt in bolts)
 			{
 				if (!bolt.Alive)
@@ -1893,10 +1898,6 @@ namespace MercyMode.Battle
 				if (bx > x + 80 + FightBoxWidth + 4)
 					continue;
 				float boltAlpha = ahead < 0 ? 1f + ahead / 3f : 1f;
-				// Afterimages every other frame, fading
-				for (int k = 2; k >= 1; k--)
-					if (!DrDraw.Sprite("spr_attackspot", 0, bx + k * BoltSpeed, y, Color.White, 1f, 0f, 0.4f / k * boltAlpha))
-						DrDraw.Rect(bx + k * BoltSpeed + 2, y, 6, 38, Color.White * (0.4f / k * boltAlpha));
 				if (!DrDraw.Sprite("spr_attackspot", 0, bx, y, Color.White, 1f, 0f, boltAlpha))
 					DrDraw.Rect(bx + 2, y, 6, 38, Color.White * boltAlpha);
 			}
