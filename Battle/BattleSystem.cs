@@ -1480,8 +1480,8 @@ namespace MercyMode.Battle
 
 			if (selectionAlpha > 0.01f)
 			{
-				// scr_selectionmatrix: fixed cyan rule above the buttons with sine-eased columns.
-				DrDraw.Rect(r.X, buttonsY - 5f, r.Width, 3f, KrisCyan * selectionAlpha);
+				// scr_selectionmatrix: cyan divider sits below the nameplate, above the button row.
+				DrDraw.Rect(r.X, buttonsY - 1f, r.Width, 3f, KrisCyan * selectionAlpha);
 				for (int i = 0; i < 12; i++)
 				{
 					float angle = selectedBarPhase + i * 10f * MathHelper.Pi;
@@ -1493,8 +1493,8 @@ namespace MercyMode.Battle
 					{
 						float leftX = r.X + 30f - wave * 30f;
 						float rightX = r.Right - 32f + wave * 30f;
-						DrDraw.Rect(leftX, buttonsY - 5f, 2f, 33f, KrisCyan * alpha);
-						DrDraw.Rect(rightX, buttonsY - 5f, 2f, 33f, KrisCyan * alpha);
+						DrDraw.Rect(leftX, buttonsY - 1f, 2f, 29f, KrisCyan * alpha);
+						DrDraw.Rect(rightX, buttonsY - 1f, 2f, 29f, KrisCyan * alpha);
 					}
 				}
 			}
@@ -1522,10 +1522,10 @@ namespace MercyMode.Battle
 
 			// The original outer frame tracks the nameplate; black fill is exactly 34 px tall,
 			// so its lower edge covers the button row only as the box drops into the bullet phase.
-			DrDraw.Rect(r.X, r.Y - 3f, r.Width, 1f, KrisCyan * selectionAlpha);
+			DrDraw.Rect(r.X, r.Y - 3f, r.Width, 3f, KrisCyan * selectionAlpha);
 			DrDraw.Rect(r.X, r.Y - 2f, 1f, r.Height + 3f, KrisCyan * selectionAlpha);
-			DrDraw.Rect(r.Right - 2f, r.Y - 2f, 1f, r.Height + 3f, KrisCyan * selectionAlpha);
-			DrDraw.Rect(r.X + 2f, r.Y - 1f, r.Width - 4f, 34f, Color.Black);
+			DrDraw.Rect(r.Right - 1f, r.Y - 2f, 1f, r.Height + 3f, KrisCyan * selectionAlpha);
+			DrDraw.Rect(r.X + 1f, r.Y, r.Width - 2f, 34f, Color.Black);
 
 			// The player's own head, enlarged and shifted left to leave clear space before the name.
 			if (playerHeadPortrait?.IsReady == true)
