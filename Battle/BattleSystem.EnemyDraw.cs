@@ -47,10 +47,11 @@ namespace MercyMode.Battle
 
 		private void DrawEnemyComposite(SpriteBatch sb, Matrix baseMatrix)
 		{
-			NPC anchorNpc = encounter.Npc.active ? encounter.Npc : encounter.DrawNpc;
+			List<NPC> parts = encounter.DrawParts().Where(n => n.active).Distinct().ToList();
+			// The NPC the battle started with, unless it isn't one of the drawn parts (a worm touched mid-body: its head leads)
+			NPC anchorNpc = encounter.Npc.active && (parts.Count == 0 || parts.Contains(encounter.Npc)) ? encounter.Npc : encounter.DrawNpc;
 			if (anchorNpc == null || !anchorNpc.active)
 				return;
-			List<NPC> parts = encounter.DrawParts().Where(n => n.active).Distinct().ToList();
 			if (!parts.Contains(anchorNpc))
 				parts.Add(anchorNpc);
 			// Terraria's order (Main.DrawNPCs): behind-tiles NPCs first, then each pass from slot 199 down to 0,

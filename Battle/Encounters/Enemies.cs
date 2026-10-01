@@ -198,6 +198,12 @@ namespace MercyMode.Battle.Encounters
 		};
 
 		public override float DrawRotation(int time) => -BossKit.WormRotation;
+		// The whole worm, slithering, instead of just its head; smaller in a squad's spot
+		public override bool DrawWithTerraria => true;
+		public override IEnumerable<NPC> DrawParts() => BossKit.WormChain(Npc, 10);
+		public override void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking) =>
+			BossKit.PoseWorm(BossKit.WormChain(Npc, 10), time, attacking);
+		public override Vector2 CompositeArea => SlotArea ?? new Vector2(220f, 130f);
 
 		private Bullet Head(Vector2 p, Vector2 v)
 		{

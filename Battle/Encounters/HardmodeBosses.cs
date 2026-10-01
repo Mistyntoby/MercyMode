@@ -162,6 +162,11 @@ namespace MercyMode.Battle.Encounters
 		};
 
 		public override NPC DrawNpc => BossKit.OfTypes(NPCID.TheDestroyer).FirstOrDefault() ?? base.DrawNpc;
+		// The whole worm (its first segments and tail), slithering, instead of just its head
+		public override bool DrawWithTerraria => true;
+		public override IEnumerable<NPC> DrawParts() => BossKit.WormChain(DrawNpc, 14);
+		public override void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking) =>
+			BossKit.PoseWorm(BossKit.WormChain(DrawNpc, 14), time, attacking);
 
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
