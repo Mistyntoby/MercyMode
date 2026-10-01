@@ -84,17 +84,18 @@ namespace MercyMode.Battle.Encounters
 			if (chain.Count == 0)
 				return;
 			NPC head = chain[0];
-			float t = time / 28f * (1f + attacking);
-			// Segments sit a sprite-length apart (their hitboxes are much smaller than what's drawn, and spacing by
-			// those piled them on top of each other)
-			float SpriteLength(NPC n) => (n.frame.Height > 0 ? n.frame.Height : n.height) * n.scale;
+			// A gentle slither, only a little quicker while attacking
+			float t = time / 32f * (1f + attacking * 0.3f);
+			// Segments sit one width apart, as Terraria's worm AI keeps them (the sprite sheet's frame height can be
+			// several segments tall, which left gaps)
+			float SpriteLength(NPC n) => n.width * n.scale;
 			var at = new Vector2[chain.Count];
 			at[0] = head.Center;
 			float along = 0f;
 			for (int i = 1; i < chain.Count; i++)
 			{
-				along += (SpriteLength(chain[i - 1]) + SpriteLength(chain[i])) / 2f * 0.82f;
-				float amp = SpriteLength(head) * 0.7f;
+				along += (SpriteLength(chain[i - 1]) + SpriteLength(chain[i])) / 2f;
+				float amp = SpriteLength(head) * 0.45f;
 				at[i] = head.Center + new Vector2(along, (float)(Math.Sin(i * 0.55f - t) - Math.Sin(-t)) * amp);
 			}
 			for (int i = 0; i < chain.Count; i++)
@@ -180,8 +181,9 @@ namespace MercyMode.Battle.Encounters
 		public override bool DrawWithTerraria => true;
 		// Frozen mid fade-in, back segments were see-through
 		public override bool ForceOpaque => true;
-		public override Vector2 CompositeArea => new(360f, 200f);
-		public override Vector2 DrawCenter => new(430f, 170f);
+		public override Vector2 CompositeArea => new(300f, 180f);
+		public override Vector2 DrawCenter => new(470f, 170f);
+		public override bool SwayParts => false;
 		public override IEnumerable<NPC> DrawParts() => BossKit.WormChain(DrawNpc, 10);
 		public override void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking) =>
 			BossKit.PoseWorm(BossKit.WormChain(DrawNpc, 10), time, attacking);

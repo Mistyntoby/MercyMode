@@ -121,7 +121,7 @@ namespace MercyMode.Battle
 					parts[i].IsABestiaryIconDummy = true;
 					if (encounter.ForceOpaque)
 						parts[i].alpha = 0;
-					if (parts[i] != anchorNpc)
+					if (parts[i] != anchorNpc && encounter.SwayParts)
 						parts[i].position += PartSway(i);
 				}
 				// Remember where each part lands on the battle screen, for hits on that part
