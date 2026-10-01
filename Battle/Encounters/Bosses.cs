@@ -330,6 +330,10 @@ namespace MercyMode.Battle.Encounters
 					continue;
 				p.position.X = anchor.Center.X - 120f * p.ai[0] - p.width / 2f;
 				p.position.Y = anchor.position.Y - 60f;
+				// The sprite hangs fingers-down; raised, it turns over so the fingers point up and the wrist meets
+				// the bones. Half a turn also mirrors it, so flip its facing back to keep the thumb on the same side.
+				p.rotation = MathHelper.Pi;
+				p.spriteDirection = (int)p.ai[0];
 			}
 		}
 		public override string EncounterText => "* SKELETRON rises to guard the dungeon!";
