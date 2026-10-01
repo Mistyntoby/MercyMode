@@ -3,6 +3,21 @@ using Terraria.ModLoader.Config;
 
 namespace MercyMode
 {
+	public enum MercySoundRedirect
+	{
+		Deltarune,
+		MenuTick,
+		MenuOpen,
+		MenuClose,
+		PlayerHit,
+		NpcHit,
+		NpcDeath,
+		Roar,
+		Item1,
+		Item4,
+		Silent,
+	}
+
 	public class MercyConfig : ModConfig
 	{
 		public override ConfigScope Mode => ConfigScope.ClientSide;
@@ -27,6 +42,34 @@ namespace MercyMode
 		[Range(0, 10)]
 		[DefaultValue(0)]
 		public int Chapter;
+
+		[Range(0f, 1.5f)]
+		[Increment(0.05f)]
+		[DefaultValue(0.65f)]
+		public float BattleSoundVolume;
+
+		[Range(0f, 1.5f)]
+		[Increment(0.05f)]
+		[DefaultValue(0.45f)]
+		public float BattleMusicVolume;
+
+		[DefaultValue(MercySoundRedirect.Deltarune)]
+		public MercySoundRedirect MenuSoundRedirect;
+
+		[DefaultValue(MercySoundRedirect.Deltarune)]
+		public MercySoundRedirect BattleSoundRedirect;
+
+		[DefaultValue(MercySoundRedirect.Deltarune)]
+		public MercySoundRedirect ActionSoundRedirect;
+
+		[DefaultValue(MercySoundRedirect.Deltarune)]
+		public MercySoundRedirect MercyGainSoundRedirect;
+
+		[DefaultValue(MercySoundRedirect.Deltarune)]
+		public MercySoundRedirect GrazeSoundRedirect;
+
+		[DefaultValue(MercySoundRedirect.Deltarune)]
+		public MercySoundRedirect BattleStartSoundRedirect;
 
 		private (bool, string, int)? loadedWith;
 

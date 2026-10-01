@@ -37,5 +37,45 @@ Configs: {
 			Label: Chapter to load from (0 = newest)
 			Tooltip: Which chapter's data.win to read assets from.
 		}
+
+		BattleSoundVolume: {
+			Label: Battle sound volume
+			Tooltip: Scales Mercy Mode sound effects relative to Terraria's sound volume. The default is intentionally quieter than full volume.
+		}
+
+		BattleMusicVolume: {
+			Label: Battle music volume
+			Tooltip: Scales battle music relative to Terraria's music volume.
+		}
+
+		MenuSoundRedirect: {
+			Label: Menu sound redirect
+			Tooltip: Choose Deltarune sounds, a Terraria sound, or Silent for battle menu navigation and selection sounds.
+		}
+
+		BattleSoundRedirect: {
+			Label: Combat sound redirect
+			Tooltip: Choose Deltarune sounds, a Terraria sound, or Silent for hit, slash, and critical-hit sounds.
+		}
+
+		ActionSoundRedirect: {
+			Label: Action sound redirect
+			Tooltip: Choose Deltarune sounds, a Terraria sound, or Silent for healing, item, spare, and weapon sounds.
+		}
+
+		MercyGainSoundRedirect: {
+			Label: MERCY gain sound redirect
+			Tooltip: Choose Deltarune sounds, a Terraria sound, or Silent for the sound played when an ACT raises MERCY.
+		}
+
+		GrazeSoundRedirect: {
+			Label: Graze sound redirect
+			Tooltip: Choose Deltarune sounds, a Terraria sound, or Silent for graze sounds.
+		}
+
+		BattleStartSoundRedirect: {
+			Label: Battle start sound redirect
+			Tooltip: Choose Deltarune sounds, a Terraria sound, or Silent for the battle-entry sound.
+		}
 	}
 }

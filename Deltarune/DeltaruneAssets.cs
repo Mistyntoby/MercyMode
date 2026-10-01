@@ -71,7 +71,7 @@ namespace MercyMode.Deltarune
 			["weaponpull"] = new[] { "snd_weaponpull_fast", "snd_weaponpull" },
 			["item"] = new[] { "snd_item" },
 			["boost"] = new[] { "snd_boost" },
-			["defeat"] = new[] { "snd_defeatrun" },
+			["mercyadd"] = new[] { "snd_mercyadd" },
 		};
 
 		/// <summary>Sprites the battle screen uses. Missing ones fall back to simple shapes.</summary>
@@ -81,7 +81,7 @@ namespace MercyMode.Deltarune
 			"spr_btfight", "spr_btact", "spr_btitem", "spr_btspare", "spr_btdefend",
 			"spr_pressfront", "spr_pressspot", "spr_attackspot", "spr_attack_cut1",
 			"spr_tensionbar", "spr_tensionfilling", "spr_tensionmarker", "spr_tplogo",
-			"spr_grazeappear", "spr_hpname", "spr_numbersfontbig",
+			"spr_grazeappear", "spr_hpname", "spr_numbersfontbig", "spr_numbersfontbig_gold",
 			"spr_ponman_eyebullet", "spr_smallbullet", "spr_healsparkle", "spr_sparestar",
 			"bg_battleback1", "spr_battlemsg", "spr_heartoutline", "spr_heartoutline2", "spr_sparestar_anim", "spr_lightfairy",
 		};
@@ -394,26 +394,77 @@ namespace MercyMode.Deltarune
 		/// <summary>Plays the real Deltarune sound for a role if we have it, otherwise the vanilla fallback.</summary>
 		public static void Play(string role, SoundStyle fallback, Vector2? position = null)
 		{
+			MercyConfig config = ModContent.GetInstance<MercyConfig>();
+			MercySoundRedirect redirect = SoundRedirectFor(role, config);
+			if (redirect == MercySoundRedirect.Silent)
+				return;
+
+			if (redirect != MercySoundRedirect.Deltarune)
+			{
+				SoundStyle redirected = RedirectedStyle(redirect);
+				SoundEngine.PlaySound(redirected with { Volume = redirected.Volume * config.BattleSoundVolume }, position);
+				return;
+			}
+
 			if (sounds.TryGetValue(role, out var effect))
 			{
-				float vol = MathHelper.Clamp(Main.soundVolume * soundVolumes.GetValueOrDefault(role, 1f), 0f, 1f);
+				float vol = MathHelper.Clamp(Main.soundVolume * config.BattleSoundVolume * soundVolumes.GetValueOrDefault(role, 1f), 0f, 1f);
 				if (vol > 0f)
 					effect.Play(vol, 0f, 0f);
 				return;
 			}
-			SoundEngine.PlaySound(fallback, position);
+			SoundEngine.PlaySound(fallback with { Volume = fallback.Volume * config.BattleSoundVolume }, position);
 		}
 
 		/// <summary>Only plays if the real sound loaded. For effects that vanilla Terraria has no good match for.</summary>
 		public static void PlayIfLoaded(string role)
 		{
+			MercyConfig config = ModContent.GetInstance<MercyConfig>();
+			MercySoundRedirect redirect = SoundRedirectFor(role, config);
+			if (redirect == MercySoundRedirect.Silent)
+				return;
+			if (redirect != MercySoundRedirect.Deltarune)
+			{
+				SoundStyle redirected = RedirectedStyle(redirect);
+				SoundEngine.PlaySound(redirected with { Volume = redirected.Volume * config.BattleSoundVolume });
+				return;
+			}
+
 			if (sounds.TryGetValue(role, out var effect))
 			{
-				float vol = MathHelper.Clamp(Main.soundVolume * soundVolumes.GetValueOrDefault(role, 1f), 0f, 1f);
+				float vol = MathHelper.Clamp(Main.soundVolume * config.BattleSoundVolume * soundVolumes.GetValueOrDefault(role, 1f), 0f, 1f);
 				if (vol > 0f)
 					effect.Play(vol, 0f, 0f);
 			}
 		}
+
+		public static float BattleMusicVolume => MathHelper.Clamp(
+			Main.musicVolume * ModContent.GetInstance<MercyConfig>().BattleMusicVolume, 0f, 1f);
+
+		private static MercySoundRedirect SoundRedirectFor(string role, MercyConfig config) => role switch
+		{
+			"menumove" or "select" or "cantselect" or "error" => config.MenuSoundRedirect,
+			"hurt" or "damage" or "slash" or "crit" => config.BattleSoundRedirect,
+			"act" or "heal" or "spare" or "item" or "boost" or "weaponpull" => config.ActionSoundRedirect,
+			"mercyadd" => config.MercyGainSoundRedirect,
+			"graze" => config.GrazeSoundRedirect,
+			"battleenter" => config.BattleStartSoundRedirect,
+			_ => MercySoundRedirect.Deltarune,
+		};
+
+		private static SoundStyle RedirectedStyle(MercySoundRedirect redirect) => redirect switch
+		{
+			MercySoundRedirect.MenuTick => Terraria.ID.SoundID.MenuTick,
+			MercySoundRedirect.MenuOpen => Terraria.ID.SoundID.MenuOpen,
+			MercySoundRedirect.MenuClose => Terraria.ID.SoundID.MenuClose,
+			MercySoundRedirect.PlayerHit => Terraria.ID.SoundID.PlayerHit,
+			MercySoundRedirect.NpcHit => Terraria.ID.SoundID.NPCHit1,
+			MercySoundRedirect.NpcDeath => Terraria.ID.SoundID.NPCDeath1,
+			MercySoundRedirect.Roar => Terraria.ID.SoundID.Roar,
+			MercySoundRedirect.Item1 => Terraria.ID.SoundID.Item1,
+			MercySoundRedirect.Item4 => Terraria.ID.SoundID.Item4,
+			_ => Terraria.ID.SoundID.MenuTick,
+		};
 
 		public static int LoadedSoundCount => sounds.Count;
 
