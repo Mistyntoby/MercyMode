@@ -1662,9 +1662,11 @@ namespace MercyMode.Battle
 			}
 			string hp = $"{Player.statLife}/{Player.statLifeMax2}";
 			Color hpColor = ratio <= 0.25f ? new Color(255, 255, 0) : Color.White;
-			const float hpNumberScale = 0.55f;
+			// Small enough to sit fully above the bar, clear of the HP label
+			const float hpNumberScale = 0.42f;
 			float hpTextWidth = DrDraw.Measure(hp, DrDraw.BigFont) * hpNumberScale;
-			DrDraw.Text(hp, r.X + hpBarX + (hpBarWidth - hpTextWidth) / 2f, r.Y - 3f,
+			float hpTextY = r.Y + hpBarY - 1f - DrDraw.LineHeight(DrDraw.BigFont) * hpNumberScale;
+			DrDraw.Text(hp, r.X + hpBarX + (hpBarWidth - hpTextWidth) / 2f, hpTextY,
 				hpColor, DrDraw.BigFont, hpNumberScale);
 
 		}
