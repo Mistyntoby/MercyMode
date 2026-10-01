@@ -173,8 +173,10 @@ Resolution 640x480. All sizes below in those pixels.
 - Death timing: hard cut to black (no fade), SOUL alone 30 frames (1 s), crack, 30 more frames, shatter,
   then 45 frames of falling shards before Player.KillMe.
 - Full-screen attacks (Roaring Knight style; the DELTAModKit decompile is chapters 1-2 only, so this is built
-  from how the fight plays, not its code): EnemyAttack.FullScreen opens Box into FullScreenArena (72,16 548x304:
-  above the panel, right of the TP bar) with an eased arenaBlend, and dims everything behind it to 85% black.
+  from how the fight plays, not its code): EnemyAttack.FullScreen opens Box into FullScreenArena (10,10 620x460:
+  the whole battle screen, inset so its green border marks the play area on any window shape) with an eased
+  arenaBlend. Everything else, panel and TP bar included, is drawn first and covered in black; only the arena
+  border, bullets and SOUL are drawn on top. Beams are 1640 px long so they cross the screen from anywhere.
   Patterns built on Box fill it. The outro holds until the arena has closed (clamping the SOUL in), then does the
   normal spin. `Slashes`: bursts of sharp beams (Beam.Make sharp: full width at once, thins out, only hurts for
   the first half), the first through the SOUL, staggered 9 ticks, FIGHT slash sound + shake. Used by EoC/Skeletron/

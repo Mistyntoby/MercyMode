@@ -151,7 +151,8 @@ namespace MercyMode.Battle
 			Color color, float damage, Action onFire, bool sharp = false)
 		{
 			Vector2 dir = angle.ToRotationVector2();
-			Vector2 a = through - dir * 520f, b2 = through + dir * 520f;
+			// Long enough to cross the whole 640x480 screen from any point on it
+			Vector2 a = through - dir * 820f, b2 = through + dir * 820f;
 			return new Bullet
 			{
 				Position = through,
