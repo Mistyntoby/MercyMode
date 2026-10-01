@@ -1467,23 +1467,23 @@ namespace MercyMode.Battle
 			Rectangle r = PartyBox;
 			bool choosing = phase == Phase.Menu || phase == Phase.EnemySelect || phase == Phase.ActSelect || phase == Phase.ItemSelect;
 			float buttonsY = ScreenHeight - panel + 5f;
-
 			float selectionAlpha = choosing ? 1f : MathHelper.Clamp(partyLift / 32f, 0f, 1f);
+
 			if (selectionAlpha > 0.01f)
 			{
 				// scr_selectionmatrix: fixed cyan rule above the buttons with sine-eased columns.
-				DrDraw.Rect(r.X, buttonsY - 5f, r.Width, 2f, KrisCyan * selectionAlpha);
+				DrDraw.Rect(r.X, buttonsY - 5f, r.Width, 3f, KrisCyan * selectionAlpha);
 				for (int i = 0; i < 12; i++)
 				{
 					float angle = selectedBarPhase + i * 10f * MathHelper.Pi;
 					float wave = (float)Math.Sin(angle / 60f);
 					float alpha = Math.Max(0f, (float)Math.Sin(angle / 60f)) * selectionAlpha;
 					DrDraw.Rect(r.X, buttonsY - 8f, 2f, 36f, KrisCyan * alpha);
-					DrDraw.Rect(r.Right + 1f, buttonsY - 8f, 2f, 36f, KrisCyan * alpha);
+					DrDraw.Rect(r.Right - 1f, buttonsY - 8f, 2f, 36f, KrisCyan * alpha);
 					if (Math.Cos(angle / 60f) < 0f)
 					{
 						float leftX = r.X + 30f - wave * 30f;
-						float rightX = r.Right - 30f + wave * 30f;
+						float rightX = r.Right - 31f + wave * 30f;
 						DrDraw.Rect(leftX, buttonsY - 5f, 2f, 33f, KrisCyan * alpha);
 						DrDraw.Rect(rightX, buttonsY - 5f, 2f, 33f, KrisCyan * alpha);
 					}
@@ -1511,11 +1511,12 @@ namespace MercyMode.Battle
 				}
 			}
 
-			// The original outer top and side frame surrounds the moving black nameplate.
-			DrDraw.Rect(r.X, r.Y - 3f, r.Width, 1f, KrisCyan);
-			DrDraw.Rect(r.X, r.Y - 2f, 1f, r.Height + 3f, KrisCyan);
-			DrDraw.Rect(r.Right - 1f, r.Y - 2f, 1f, r.Height + 3f, KrisCyan);
-			DrDraw.Rect(r.X + 1f, r.Y - 1f, r.Width - 2f, r.Height + 34f, Color.Black);
+			// The original outer frame tracks the nameplate; black fill is exactly 34 px tall,
+			// so its lower edge covers the button row only as the box drops into the bullet phase.
+			DrDraw.Rect(r.X, r.Y - 3f, r.Width, 1f, KrisCyan * selectionAlpha);
+			DrDraw.Rect(r.X, r.Y - 2f, 1f, r.Height + 3f, KrisCyan * selectionAlpha);
+			DrDraw.Rect(r.Right - 1f, r.Y - 2f, 1f, r.Height + 3f, KrisCyan * selectionAlpha);
+			DrDraw.Rect(r.X + 1f, r.Y - 1f, r.Width - 2f, 34f, Color.Black);
 
 			// The player's own head, enlarged and shifted left to leave clear space before the name.
 			if (playerHeadPortrait?.IsReady == true)
@@ -1527,7 +1528,7 @@ namespace MercyMode.Battle
 			{
 				DrDraw.HeartShapeAt(r.X + 10, r.Y + 5, 17, new Color(64, 220, 255));
 			}
-			DrDraw.Text(Player.name.ToUpperInvariant(), r.X + 40, r.Y + 10, Color.White, DrDraw.SmallFont, 1.12f);
+			DrDraw.Text(Player.name.ToUpperInvariant(), r.X + 40, r.Y + 7, Color.White, DrDraw.BigFont, 0.68f);
 			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + 22, Color.White))
 				DrDraw.Text("HP", r.X + 108, r.Y + 19, Color.White, DrDraw.SmallFont);
 			float ratio = MathHelper.Clamp(Player.statLife / (float)Player.statLifeMax2, 0f, 1f);
