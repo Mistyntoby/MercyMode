@@ -1817,6 +1817,10 @@ namespace MercyMode.Battle
 			float textY = top + 48; // 376 when the panel is fully up
 			switch (phase)
 			{
+				case Phase.Waiting when Net.BattleNet.FightingNow.Count > 0:
+					// Others are fighting: their bars (ours comes in when it's our turn)
+					DrawAllyFightRows();
+					break;
 				case Phase.Intro:
 				case Phase.Menu:
 				case Phase.Message:
@@ -1842,6 +1846,7 @@ namespace MercyMode.Battle
 				case Phase.FightBar:
 				case Phase.FightResult:
 					DrawFightBar();
+					DrawAllyFightRows();
 					break;
 			}
 		}
@@ -2059,7 +2064,7 @@ namespace MercyMode.Battle
 
 		private void DrawFightBar()
 		{
-			float x = FightBarX, y = FightBarY;
+			float x = FightBarX, y = BarY;
 			float alpha = 1f - MathHelper.Clamp(fightFade, 0f, 1f);
 			Color blue = new Color(0, 0, 255) * alpha;
 			// spr_pressfront is Kris's head + "Z" (75x38): keep the Z, put the player's own head where Kris's was

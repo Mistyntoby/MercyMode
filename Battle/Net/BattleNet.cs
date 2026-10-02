@@ -107,7 +107,9 @@ namespace MercyMode.Battle.Net
 		/// <summary>Party members who have picked their action this round, with the command's face icon.</summary>
 		public static readonly Dictionary<int, int> ReadyFaces = new();
 		/// <summary>The player carrying out their action right now (-1: none).</summary>
-		public static int Acting { get; private set; } = -1;
+		public static readonly HashSet<int> ActingNow = new();
+		/// <summary>Players fighting right now, in order (their FIGHT bars stack in this order).</summary>
+		public static readonly List<int> FightingNow = new();
 		private static uint lastRequestTick;
 
 		public static IEnumerable<Player> Allies => Party.Where(i => i != Main.myPlayer && i >= 0 && i < Main.maxPlayers && Main.player[i].active).Select(i => Main.player[i]);
@@ -135,12 +137,15 @@ namespace MercyMode.Battle.Net
 			public readonly Dictionary<int, int> Ready = new();
 			public readonly Dictionary<int, Vector2> SavedVelocity = new();
 			public Stage Stage;
-			public readonly List<int> Order = new();
-			public int OrderIndex;
+			/// <summary>Who acts, step by step: each ACT/ITEM/SPARE/DEFEND alone, then every FIGHT together.</summary>
+			public readonly List<List<int>> Steps = new();
+			public int StepIndex;
+			public readonly HashSet<int> Done = new();
 			public int StageTicks;
 			public int EmptyTicks;
 			public int Round;
-			public int Current => OrderIndex < Order.Count ? Order[OrderIndex] : -1;
+			public List<int> Step => StepIndex < Steps.Count ? Steps[StepIndex].Where(Players.Contains).ToList() : new List<int>();
+			public int Current => Step.FirstOrDefault(p => !Done.Contains(p), -1);
 		}
 
 		private static readonly List<NetBattle> battles = new();
@@ -155,6 +160,7 @@ namespace MercyMode.Battle.Net
 		internal static List<int> LabPending(int id) => Find(id)?.Pending.ToList() ?? new List<int>();
 		internal static Stage LabStage(int id) => Find(id)?.Stage ?? Stage.Choosing;
 		internal static int LabCurrent(int id) => Find(id)?.Current ?? -1;
+		internal static List<int> LabStep(int id) => Find(id)?.Step ?? new List<int>();
 
 		public static void Reset()
 		{
@@ -167,7 +173,8 @@ namespace MercyMode.Battle.Net
 			AllySouls.Clear();
 			AllyHitTick.Clear();
 			MyBattle = -1;
-			Acting = -1;
+			ActingNow.Clear();
+			FightingNow.Clear();
 			lastRequestTick = 0;
 		}
 
@@ -349,7 +356,8 @@ namespace MercyMode.Battle.Net
 			Joining.Clear();
 			ReadyFaces.Clear();
 			AllySouls.Clear();
-			Acting = -1;
+			ActingNow.Clear();
+			FightingNow.Clear();
 		}
 
 		// ================================================================== client handling
@@ -384,7 +392,8 @@ namespace MercyMode.Battle.Net
 					MyBattle = id;
 					ReadyFaces.Clear();
 					AllySouls.Clear();
-					Acting = -1;
+					ActingNow.Clear();
+			FightingNow.Clear();
 					if (!battle.StartNet(roots, spectate))
 					{
 						MyBattle = -1;
@@ -444,11 +453,15 @@ namespace MercyMode.Battle.Net
 				case Msg.TurnOf:
 				{
 					int id = r.ReadInt32();
-					int player = r.ReadByte();
+					var players = ReadPlayers(r);
 					if (id != MyBattle)
 						return;
-					Acting = player;
-					battle.OnNetTurnOf(player);
+					ActingNow.Clear();
+					ActingNow.UnionWith(players);
+					FightingNow.Clear();
+					if (players.Count > 1 || players.Count == 1 && ReadyFaces.TryGetValue(players[0], out int f) && f == FightFace)
+						FightingNow.AddRange(players);
+					battle.OnNetTurnOf(players);
 					break;
 				}
 				case Msg.PartyText:
@@ -468,7 +481,8 @@ namespace MercyMode.Battle.Net
 					if (id != MyBattle)
 						return;
 					ReadyFaces.Clear();
-					Acting = -1;
+					ActingNow.Clear();
+			FightingNow.Clear();
 					Joining.Remove(Main.myPlayer);
 					battle.OnNetEnemyTurn(seed, round);
 					break;
@@ -730,15 +744,27 @@ namespace MercyMode.Battle.Net
 			CheckReady(b);
 		}
 
-		/// <summary>Everyone has picked (or the wait ran out): they act one at a time, in party order.</summary>
+		/// <summary>The FIGHT command's face icon (BattleSystem.FaceFight).</summary>
+		private const int FightFace = 1;
+
+		/// <summary>
+		/// Everyone has picked (or the wait ran out). Like Deltarune: ACT, ITEM, SPARE and DEFEND go one at a time in
+		/// party order (so a heal lands before the attacks), then everyone who picked FIGHT attacks at once.
+		/// </summary>
 		private static void CheckReady(NetBattle b, bool force = false)
 		{
 			if (b.Stage == Stage.Acting || b.Ready.Count == 0 || !force && !b.Players.All(b.Ready.ContainsKey))
 				return;
-			b.Order.Clear();
-			b.Order.AddRange(b.Players.Where(b.Ready.ContainsKey));
+			b.Steps.Clear();
+			var ready = b.Players.Where(b.Ready.ContainsKey).ToList();
+			foreach (int pl in ready.Where(pl => b.Ready[pl] != FightFace))
+				b.Steps.Add(new List<int> { pl });
+			var fighters = ready.Where(pl => b.Ready[pl] == FightFace).ToList();
+			if (fighters.Count > 0)
+				b.Steps.Add(fighters);
 			b.Ready.Clear();
-			b.OrderIndex = 0;
+			b.StepIndex = 0;
+			b.Done.Clear();
 			SetStage(b, Stage.Acting);
 			SendTurn(b);
 		}
@@ -746,17 +772,26 @@ namespace MercyMode.Battle.Net
 		internal static void ServerActionDone(int player, int id)
 		{
 			NetBattle b = Find(id);
-			if (b == null || b.Stage != Stage.Acting || b.Current != player)
+			if (b == null || b.Stage != Stage.Acting || !b.Step.Contains(player))
 				return;
-			b.OrderIndex++;
+			b.Done.Add(player);
+			// The step's over once everyone in it is done (a FIGHT step has several players)
+			if (b.Step.All(b.Done.Contains))
+				NextStep(b);
+		}
+
+		private static void NextStep(NetBattle b)
+		{
+			b.StepIndex++;
+			b.Done.Clear();
 			SendTurn(b);
 		}
 
 		/// <summary>The next player in line acts; after the last one, the enemies attack.</summary>
 		private static void SendTurn(NetBattle b)
 		{
-			while (b.OrderIndex < b.Order.Count && !b.Players.Contains(b.Order[b.OrderIndex]))
-				b.OrderIndex++;
+			while (b.StepIndex < b.Steps.Count && b.Step.Count == 0)
+				b.StepIndex++;
 			b.StageTicks = 0;
 			// Every enemy gone (won by an earlier action): nobody else acts, no bullet box
 			if (!NpcsOf(b.Id).Any())
@@ -764,17 +799,17 @@ namespace MercyMode.Battle.Net
 				SetStage(b, Stage.Over);
 				return;
 			}
-			if (b.OrderIndex >= b.Order.Count)
+			if (b.StepIndex >= b.Steps.Count)
 			{
 				BeginEnemyTurn(b);
 				return;
 			}
-			int who = b.Current;
+			var who = b.Step;
 			ToParty(b, () =>
 			{
 				ModPacket p = Packet(Msg.TurnOf);
 				p.Write(b.Id);
-				p.Write((byte)who);
+				WritePlayers(p, who);
 				return p;
 			}, Msg.TurnOf);
 		}
@@ -861,7 +896,7 @@ namespace MercyMode.Battle.Net
 			NetBattle b = Find(id);
 			if (b == null)
 				return;
-			bool wasCurrent = b.Stage == Stage.Acting && b.Current == player;
+			bool wasCurrent = b.Stage == Stage.Acting && b.Step.Contains(player);
 			if (!b.Players.Remove(player) && !b.Pending.Remove(player))
 				return;
 			b.Ready.Remove(player);
@@ -879,7 +914,11 @@ namespace MercyMode.Battle.Net
 			SendParty(b);
 			SendState(b);
 			if (wasCurrent)
-				SendTurn(b);
+			{
+				// Whoever's left in this step may all be done already
+				if (b.Step.All(b.Done.Contains))
+					NextStep(b);
+			}
 			else
 				CheckReady(b);
 		}
@@ -905,10 +944,7 @@ namespace MercyMode.Battle.Net
 				if (b.Stage != Stage.Acting && b.Ready.Count > 0 && b.StageTicks > ChooseTimeoutTicks)
 					CheckReady(b, force: true);
 				else if (b.Stage == Stage.Acting && b.StageTicks > ActTimeoutTicks)
-				{
-					b.OrderIndex++;
-					SendTurn(b);
-				}
+					NextStep(b);
 
 				bool anyAlive = NpcsOf(b.Id).Any();
 				// Won: nobody joins a battle that's over, and outsiders stop seeing it as one

@@ -141,10 +141,10 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>The server: this player carries out their action now (or someone else does, and we watch).</summary>
-		internal void OnNetTurnOf(int player)
+		internal void OnNetTurnOf(List<int> players)
 		{
 			actingSince = Main.GameUpdateCount;
-			if (player == Main.myPlayer)
+			if (players.Contains(Main.myPlayer))
 			{
 				// Won already (someone acted before us and finished it): the picked action is dropped, no FIGHT bar
 				// against nobody
@@ -166,9 +166,42 @@ namespace MercyMode.Battle
 			}
 			if (phase != Phase.Waiting)
 				return;
-			Player p = Main.player[player];
 			waitingShowsOthers = true;
-			SetText($"* {p.name}'s turn!");
+			string names = string.Join(" and ", players.Select(i => Main.player[i].name));
+			SetText(BattleNet.FightingNow.Count > 0 ? $"* {names} attack!" : $"* {names}'s turn!");
+		}
+
+		/// <summary>The rows of FIGHT bars stack down from the first one, one per player fighting this step.</summary>
+		private const float FightRowSpacing = 38f;
+		private float BarY => FightBarY + Math.Max(0, BattleNet.FightingNow.IndexOf(Main.myPlayer)) * FightRowSpacing;
+
+		/// <summary>
+		/// The other players fighting at the same time: their bars under (or over) ours, in their colour, flashing as their
+		/// hits land. Their bolts aren't sent over the network (it would lag), only their hits.
+		/// </summary>
+		private void DrawAllyFightRows()
+		{
+			for (int i = 0; i < BattleNet.FightingNow.Count; i++)
+			{
+				int who = BattleNet.FightingNow[i];
+				if (who == Main.myPlayer || who < 0 || who >= Main.maxPlayers || !Main.player[who].active)
+					continue;
+				Player p = Main.player[who];
+				Color c = PartyColors.Of(p);
+				float x = FightBarX, y = FightBarY + i * FightRowSpacing;
+				string name = p.name.ToUpperInvariant();
+				if (name.Length > 6)
+					name = name.Substring(0, 6);
+				DrDraw.Text(name, x + 6, y + 12, c, DrDraw.SmallFont, 0.8f);
+				DrDraw.Outline(x + 78, y, FightBoxWidth + 3, 37, c * 0.8f);
+				DrDraw.Rect(x + 80, y, 10, 38, c * 0.6f);
+				if (BattleNet.AllyHitTick.TryGetValue(who, out uint hit) && Main.GameUpdateCount - hit < 20)
+				{
+					float t = (Main.GameUpdateCount - hit) / 20f;
+					Vector2 sc = new(1f + t * 2f, 1f + t * 0.5f);
+					DrDraw.Rect(x + 80 - 5 * (sc.X - 1), y - 19 * (sc.Y - 1), 10 * sc.X, 38 * sc.Y, Color.Lerp(c, Color.White, 0.5f) * (1f - t));
+				}
+			}
 		}
 
 		/// <summary>A line from the acting player's text box.</summary>
@@ -288,7 +321,7 @@ namespace MercyMode.Battle
 				return (HeroPose.Attack, (Main.GameUpdateCount - hit) / (float)TicksPerFrame);
 			if (!BattleNet.ReadyFaces.TryGetValue(p.whoAmI, out int face))
 				return (HeroPose.Idle, 0f);
-			bool acting = BattleNet.Acting == p.whoAmI;
+			bool acting = BattleNet.ActingNow.Contains(p.whoAmI);
 			return face switch
 			{
 				FaceFight => (HeroPose.AttackReady, 0f),
@@ -411,7 +444,7 @@ namespace MercyMode.Battle
 				var r = new Rectangle(PartyBoxX(i), (int)top, 212, 34);
 				DrDraw.Rect(r.X, r.Y, r.Width, 34f, Color.Black);
 				// Their colour frames their box; brighter while it's their turn
-				float frameAlpha = BattleNet.Acting == who ? 1f : 0.55f;
+				float frameAlpha = BattleNet.ActingNow.Contains(who) ? 1f : 0.55f;
 				DrDraw.Outline(r.X, r.Y - 2, r.Width, 36, color * frameAlpha, 2);
 
 				if (BattleNet.ReadyFaces.TryGetValue(who, out int face) && face > 0)
