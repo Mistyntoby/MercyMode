@@ -346,6 +346,11 @@ namespace MercyMode.Battle
 			fightFade = 0;
 			hitsTried = hitsLanded = 0;
 			bestPoints = 0;
+			// Guns: no timed bolts, spam Z for as many shots as the window and the gun's speed allow
+			gunMode = fightWeapon.Item?.useAmmo == AmmoID.Bullet;
+			gunTimer = GunWindowTicks;
+			gunCooldown = 0;
+			gunShots = 0;
 			bolts.Clear();
 			boltGhosts.Clear();
 			pendingHits.Clear();
@@ -360,8 +365,80 @@ namespace MercyMode.Battle
 			SetPhase(Phase.FightBar);
 		}
 
+		// ---- guns: SPAM Z TO SHOOT ----
+
+		private bool gunMode;
+		private int gunTimer, gunCooldown, gunShots;
+		private const int GunWindowTicks = 150;
+		/// <summary>Most shots one turn: twice the bolts the gun's speed would get, between 3 and 8.</summary>
+		private int MaxGunShots => Math.Clamp(fightWeapon.Bolts * 2, 3, 8);
+
+		private void UpdateGunBar()
+		{
+			boltX += 1f / TicksPerFrame;
+			if (gunTimer > 0)
+				gunTimer--;
+			if (gunCooldown > 0)
+				gunCooldown--;
+			if (!encounter.Alive)
+				gunTimer = 0;
+			if (gunTimer > 0 && gunCooldown <= 0 && gunShots < MaxGunShots && Confirm)
+			{
+				// Every shot counts as a good (not perfect) press: no crit sparkle and sound on each one
+				var shot = new FightBolt { Frame = boltX };
+				bolts.Add(shot);
+				PressBolt(shot, 2);
+				gunShots++;
+				gunCooldown = Math.Max(5, (fightWeapon.Item?.useTime ?? 10) / 2);
+				if (gunShots >= MaxGunShots)
+					gunTimer = Math.Min(gunTimer, 12);
+			}
+			for (int i = pendingHits.Count - 1; i >= 0; i--)
+			{
+				PendingHit h = pendingHits[i];
+				h.Ticks--;
+				if (h.Ticks <= 0)
+				{
+					pendingHits.RemoveAt(i);
+					ResolveHit(h);
+				}
+			}
+			for (int i = boltBursts.Count - 1; i >= 0; i--)
+				if (--boltBursts[i].Timer <= 0)
+					boltBursts.RemoveAt(i);
+			if (gunTimer <= 0 && pendingHits.Count == 0)
+			{
+				if (hitsLanded == 0)
+					EnemyNumber(0, HeroDamageColor, DamageNumber.MissFrame);
+				SetPhase(Phase.FightResult);
+			}
+		}
+
+		/// <summary>The gun's bar: the prompt, the time left, shots fired, and the yellow SOUL in the player's chest.</summary>
+		private void DrawGunBar(float x, float y, float alpha)
+		{
+			Color yellow = SoulMode.Yellow.Color();
+			float left = gunTimer / (float)GunWindowTicks;
+			DrDraw.Rect(x + 82, y + 30, (FightBoxWidth - 4) * left, 4, yellow * alpha);
+			bool blink = gunTimer > 0 && (time / 8) % 2 == 0;
+			DrDraw.Text("SPAM  Z  TO  SHOOT", x + 92, y + 6, (blink ? Color.White : yellow) * alpha, DrDraw.SmallFont);
+			DrDraw.Text($"{gunShots}/{MaxGunShots}", x + 80 + FightBoxWidth - 34, y + 6, Color.White * alpha, DrDraw.SmallFont);
+			if (phase == Phase.FightBar)
+			{
+				// Just shown, not shooting: the yellow SOUL glows in the player's chest while they fire
+				Vector2 heart = HeroFeetNow + (HeroHeart - HeroFeet);
+				if (!DrDraw.Sprite("spr_yellowheart", 0, heart.X, heart.Y, Color.White, 1f, 0f, alpha))
+					DrDraw.HeartShapeAt(heart.X + 2, heart.Y + 2, 16, yellow * alpha);
+			}
+		}
+
 		private void UpdateFightBar()
 		{
+			if (gunMode)
+			{
+				UpdateGunBar();
+				return;
+			}
 			boltX += 1f / TicksPerFrame;
 			// imagetimer: a ghost of every live bolt each second Deltarune frame; ghosts fade 0.04 a frame
 			if (phaseTicks % (2 * TicksPerFrame) == 0)
@@ -668,11 +745,31 @@ namespace MercyMode.Battle
 					AddEffect(new ItemFlight(Main.rand.Next(swords), from, to + Main.rand.NextVector2Circular(30f, 30f), 14f + i * 3f, i % 2 == 0 ? 1 : -1));
 				return;
 			}
-			// Spears, shortswords and yoyos "shoot" themselves: the swing already shows them
-			if (item.noUseGraphic || item.channel)
+			// Other swords' slashes are drawn on the blade as it swings (DrawSwingSlash)
+		}
+
+		/// <summary>
+		/// A sword's slash (Terra Blade, Night's Edge, Excalibur...): its own slash sprite sweeping around the player with
+		/// the swing, tinted with the blade's colour, like Terraria draws it.
+		/// </summary>
+		private void DrawSwingSlash()
+		{
+			if (heroPose != HeroPose.Attack || fightWeapon?.Item is not Item item || fightWeapon.Shoots)
 				return;
-			// Sword beams and slashes are white in Terraria's files (it tints them as it draws): use the blade's colour
-			AddEffect(new ShotProjectile(item.shoot, from, to + Main.rand.NextVector2Circular(10f, 10f), 9f, ItemColor(item.type), 0.45f, trail: false));
+			if (item.shoot <= ProjectileID.None || item.noUseGraphic || item.channel || item.type == ItemID.Zenith)
+				return;
+			float k = Math.Min(1f, heroTimer / WeaponSwingFrames);
+			if (k >= 1f)
+				return;
+			Main.instance.LoadProjectile(item.shoot);
+			Texture2D tex = TextureAssets.Projectile[item.shoot].Value;
+			int frames = Math.Max(1, Main.projFrames[item.shoot]);
+			var src = new Rectangle(0, 0, tex.Width, tex.Height / frames);
+			Vector2 center = HeroFeetNow + new Vector2(10f, -38f) * (HeroScaleNow / HeroScale);
+			// From over the head down to in front, the way the blade goes; fading out at the end
+			float rot = MathHelper.Lerp(-1.4f, 0.9f, k);
+			float a = (float)Math.Sin(k * Math.PI);
+			DrDraw.Sb.Draw(tex, center, src, ItemColor(item.type) * (0.85f * a), rot, src.Size() / 2f, HeroScaleNow * 0.55f, SpriteEffects.None, 0f);
 		}
 
 		private static readonly Dictionary<int, Color> itemColors = new();
