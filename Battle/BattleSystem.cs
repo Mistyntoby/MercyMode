@@ -114,7 +114,7 @@ namespace MercyMode.Battle
 		private float soulAlpha = 1f;
 		private float partyLift;
 		private float musicVolumeCurrent;
-		private PlayerHeadDrawRenderTargetContent playerHeadPortrait;
+		private RightFacingHead playerHeadPortrait;
 		/// <summary>
 		/// global.faceaction: the nameplate shows an icon for the chosen command instead of the head (a frame of
 		/// spr_headkris) from the moment it's chosen until the next player turn.
@@ -326,8 +326,8 @@ namespace MercyMode.Battle
 
 		private void CreatePlayerHeadPortrait()
 		{
-			playerHeadPortrait ??= new PlayerHeadDrawRenderTargetContent();
-			playerHeadPortrait.UsePlayer(Player);
+			playerHeadPortrait ??= new RightFacingHead();
+			playerHeadPortrait.Use(Player);
 			playerHeadPortrait.UseColor(KrisCyan);
 			if (!Main.ContentThatNeedsRenderTargets.Contains(playerHeadPortrait))
 				Main.ContentThatNeedsRenderTargets.Add(playerHeadPortrait);
@@ -2077,8 +2077,7 @@ namespace MercyMode.Battle
 			if (playerHeadPortrait?.IsReady == true)
 			{
 				DrDraw.Sb.Draw(playerHeadPortrait.GetTarget(), center, null,
-					Color.Lerp(KrisCyan, Color.White, 0.45f) * alpha, 0f, new Vector2(42f), 0.82f,
-					Player.direction < 0 ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+					Color.Lerp(KrisCyan, Color.White, 0.45f) * alpha, 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
 			}
 			else
 			{
