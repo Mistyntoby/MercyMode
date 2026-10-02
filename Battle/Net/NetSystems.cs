@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Terraria;
+using Terraria.GameInput;
 using Terraria.ID;
 using Terraria.ModLoader;
 using Terraria.UI;
@@ -162,8 +164,51 @@ namespace MercyMode.Battle.Net
 					}
 				}
 			}
-			if (promptNpc != null && MercyMode.JoinBattleKey?.JustPressed == true && ModContent.GetInstance<MercyConfig>()?.TurnBasedBattles != false)
-				BattleNet.RequestJoin(promptNpc);
+			if (promptNpc != null && JoinPressed())
+				TryJoin();
+		}
+
+		/// <summary>Joins the battle the prompt is for (join key or /mmbattle join). False if there's none in reach.</summary>
+		public static bool TryJoin()
+		{
+			if (promptNpc == null || !promptNpc.active)
+				return false;
+			if (ModContent.GetInstance<MercyConfig>()?.TurnBasedBattles == false)
+			{
+				MercyMode.Say("* Turn-based battles are off in the Mercy Mode config.", MercyMode.Gray);
+				return true;
+			}
+			MercyMode.Say("* Joining the battle...", MercyMode.MercyYellow);
+			BattleNet.RequestJoin(promptNpc);
+			return true;
+		}
+
+		/// <summary>
+		/// The keys bound to Join Battle: Terraria keeps separate bindings for gameplay and for the inventory/UI, and a
+		/// key bound only on the UI side would otherwise work only with the inventory open.
+		/// </summary>
+		private static List<string> JoinKeys()
+		{
+			var keys = new List<string>();
+			if (MercyMode.JoinBattleKey == null)
+				return keys;
+			foreach (InputMode mode in new[] { InputMode.Keyboard, InputMode.KeyboardUI })
+				foreach (string k in MercyMode.JoinBattleKey.GetAssignedKeys(mode))
+					if (!keys.Contains(k))
+						keys.Add(k);
+			return keys;
+		}
+
+		private static bool JoinPressed()
+		{
+			if (Main.drawingPlayerChat || Main.editSign || Main.editChest || Main.blockInput)
+				return false;
+			if (MercyMode.JoinBattleKey?.JustPressed == true)
+				return true;
+			foreach (string k in JoinKeys())
+				if (Enum.TryParse(k, out Keys key) && Main.keyState.IsKeyDown(key) && !Main.oldKeyState.IsKeyDown(key))
+					return true;
+			return false;
 		}
 
 		public override void ModifyInterfaceLayers(List<GameInterfaceLayer> layers)
@@ -194,8 +239,8 @@ namespace MercyMode.Battle.Net
 
 			if (promptNpc == null)
 				return;
-			string key = MercyMode.JoinBattleKey?.GetAssignedKeys().FirstOrDefault();
-			string line = key != null ? $"Press {key} to join the battle!" : "Bind \"Join Battle\" in Controls to join the battle!";
+			string key = JoinKeys().FirstOrDefault();
+			string line = key != null ? $"Press {key} to join the battle!" : "Type /mmbattle join (or bind \"Join Battle\" in Controls) to join the battle!";
 			var pos = new Vector2(Main.screenWidth / 2f / Main.UIScale, Main.screenHeight * 0.72f / Main.UIScale);
 			float pulse = 0.85f + 0.15f * (float)Math.Sin(Main.GameUpdateCount / 10f);
 			Utils.DrawBorderString(sb, line, pos, MercyMode.MercyYellow * pulse, 1.1f, 0.5f, 0.5f);

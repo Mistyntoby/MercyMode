@@ -452,7 +452,16 @@ namespace MercyMode.Battle
 			if (LivingEnemies.Count == 0 && phase != Phase.Outro && phase != Phase.Message && phase != Phase.FightBar && phase != Phase.FightResult && phase != Phase.Death)
 			{
 				battleOver = true;
-				StartOutro();
+				// Multiplayer: someone else won it; this player gets the same YOU WON! before the battle closes
+				if (Net.BattleNet.InParty)
+				{
+					SetHeroPose(HeroPose.Victory);
+					string how = enemies.All(e => e.Override is SpareAnimation) ? "* Everyone was spared." :
+						enemies.Count == 1 ? $"* {enemies[0].E.Name} was defeated." : "* Every enemy was defeated.";
+					ShowMessages(new[] { "* YOU WON!\n" + how }, StartOutro);
+				}
+				else
+					StartOutro();
 			}
 
 			time++;

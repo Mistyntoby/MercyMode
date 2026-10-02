@@ -1,4 +1,4 @@
 displayName = Mercy Mode
 author = Mistyn
-version = 0.6
+version = 0.7
 side = Both
