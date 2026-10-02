@@ -61,6 +61,12 @@ namespace MercyMode.Battle.Net
 				SyncPlayer(-1, Main.myPlayer, false);
 		}
 
+		public override void OnEnterWorld()
+		{
+			if (Player.whoAmI == Main.myPlayer)
+				BattleSystem.Instance?.OnEnterWorld();
+		}
+
 		public override void PlayerDisconnect()
 		{
 			if (Main.netMode == NetmodeID.Server)
@@ -151,7 +157,8 @@ namespace MercyMode.Battle.Net
 			float best = BattleNet.PromptRange * BattleNet.PromptRange;
 			foreach (var (id, wb) in BattleNet.WorldBattles)
 			{
-				if (wb.Players.Count >= BattleNet.MaxParty || wb.Players.Contains(me.whoAmI))
+				// Full, already in it, or already won
+				if (wb.Players.Count >= BattleNet.MaxParty || wb.Players.Contains(me.whoAmI) || wb.Stage == BattleNet.Stage.Over)
 					continue;
 				// Close to one of its enemies, or to one of the players fighting it
 				foreach (NPC n in BattleNet.NpcsOf(id))
@@ -191,17 +198,7 @@ namespace MercyMode.Battle.Net
 		/// The keys bound to Join Battle: Terraria keeps separate bindings for gameplay and for the inventory/UI, and a
 		/// key bound only on the UI side would otherwise work only with the inventory open.
 		/// </summary>
-		private static List<string> JoinKeys()
-		{
-			var keys = new List<string>();
-			if (MercyMode.JoinBattleKey == null)
-				return keys;
-			foreach (InputMode mode in new[] { InputMode.Keyboard, InputMode.KeyboardUI })
-				foreach (string k in MercyMode.JoinBattleKey.GetAssignedKeys(mode))
-					if (!keys.Contains(k))
-						keys.Add(k);
-			return keys;
-		}
+		private static List<string> JoinKeys() => MercyMode.AssignedKeys(MercyMode.JoinBattleKey);
 
 		private static bool JoinPressed()
 		{
@@ -231,8 +228,8 @@ namespace MercyMode.Battle.Net
 		private static void DrawOutside(SpriteBatch sb)
 		{
 			// Fighters are marked in the world, in their colour
-			foreach (var (_, wb) in BattleNet.WorldBattles)
-				foreach (int i in wb.Players)
+			foreach (var (id, wb) in BattleNet.WorldBattles)
+				foreach (int i in wb.Stage == BattleNet.Stage.Over || !BattleNet.NpcsOf(id).Any() ? Enumerable.Empty<int>() : wb.Players)
 				{
 					if (i < 0 || i >= Main.maxPlayers || !Main.player[i].active || i == Main.myPlayer)
 						continue;
