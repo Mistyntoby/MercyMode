@@ -1927,7 +1927,8 @@ namespace MercyMode.Battle
 			// The outer frame tracks the nameplate. Every edge uses the same 2 px as the button-row columns,
 			// and the divider is the nameplate's bottom edge, so it covers the button row as the box drops.
 			const float edge = 2f;
-			Color frame = KrisCyan * selectionAlpha;
+			// In a party every box keeps a faint frame in its player's colour, ours too
+			Color frame = KrisCyan * Math.Max(selectionAlpha, Net.BattleNet.InParty ? 0.55f : 0f);
 			DrDraw.Rect(r.X, r.Y, r.Width, 34f, Color.Black);
 			DrDraw.Rect(r.X, r.Y - edge, r.Width, edge, frame);
 			DrDraw.Rect(r.X, r.Y - edge, edge, 34f + edge, frame);
@@ -2089,7 +2090,8 @@ namespace MercyMode.Battle
 		{
 			float x = FightBarX, y = BarY;
 			float alpha = 1f - MathHelper.Clamp(fightFade, 0f, 1f);
-			Color blue = new Color(0, 0, 255) * alpha;
+			// Deltarune's bar is blue; in a party it's in our colour, like the others' rows
+			Color blue = (Net.BattleNet.InParty ? KrisCyan : new Color(0, 0, 255)) * alpha;
 			// spr_pressfront is Kris's head + "Z" (75x38): keep the Z, put the player's own head where Kris's was
 			// Always the Z: some chapters' spr_pressfront says PRESS instead (chapter 5 has none, so it came from an older one)
 			DrDraw.Text("Z", x + 50, y + 4, KrisCyan * alpha);
