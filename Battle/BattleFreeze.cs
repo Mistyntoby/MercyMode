@@ -26,6 +26,9 @@ namespace MercyMode.Battle
 
 		public override bool CheckActive(NPC npc) => !Frozen(npc);
 
+		// A battle's enemy and the rest of the world leave each other alone (town NPCs, other monsters)
+		public override bool CanHitNPC(NPC npc, NPC target) => !Frozen(npc) && !Frozen(target);
+
 		public override bool CanHitPlayer(NPC npc, Player target, ref int cooldownSlot)
 		{
 			if (BattleSystem.Active || Net.BattleNet.Online && Net.BattleNet.RequestPending)
@@ -121,6 +124,15 @@ namespace MercyMode.Battle
 		}
 
 		public override bool CanUseItem(Item item) => !BattleSystem.Active;
+
+		public override void PostUpdateEquips()
+		{
+			// In a battle, enemies in the world don't go after this player (the server decides targets in multiplayer)
+			bool inBattle = Main.netMode == Terraria.ID.NetmodeID.Server ? Net.BattleNet.InBattle(Player.whoAmI)
+				: Player.whoAmI == Main.myPlayer && BattleSystem.Active;
+			if (inBattle)
+				System.Array.Fill(Player.npcTypeNoAggro, true);
+		}
 
 		public override void HideDrawLayers(PlayerDrawSet drawInfo)
 		{

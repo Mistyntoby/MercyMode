@@ -87,8 +87,36 @@ namespace MercyMode.Battle.Net
 	/// </summary>
 	public static class WorldVisuals
 	{
-		public static void Swing(Player p, NPC target)
+		/// <summary>A fighter acts (outside view): ITEM shows the item used with a heal sparkle, ACT/SPARE/DEFEND a label.</summary>
+		public static void Act(Player p, int face, int item)
 		{
+			if (Main.dedServ || !p.active || p.whoAmI == Main.myPlayer)
+				return;
+			Color c = PartyColors.Of(p);
+			string label = face switch
+			{
+				3 => item > 0 ? Terraria.ID.ContentSamples.ItemsByType[item].Name : "ITEM",
+				6 => "ACT",
+				10 => "SPARE",
+				4 => "DEFEND",
+				_ => null,
+			};
+			if (label == null)
+				return;
+			CombatText.NewText(p.Hitbox, c, label);
+			if (face == 3)
+				for (int i = 0; i < 10; i++)
+				{
+					Dust d = Dust.NewDustDirect(p.position, p.width, p.height, DustID.HealingPlus);
+					d.velocity.Y -= 1.5f;
+				}
+		}
+
+		public static void Swing(Player p, NPC target, int damage = 0, bool crit = false)
+		{
+			// The hit's number on the enemy, out here too
+			if (!Main.dedServ && target.active && damage > 0)
+				CombatText.NewText(target.Hitbox, crit ? CombatText.DamagedHostileCrit : CombatText.DamagedHostile, damage, crit);
 			if (Main.dedServ || !p.active || p.whoAmI == Main.myPlayer)
 				return;
 			if (target.active)
@@ -161,20 +189,21 @@ namespace MercyMode.Battle.Net
 			Player me = Main.LocalPlayer;
 			if (BattleSystem.Active || me.dead || BattleNet.RequestPending)
 				return;
-			float best = BattleNet.PromptRange * BattleNet.PromptRange;
+			float best = float.MaxValue;
 			foreach (var (id, wb) in BattleNet.WorldBattles)
 			{
 				// Full, already in it, or already won
 				if (wb.Players.Count >= BattleNet.MaxParty || wb.Players.Contains(me.whoAmI) || wb.Stage == BattleNet.Stage.Over)
 					continue;
-				// Close to one of its enemies, or to one of the players fighting it
+				// Close to one of its enemies, or to one of the players fighting it (much further for a boss)
+				float reach = BattleNet.NpcsOf(id).Any(EncounterRegistry.IsBossFight) ? BattleNet.BossJoinRange : BattleNet.PromptRange;
 				foreach (NPC n in BattleNet.NpcsOf(id))
 				{
 					float d = n.DistanceSQ(me.Center);
 					foreach (int f in wb.Players)
 						if (f >= 0 && f < Main.maxPlayers && Main.player[f].active)
 							d = Math.Min(d, Main.player[f].DistanceSQ(me.Center));
-					if (d < best)
+					if (d < best && d <= reach * reach)
 					{
 						best = d;
 						promptBattle = id;
