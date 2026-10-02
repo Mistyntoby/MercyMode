@@ -4,6 +4,7 @@ using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
+using Terraria.GameContent;
 using Terraria.Utilities;
 using MercyMode.Battle.Net;
 using MercyMode.Deltarune;
@@ -192,7 +193,8 @@ namespace MercyMode.Battle
 				string name = p.name.ToUpperInvariant();
 				if (name.Length > 6)
 					name = name.Substring(0, 6);
-				DrDraw.Text(name, x + 6, y + 12, c, DrDraw.SmallFont, 0.8f);
+				DrawAllyHead(p, new Vector2(x + 19, y + 20), 1f);
+				DrDraw.Text(name, x + 40, y + 12, c, DrDraw.SmallFont, 0.7f);
 				DrDraw.Outline(x + 78, y, FightBoxWidth + 3, 37, c * 0.8f);
 				DrDraw.Rect(x + 80, y, 10, 38, c * 0.6f);
 				if (BattleNet.AllyHitTick.TryGetValue(who, out uint hit) && Main.GameUpdateCount - hit < 20)
@@ -447,10 +449,9 @@ namespace MercyMode.Battle
 				float frameAlpha = BattleNet.ActingNow.Contains(who) ? 1f : 0.55f;
 				DrDraw.Outline(r.X, r.Y - 2, r.Width, 36, color * frameAlpha, 2);
 
-				if (BattleNet.ReadyFaces.TryGetValue(who, out int face) && face > 0)
-					DrDraw.Sprite("spr_headkris", face, r.X + 3, r.Y + 4, Color.White);
-				else
-					DrDraw.Text(watching ? "WAIT" : "...", r.X + 6, r.Y + 8, new Color(128, 128, 128), DrDraw.SmallFont, watching ? 0.7f : 1f);
+				// The command they picked, like ours; otherwise their own head (see-through while they're watching)
+				if (!(BattleNet.ReadyFaces.TryGetValue(who, out int face) && face > 0 && DrDraw.Sprite("spr_headkris", face, r.X + 3, r.Y + 4, Color.White)))
+					DrawAllyHead(p, new Vector2(r.X + 16, r.Y + 15), watching ? 0.5f : 1f);
 
 				const float nameScale = 0.68f, nameRoom = 64f;
 				string name = (p.active ? p.name : "?").ToUpperInvariant();
@@ -470,6 +471,39 @@ namespace MercyMode.Battle
 				DrDraw.Text(hp, r.X + barX + barWidth + 3, r.Y + barY + barHeight / 2f - DrDraw.LineHeight(DrDraw.SmallFont) * numberScale / 2f,
 					ratio <= 0.25f ? new Color(255, 255, 0) : Color.White, DrDraw.SmallFont, numberScale);
 			}
+		}
+
+		/// <summary>The other players' head portraits (Terraria renders heads into their own textures).</summary>
+		private readonly Dictionary<int, PlayerHeadDrawRenderTargetContent> allyHeads = new();
+
+		private void DrawAllyHead(Player p, Vector2 center, float alpha)
+		{
+			if (!allyHeads.TryGetValue(p.whoAmI, out var head))
+			{
+				head = new PlayerHeadDrawRenderTargetContent();
+				allyHeads[p.whoAmI] = head;
+				Main.ContentThatNeedsRenderTargets.Add(head);
+			}
+			head.UsePlayer(p);
+			head.UseColor(PartyColors.Of(p));
+			head.Request();
+			Color tint = Color.Lerp(PartyColors.Of(p), Color.White, 0.45f);
+			if (head.IsReady)
+				DrDraw.Sb.Draw(head.GetTarget(), center, null, tint * alpha, 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
+			else
+				DrDraw.HeartShapeAt(center.X - 6f, center.Y - 10f, 17, PartyColors.Of(p) * alpha);
+		}
+
+		/// <summary>Lets go of the head textures (the battle ended).</summary>
+		private void ReleaseAllyHeads()
+		{
+			foreach (var head in allyHeads.Values)
+			{
+				Main.ContentThatNeedsRenderTargets.Remove(head);
+				head.GetTarget()?.Dispose();
+				head.Reset();
+			}
+			allyHeads.Clear();
 		}
 
 		/// <summary>The others' SOULs in the box, each in its player's colour.</summary>

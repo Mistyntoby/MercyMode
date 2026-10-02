@@ -336,6 +336,7 @@ namespace MercyMode.Battle
 
 		private void ReleasePlayerHeadPortrait()
 		{
+			ReleaseAllyHeads();
 			if (playerHeadPortrait == null)
 				return;
 
@@ -2054,7 +2055,7 @@ namespace MercyMode.Battle
 			if (playerHeadPortrait?.IsReady == true)
 			{
 				DrDraw.Sb.Draw(playerHeadPortrait.GetTarget(), center, null,
-					new Color(110, 220, 255) * alpha, 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
+					Color.Lerp(KrisCyan, Color.White, 0.45f) * alpha, 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
 			}
 			else
 			{
