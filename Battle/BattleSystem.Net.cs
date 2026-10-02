@@ -250,7 +250,7 @@ namespace MercyMode.Battle
 			netRound = round;
 			spectating = false;
 			pendingAction = null;
-			if (phase is Phase.Waiting or Phase.Menu or Phase.WeaponSelect or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect)
+			if (phase is Phase.Waiting or Phase.Menu or Phase.WeaponSelect or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect or Phase.PartySelect)
 			{
 				// Still choosing when the wait ran out: no action this round
 				executing = false;

@@ -61,7 +61,7 @@ namespace MercyMode.Battle.Net
 		/// <summary>How close to a battle's enemy or fighter the join prompt shows up.</summary>
 		public const float PromptRange = 8 * 16;
 		/// <summary>Picking an action / carrying it out: after this long the party goes on without them.</summary>
-		public const int ChooseTimeoutTicks = 60 * 60, ActTimeoutTicks = 45 * 60;
+		public const int ChooseTimeoutTicks = 180 * 60, ActTimeoutTicks = 45 * 60;
 
 		public static bool Online => Main.netMode == NetmodeID.MultiplayerClient;
 		/// <summary>The server of a real multiplayer game (the headless lab runs as a server too, but singleplayer).</summary>
@@ -127,6 +127,13 @@ namespace MercyMode.Battle.Net
 		public static readonly Dictionary<int, (Vector2 Pos, byte Mode, uint Tick)> AllySouls = new();
 		/// <summary>The weapon each ally picked in their battle (item type; 0 = none), for drawing them with it.</summary>
 		public static readonly Dictionary<int, int> AllyWeapons = new();
+
+		/// <summary>When the first party member picked this round (for the auto-skip countdown).</summary>
+		public static uint FirstReadyTick;
+
+		/// <summary>Seconds left before the server goes on without this player, or -1 if nobody's waiting on them.</summary>
+		public static int SecondsUntilSkip => InParty && !ReadyFaces.ContainsKey(Main.myPlayer) && ReadyFaces.Values.Any(f => f != 0)
+			? Math.Max(0, (int)((ChooseTimeoutTicks - (Main.GameUpdateCount - FirstReadyTick)) / 60)) : -1;
 
 		/// <summary>Each ally's HP as they last reported it from their battle.</summary>
 		public static readonly Dictionary<int, (int Life, int Max)> AllyHp = new();
@@ -482,6 +489,9 @@ namespace MercyMode.Battle.Net
 					int weapon = r.ReadInt32();
 					if (id == MyBattle)
 					{
+						// The server's wait for the slow ones starts with the first player ready
+						if (face != 0 && !ReadyFaces.Values.Any(f => f != 0))
+							FirstReadyTick = Main.GameUpdateCount;
 						ReadyFaces[player] = face;
 						AllyWeapons[player] = weapon;
 					}
@@ -821,6 +831,8 @@ namespace MercyMode.Battle.Net
 				return;
 			if (b.Stage == Stage.EnemyTurn)
 				SetStage(b, Stage.Choosing);
+			if (face != 0 && !b.Ready.Values.Any(f => f != 0))
+				b.StageTicks = 0;
 			b.Ready[player] = face;
 			ToParty(b, () =>
 			{
@@ -1031,7 +1043,8 @@ namespace MercyMode.Battle.Net
 					continue;
 
 				b.StageTicks++;
-				if (b.Stage != Stage.Acting && b.Ready.Count > 0 && b.StageTicks > ChooseTimeoutTicks)
+				// Only a real choice starts the wait for the slow ones (a downed player's automatic skip doesn't)
+				if (b.Stage != Stage.Acting && b.Ready.Values.Any(f => f != 0) && b.StageTicks > ChooseTimeoutTicks)
 					CheckReady(b, force: true);
 				else if (b.Stage == Stage.Acting && b.StageTicks > ActTimeoutTicks)
 					NextStep(b);

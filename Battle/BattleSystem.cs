@@ -1872,6 +1872,10 @@ namespace MercyMode.Battle
 			DrawPartyBox();
 
 			float textY = top + 48; // 376 when the panel is fully up
+			// Multiplayer: the others have picked and wait on us; the server goes on without us when this runs out
+			int skipIn = Net.BattleNet.SecondsUntilSkip;
+			if (skipIn >= 0 && skipIn <= 60 && phase is Phase.Menu or Phase.WeaponSelect or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect or Phase.PartySelect)
+				DrDraw.Text($"The others are waiting: auto-skip in {skipIn}s", 30, ScreenHeight - 18, new Color(255, 220, 64), DrDraw.SmallFont, 0.8f);
 			switch (phase)
 			{
 				case Phase.Waiting when AllyRowsVisible:
