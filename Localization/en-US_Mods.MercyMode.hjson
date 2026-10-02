@@ -1,6 +1,4 @@
-Keybinds: {
-	JoinBattle.DisplayName: Join Battle
-}
+Keybinds.JoinBattle.DisplayName: Join Battle
 
 Configs: {
 	MercyConfig: {
