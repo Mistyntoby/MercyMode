@@ -529,7 +529,7 @@ namespace MercyMode.Battle.Net
 					if (id == MyBattle)
 					{
 						AllyHitTick[player] = Main.GameUpdateCount;
-						battle.OnNetHit(n, damage, crit);
+						battle.OnNetHit(player, n, damage, crit);
 					}
 					else
 					{
