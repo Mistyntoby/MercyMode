@@ -671,7 +671,46 @@ namespace MercyMode.Battle
 			// Spears, shortswords and yoyos "shoot" themselves: the swing already shows them
 			if (item.noUseGraphic || item.channel)
 				return;
-			AddEffect(new ShotProjectile(item.shoot, from, to + Main.rand.NextVector2Circular(10f, 10f), 9f));
+			// Sword beams and slashes are white in Terraria's files (it tints them as it draws): use the blade's colour
+			AddEffect(new ShotProjectile(item.shoot, from, to + Main.rand.NextVector2Circular(10f, 10f), 9f, ItemColor(item.type), 0.45f, trail: false));
+		}
+
+		private static readonly Dictionary<int, Color> itemColors = new();
+
+		/// <summary>The average colour of an item's sprite, brightened: what its beam is tinted with.</summary>
+		private static Color ItemColor(int type)
+		{
+			if (itemColors.TryGetValue(type, out Color c))
+				return c;
+			c = Color.White;
+			try
+			{
+				Main.instance.LoadItem(type);
+				Texture2D tex = TextureAssets.Item[type].Value;
+				var px = new Color[tex.Width * tex.Height];
+				tex.GetData(px);
+				long r = 0, g = 0, b = 0, n = 0;
+				foreach (Color p in px)
+					if (p.A > 200)
+					{
+						r += p.R;
+						g += p.G;
+						b += p.B;
+						n++;
+					}
+				if (n > 0)
+				{
+					var avg = new Vector3(r, g, b) / n / 255f;
+					float max = Math.Max(avg.X, Math.Max(avg.Y, avg.Z));
+					if (max > 0f)
+						avg /= max; // full brightness, same hue
+					c = new Color(avg);
+				}
+			}
+			catch (Exception)
+			{
+			}
+			return itemColors[type] = c;
 		}
 
 		/// <summary>The player's minions, one of each kind: they join in after a FIGHT that landed.</summary>
@@ -770,12 +809,23 @@ namespace MercyMode.Battle
 		private readonly float frames;
 		private float t;
 
+		private readonly Color tint = Color.White;
+		private readonly float scale = 0.8f;
+		private readonly bool trail = true;
+
 		public ShotProjectile(int type, Vector2 from, Vector2 to, float frames)
 		{
 			this.type = type;
 			this.from = from;
 			this.to = to;
 			this.frames = frames;
+		}
+
+		public ShotProjectile(int type, Vector2 from, Vector2 to, float frames, Color tint, float scale, bool trail) : this(type, from, to, frames)
+		{
+			this.tint = tint;
+			this.scale = scale;
+			this.trail = trail;
 		}
 
 		public override void Step(float dt)
@@ -801,11 +851,12 @@ namespace MercyMode.Battle
 			int frameCount = Math.Max(1, Main.projFrames[type]);
 			var src = new Rectangle(0, 0, tex.Width, tex.Height / frameCount);
 			// Most projectile sprites point up: turn them to the direction of travel
-			for (int k = 2; k >= 0; k--)
+			float fade = t > frames - 2f ? Math.Max(0f, (frames - t) / 2f) : 1f;
+			for (int k = trail ? 2 : 0; k >= 0; k--)
 			{
-				float a = k == 0 ? 1f : 0.35f / k;
-				DrDraw.Sb.Draw(tex, At(t - k * 0.8f), src, Color.White * a, angle + MathHelper.PiOver2, src.Size() / 2f,
-					BattleCharacterScale * 0.8f, SpriteEffects.None, 0f);
+				float a = (k == 0 ? 1f : 0.35f / k) * fade;
+				DrDraw.Sb.Draw(tex, At(t - k * 0.8f), src, tint * a, angle + MathHelper.PiOver2, src.Size() / 2f,
+					BattleCharacterScale * scale, SpriteEffects.None, 0f);
 			}
 		}
 	}
