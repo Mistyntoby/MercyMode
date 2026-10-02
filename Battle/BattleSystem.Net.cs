@@ -190,9 +190,6 @@ namespace MercyMode.Battle
 				Player p = Main.player[who];
 				Color c = PartyColors.Of(p);
 				float x = FightBarX, y = FightBarY + i * FightRowSpacing;
-				string name = p.name.ToUpperInvariant();
-				if (name.Length > 6)
-					name = name.Substring(0, 6);
 				// Built like our own bar: head, Z, a double border and the see-through press spot, all in their colour
 				DrawAllyHead(p, new Vector2(x + 19, y + 20), 1f);
 				DrDraw.Text("Z", x + 50, y + 4, c);
@@ -202,8 +199,6 @@ namespace MercyMode.Battle
 				// The see-through press spot, like ours
 				if (!DrDraw.Sprite("spr_pressspot", 0, x + 80, y, c, 1f, 0f, 0.55f))
 					DrDraw.Rect(x + 80, y, 10, 38, c * 0.35f);
-				// Their name, small, inside the bar
-				DrDraw.Text(name, x + 98, y + 12, c * 0.8f, DrDraw.SmallFont, 0.7f);
 				if (BattleNet.AllyHitTick.TryGetValue(who, out uint hit) && Main.GameUpdateCount - hit < 20)
 				{
 					float t = (Main.GameUpdateCount - hit) / 20f;
@@ -267,9 +262,17 @@ namespace MercyMode.Battle
 			return 0;
 		});
 
-		/// <summary>The others see this SOUL in the box.</summary>
+		private int lastSentHp = -1, lastSentHpMax = -1;
+
+		/// <summary>The others see this SOUL in the box (and our HP, whenever it changes or once a second).</summary>
 		private void SendSoul()
 		{
+			if (BattleNet.InParty && (Player.statLife != lastSentHp || Player.statLifeMax2 != lastSentHpMax || time % 60 == 0))
+			{
+				lastSentHp = Player.statLife;
+				lastSentHpMax = Player.statLifeMax2;
+				BattleNet.SendHp(lastSentHp, lastSentHpMax);
+			}
 			if (BattleNet.InParty && phase is Phase.EnemyIntro or Phase.EnemyTurn && time % 2 == 0)
 				BattleNet.SendSoul(soul, (byte)soulMode);
 		}
@@ -471,11 +474,13 @@ namespace MercyMode.Battle
 				DrDraw.Text(name, r.X + 40, r.Y + 7, p.dead ? Color.Gray : Color.White, DrDraw.BigFont, scale);
 
 				const int labelX = 112, barX = 130, barWidth = 28, barY = 10, barHeight = 12;
-				float ratio = p.statLifeMax2 > 0 ? MathHelper.Clamp(p.statLife / (float)p.statLifeMax2, 0f, 1f) : 0f;
+				// Their HP as their own battle has it (Terraria's sync of other players' HP drifts with guessed regen)
+				var (life, lifeMax) = BattleNet.AllyHp.TryGetValue(who, out var hpNow) ? hpNow : (p.statLife, p.statLifeMax2);
+				float ratio = lifeMax > 0 ? MathHelper.Clamp(life / (float)lifeMax, 0f, 1f) : 0f;
 				DrDraw.Text("HP", r.X + labelX - 4, r.Y + barY - 3, Color.White, DrDraw.SmallFont);
 				DrDraw.Rect(r.X + barX, r.Y + barY, barWidth, barHeight, new Color(128, 0, 0));
 				DrDraw.Rect(r.X + barX, r.Y + barY, (float)Math.Ceiling(ratio * barWidth), barHeight, color);
-				string hp = $"{Math.Max(0, p.statLife)}/{p.statLifeMax2}";
+				string hp = $"{Math.Max(0, life)}/{lifeMax}";
 				float room = 208 - (barX + barWidth + 3);
 				float numberScale = Math.Min(1f, room / Math.Max(1f, DrDraw.Measure(hp, DrDraw.SmallFont)));
 				DrDraw.Text(hp, r.X + barX + barWidth + 3, r.Y + barY + barHeight / 2f - DrDraw.LineHeight(DrDraw.SmallFont) * numberScale / 2f,
@@ -498,8 +503,10 @@ namespace MercyMode.Battle
 			head.UseColor(PartyColors.Of(p));
 			head.Request();
 			Color tint = Color.Lerp(PartyColors.Of(p), Color.White, 0.45f);
+			// Terraria renders the head the way the player faces in the world: every head faces right here
 			if (head.IsReady)
-				DrDraw.Sb.Draw(head.GetTarget(), center, null, tint * alpha, 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
+				DrDraw.Sb.Draw(head.GetTarget(), center, null, tint * alpha, 0f, new Vector2(42f), 0.82f,
+					p.direction < 0 ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
 			else
 				DrDraw.HeartShapeAt(center.X - 6f, center.Y - 10f, 17, PartyColors.Of(p) * alpha);
 		}

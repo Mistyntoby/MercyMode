@@ -2077,7 +2077,8 @@ namespace MercyMode.Battle
 			if (playerHeadPortrait?.IsReady == true)
 			{
 				DrDraw.Sb.Draw(playerHeadPortrait.GetTarget(), center, null,
-					Color.Lerp(KrisCyan, Color.White, 0.45f) * alpha, 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
+					Color.Lerp(KrisCyan, Color.White, 0.45f) * alpha, 0f, new Vector2(42f), 0.82f,
+					Player.direction < 0 ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
 			}
 			else
 			{
