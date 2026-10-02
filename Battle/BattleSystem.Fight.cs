@@ -353,12 +353,7 @@ namespace MercyMode.Battle
 				foreach (FightBolt b in bolts)
 					if (b.Alive && b.Frame - boltX >= 0f)
 						boltGhosts.Add(new BoltGhost { Ahead = b.Frame - boltX, BoltX = boltX });
-			for (int i = boltGhosts.Count - 1; i >= 0; i--)
-			{
-				boltGhosts[i].Alpha -= 0.04f / TicksPerFrame;
-				if (boltGhosts[i].Alpha <= 0f)
-					boltGhosts.RemoveAt(i);
-			}
+			FadeBoltGhosts();
 			// Deltarune checks presses once per frame, so score on the frame this tick belongs to
 			int now = (int)Math.Floor(boltX);
 
@@ -569,8 +564,20 @@ namespace MercyMode.Battle
 		private Vector2 PartSpot(NPC part) =>
 			part != null && encounter.TargetableParts && partScreen.TryGetValue(part.whoAmI, out Vector2 at) ? at : encounter.ScreenCenter;
 
+		/// <summary>Ghosts fade 0.04 a frame, on the bar and after it (they used to freeze once the bar stopped).</summary>
+		private void FadeBoltGhosts()
+		{
+			for (int i = boltGhosts.Count - 1; i >= 0; i--)
+			{
+				boltGhosts[i].Alpha -= 0.04f / TicksPerFrame;
+				if (boltGhosts[i].Alpha <= 0f)
+					boltGhosts.RemoveAt(i);
+			}
+		}
+
 		private void UpdateFightResult()
 		{
+			FadeBoltGhosts();
 			for (int i = boltBursts.Count - 1; i >= 0; i--)
 				if (--boltBursts[i].Timer <= 0)
 					boltBursts.RemoveAt(i);

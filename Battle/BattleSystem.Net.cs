@@ -388,7 +388,11 @@ namespace MercyMode.Battle
 				}
 				// A beat to turn around, then Terraria's walk cycle (frames 7-19)
 				int walk = t < 10f ? -1 : 7 + (int)((t - 10f) / 4f) % 13;
-				DrawPlayerPose(sb, m, p, feet, HeroScale, HeroPose.Idle, 0f, 0f, ally: true, facing: -1, walkFrame: walk);
+				// Fades with the battle screen if it closes while they're still walking
+				float fade = MathHelper.Clamp(screenFade, 0f, 1f);
+				if (fade <= 0.02f)
+					continue;
+				DrawPlayerPose(sb, m, p, feet, HeroScale, HeroPose.Idle, 0f, 1f - fade, ally: true, facing: -1, walkFrame: walk);
 			}
 		}
 
