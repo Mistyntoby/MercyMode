@@ -362,7 +362,7 @@ namespace MercyMode.Battle
 		{
 			// The one they picked in their battle (what they hold in the world isn't kept up to date meanwhile)
 			if (BattleNet.AllyWeapons.TryGetValue(p.whoAmI, out int type) && type > 0)
-				return ContentSamples.ItemsByType[type];
+				return Terraria.ID.ContentSamples.ItemsByType[type];
 			Item held = p.HeldItem;
 			return held != null && !held.IsAir && held.damage > 0 && !held.consumable ? held : null;
 		}
