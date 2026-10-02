@@ -1936,17 +1936,17 @@ namespace MercyMode.Battle
 
 			// The chosen command's icon (spr_headkris frames: sword, ACT waves, bag, shield, X), centred where
 			// the head sits; otherwise the player's own head, enlarged and shifted left to clear the name.
-			if (faceAction == FaceNone || !DrDraw.Sprite("spr_headkris", faceAction, r.X + 3, r.Y + 4, Color.White))
-				DrawPlayerHead(new Vector2(r.X + 16, r.Y + 15), 1f);
+			if (faceAction == FaceNone || !DrDraw.Sprite("spr_headkris", faceAction, r.X + 9, r.Y + 4, Color.White))
+				DrawPlayerHead(new Vector2(r.X + 22, r.Y + 15), 1f);
 			// Long names shrink to fit before the HP label (and are cut short if even that isn't enough)
-			const float nameScale = 0.68f, nameMinScale = 0.4f, nameRoom = 64f;
+			const float nameScale = 0.68f, nameMinScale = 0.4f, nameRoom = 60f;
 			string name = Player.name.ToUpperInvariant();
 			float nameWidth = Math.Max(1f, DrDraw.Measure(name, DrDraw.BigFont));
 			float scale = MathHelper.Clamp(nameRoom / nameWidth, nameMinScale, nameScale);
 			while (name.Length > 1 && DrDraw.Measure(name, DrDraw.BigFont) * scale > nameRoom)
 				name = name.Substring(0, name.Length - 1);
 			float nameY = r.Y + 7 + DrDraw.LineHeight(DrDraw.BigFont) * (nameScale - scale) / 2f;
-			DrDraw.Text(name, r.X + 40, nameY, Color.White, DrDraw.BigFont, scale);
+			DrDraw.Text(name, r.X + 46, nameY, Color.White, DrDraw.BigFont, scale);
 			// Two rows, HP and MP: label, bar, then the numbers to the right of the bar in one shared size (as big as
 			// fits the end of the nameplate)
 			const int labelX = 112, barX = 130, barWidth = 28, numberX = barX + barWidth + 3, numberRoom = 208 - numberX;

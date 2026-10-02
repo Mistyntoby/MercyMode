@@ -477,15 +477,15 @@ namespace MercyMode.Battle
 				DrDraw.Outline(r.X, r.Y - 2, r.Width, 36, color * frameAlpha, 2);
 
 				// The command they picked, like ours; otherwise their own head (see-through while they're watching)
-				if (!(BattleNet.ReadyFaces.TryGetValue(who, out int face) && face > 0 && DrDraw.Sprite("spr_headkris", face, r.X + 3, r.Y + 4, Color.White)))
-					DrawAllyHead(p, new Vector2(r.X + 16, r.Y + 15), watching ? 0.5f : 1f);
+				if (!(BattleNet.ReadyFaces.TryGetValue(who, out int face) && face > 0 && DrDraw.Sprite("spr_headkris", face, r.X + 9, r.Y + 4, Color.White)))
+					DrawAllyHead(p, new Vector2(r.X + 22, r.Y + 15), watching ? 0.5f : 1f);
 
-				const float nameScale = 0.68f, nameRoom = 64f;
+				const float nameScale = 0.68f, nameRoom = 60f;
 				string name = (p.active ? p.name : "?").ToUpperInvariant();
 				float scale = MathHelper.Clamp(nameRoom / Math.Max(1f, DrDraw.Measure(name, DrDraw.BigFont)), 0.4f, nameScale);
 				while (name.Length > 1 && DrDraw.Measure(name, DrDraw.BigFont) * scale > nameRoom)
 					name = name.Substring(0, name.Length - 1);
-				DrDraw.Text(name, r.X + 40, r.Y + 7, p.dead ? Color.Gray : Color.White, DrDraw.BigFont, scale);
+				DrDraw.Text(name, r.X + 46, r.Y + 7, p.dead ? Color.Gray : Color.White, DrDraw.BigFont, scale);
 
 				const int labelX = 112, barX = 130, barWidth = 28, barY = 10, barHeight = 12;
 				// Their HP as their own battle has it (Terraria's sync of other players' HP drifts with guessed regen)
