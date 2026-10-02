@@ -116,7 +116,8 @@ namespace MercyMode.Battle
 	public class DamageNumber : BattleEffect
 	{
 		// spr_battlemsg frames: 0 MISS, 1 DOWN, 2 MAX, 3 UP (obj_dmgwriter messages 1-4)
-		public const int MissFrame = 0, MaxFrame = 2;
+		/// <summary>spr_battlemsg frames: MISS, DOWN, MAX.</summary>
+		public const int MissFrame = 0, DownFrame = 1, MaxFrame = 2;
 
 		private readonly int number;
 		private readonly int message; // spr_battlemsg frame, or -1 for a number
@@ -207,7 +208,7 @@ namespace MercyMode.Battle
 				DrDraw.Sb.Draw(msg.Frame(message), new Vector2(right, y), null, c, 0f, msg.Origin, scale, SpriteEffects.None, 0f);
 				return;
 			}
-			string s = message == MissFrame ? "MISS" : message == MaxFrame ? "MAX" : number.ToString();
+			string s = message == MissFrame ? "MISS" : message == DownFrame ? "DOWN" : message == MaxFrame ? "MAX" : number.ToString();
 			DrSprite digits = DeltaruneAssets.Sprite("spr_numbersfontbig");
 			if (message < 0 && digits != null && digits.Frames.Length >= 10)
 			{
