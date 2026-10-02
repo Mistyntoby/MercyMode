@@ -35,6 +35,8 @@ namespace MercyMode.Battle
 		private bool waitingShowsOthers;
 		private uint actingSince;
 		private readonly Dictionary<int, Vector2> allySoulDrawn = new();
+		/// <summary>How many of each ally's hit numbers are up this turn (they stack).</summary>
+		private readonly Dictionary<int, int> allyHitsShown = new();
 		/// <summary>When each ally first showed up on this screen (0: there from the start, gliding in with us).</summary>
 		private readonly Dictionary<int, uint> allySeen = new();
 		/// <summary>Each ally's spot (0 above, 1 below), kept so nobody jumps when someone else leaves.</summary>
@@ -145,6 +147,7 @@ namespace MercyMode.Battle
 		internal void OnNetTurnOf(List<int> players)
 		{
 			actingSince = Main.GameUpdateCount;
+			allyHitsShown.Clear();
 			if (players.Contains(Main.myPlayer))
 			{
 				// Won already (someone acted before us and finished it): the picked action is dropped, no FIGHT bar
@@ -312,7 +315,13 @@ namespace MercyMode.Battle
 			{
 				// In the attacker's colour, the way ours are in ours
 				Color theirs = Color.Lerp(PartyColors.Of(Main.player[attacker]), Color.White, 0.5f);
-				EnemyNumber(damage, crit ? HeroCritColor : theirs, damage > 0 ? -1 : DamageNumber.MissFrame, at: PartSpot(npc));
+				// Each player's numbers get their own column beside ours, stacking up hit by hit, so a MISS and a hit
+				// at the same moment don't land on top of each other
+				int column = 1 + Math.Max(0, BattleNet.Allies.Select(a => a.whoAmI).ToList().IndexOf(attacker));
+				int stacked = allyHitsShown.TryGetValue(attacker, out int k) ? k : 0;
+				allyHitsShown[attacker] = stacked + 1;
+				EnemyNumber(damage, crit ? HeroCritColor : theirs, damage > 0 ? -1 : DamageNumber.MissFrame,
+					yOffset: -18f * stacked, at: PartSpot(npc) + new Vector2(52f * column, 10f));
 				enemyShake = 18;
 			});
 			Sfx("damage");
@@ -491,24 +500,22 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>The other players' head portraits (Terraria renders heads into their own textures).</summary>
-		private readonly Dictionary<int, PlayerHeadDrawRenderTargetContent> allyHeads = new();
+		private readonly Dictionary<int, RightFacingHead> allyHeads = new();
 
 		private void DrawAllyHead(Player p, Vector2 center, float alpha)
 		{
 			if (!allyHeads.TryGetValue(p.whoAmI, out var head))
 			{
-				head = new PlayerHeadDrawRenderTargetContent();
+				head = new RightFacingHead();
 				allyHeads[p.whoAmI] = head;
 				Main.ContentThatNeedsRenderTargets.Add(head);
 			}
-			head.UsePlayer(p);
+			head.Use(p);
 			head.UseColor(PartyColors.Of(p));
 			head.Request();
 			Color tint = Color.Lerp(PartyColors.Of(p), Color.White, 0.45f);
-			// Terraria renders the head the way the player faces in the world: every head faces right here
 			if (head.IsReady)
-				DrDraw.Sb.Draw(head.GetTarget(), center, null, tint * alpha, 0f, new Vector2(42f), 0.82f,
-					p.direction < 0 ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+				DrDraw.Sb.Draw(head.GetTarget(), center, null, tint * alpha, 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
 			else
 				DrDraw.HeartShapeAt(center.X - 6f, center.Y - 10f, 17, PartyColors.Of(p) * alpha);
 		}
@@ -572,6 +579,37 @@ namespace MercyMode.Battle
 			whiteHeart.SetData(pixels);
 			whiteHeartFrom = src;
 			return whiteHeart;
+		}
+	}
+
+	/// <summary>A head portrait always rendered facing right, whichever way the player faces in the world.</summary>
+	public sealed class RightFacingHead : PlayerHeadDrawRenderTargetContent
+	{
+		private Player who;
+
+		public void Use(Player p)
+		{
+			who = p;
+			UsePlayer(p);
+		}
+
+		protected override void HandleUseReqest(Microsoft.Xna.Framework.Graphics.GraphicsDevice device, SpriteBatch spriteBatch)
+		{
+			if (who == null)
+			{
+				base.HandleUseReqest(device, spriteBatch);
+				return;
+			}
+			int dir = who.direction;
+			who.direction = 1;
+			try
+			{
+				base.HandleUseReqest(device, spriteBatch);
+			}
+			finally
+			{
+				who.direction = dir;
+			}
 		}
 	}
 }
