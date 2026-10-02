@@ -1086,8 +1086,12 @@ namespace MercyMode.Battle.Net
 		/// <summary>Server, every tick: timeouts, players who vanished, battles whose enemies are all gone.</summary>
 		public static void ServerUpdate()
 		{
+			// Every few seconds, everyone hears again which NPCs are held (a missed packet let an enemy run loose)
+			bool resend = Main.GameUpdateCount % 300 == 0;
 			foreach (NetBattle b in battles.ToList())
 			{
+				if (resend)
+					SendFrozen(b);
 				foreach (int pl in b.Players.Concat(b.Pending).ToList())
 					if (!Main.player[pl].active)
 						ServerLeave(pl, b.Id);
@@ -1129,15 +1133,35 @@ namespace MercyMode.Battle.Net
 				n.velocity = Vector2.Zero;
 				n.netUpdate = true;
 			}
+			SendFrozen(b);
+		}
+
+		/// <summary>Which NPCs this battle holds, to everyone (or one player). Sent again now and then so nobody misses it.</summary>
+		private static void SendFrozen(NetBattle b, int toPlayer = -1)
+		{
+			var ids = frozen.Where(f => f.Value.Battle == b.Id).Select(f => f.Key).ToList();
 			ModPacket p = Packet(Msg.Frozen);
 			p.Write(b.Id);
 			p.Write((short)ids.Count);
 			foreach (int i in ids)
 			{
 				p.Write((short)i);
-				p.Write(Main.npc[i].type);
+				p.Write(frozen[i].Type);
 			}
-			ToAll(p, Msg.Frozen);
+			if (toPlayer >= 0)
+				ToPlayer(p, toPlayer, Msg.Frozen);
+			else
+				ToAll(p, Msg.Frozen);
+		}
+
+		/// <summary>A player just joined the game: every battle going on (frozen NPCs, stage, fighters).</summary>
+		public static void SendWorldStateTo(int player)
+		{
+			foreach (NetBattle b in battles)
+			{
+				SendFrozen(b, player);
+				SendState(b);
+			}
 		}
 
 		private static void EndBattle(NetBattle b)

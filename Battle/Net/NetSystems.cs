@@ -58,7 +58,13 @@ namespace MercyMode.Battle.Net
 				ColorChoice = (byte)(ModContent.GetInstance<MercyConfig>()?.PartyColor ?? PartyColorChoice.Automatic);
 		}
 
-		public override void SyncPlayer(int toWho, int fromWho, bool newPlayer) => BattleNet.SendColor(Player.whoAmI, ColorChoice, toWho, fromWho);
+		public override void SyncPlayer(int toWho, int fromWho, bool newPlayer)
+		{
+			BattleNet.SendColor(Player.whoAmI, ColorChoice, toWho, fromWho);
+			// The server welcomes a new player with the battles already going on
+			if (newPlayer && Main.netMode == NetmodeID.Server && toWho >= 0 && Player.whoAmI == toWho)
+				BattleNet.SendWorldStateTo(toWho);
+		}
 
 		public override void CopyClientState(ModPlayer targetCopy) => ((BattleNetPlayer)targetCopy).ColorChoice = ColorChoice;
 
@@ -92,6 +98,11 @@ namespace MercyMode.Battle.Net
 		{
 			if (Main.dedServ || !p.active || p.whoAmI == Main.myPlayer)
 				return;
+			if (face == 1)
+				fighterWeapon[p.whoAmI] = item;
+			// Using an item: held up over the head for a moment, like the battle's ITEM pose
+			if (face == 3 && item > 0)
+				holds.Add((p.whoAmI, item, Main.GameUpdateCount));
 			Color c = PartyColors.Of(p);
 			string label = face switch
 			{
@@ -112,8 +123,50 @@ namespace MercyMode.Battle.Net
 				}
 		}
 
+		/// <summary>The weapon each fighter picked (from the round's actions), for drawing their swings.</summary>
+		private static readonly Dictionary<int, int> fighterWeapon = new();
+		private static readonly List<(int Player, int Item, uint Tick)> swings = new();
+		private const float SwingTicks = 16f;
+		private static readonly List<(int Player, int Item, uint Tick)> holds = new();
+		private const float HoldTicks = 50f;
+
+		/// <summary>Draws the swings in the world: the weapon sweeping in an arc from the fighter's hand.</summary>
+		public static void DrawSwings(SpriteBatch sb)
+		{
+			holds.RemoveAll(h => Main.GameUpdateCount - h.Tick > HoldTicks || !Main.player[h.Player].active);
+			foreach (var (who, item, tick) in holds)
+			{
+				Player p = Main.player[who];
+				Main.instance.LoadItem(item);
+				Texture2D tex = Terraria.GameContent.TextureAssets.Item[item].Value;
+				float t = (Main.GameUpdateCount - tick) / HoldTicks;
+				// Rises quickly, holds, fades at the end
+				float rise = 1f - (float)Math.Pow(1f - Math.Min(1f, t * 4f), 2f);
+				float alpha = t > 0.8f ? (1f - t) / 0.2f : 1f;
+				Vector2 at = p.Top + new Vector2(0f, -6f - rise * 14f) - Main.screenPosition;
+				sb.Draw(tex, at, null, Lighting.GetColor(p.Center.ToTileCoordinates()) * alpha, 0f, tex.Size() / 2f, 1f, SpriteEffects.None, 0f);
+			}
+			swings.RemoveAll(sw => Main.GameUpdateCount - sw.Tick > SwingTicks || !Main.player[sw.Player].active);
+			foreach (var (who, item, tick) in swings)
+			{
+				Player p = Main.player[who];
+				Main.instance.LoadItem(item);
+				Texture2D tex = Terraria.GameContent.TextureAssets.Item[item].Value;
+				float t = (Main.GameUpdateCount - tick) / SwingTicks;
+				int dir = p.direction;
+				// Handle at the hand, blade sweeping from overhead to in front
+				float rot = MathHelper.Lerp(-2.2f, 0.6f, t) * dir + (dir < 0 ? MathHelper.PiOver2 : 0f);
+				Vector2 hand = p.MountedCenter + new Vector2(6f * dir, -2f) - Main.screenPosition;
+				Color light = Lighting.GetColor(p.Center.ToTileCoordinates());
+				var origin = dir > 0 ? new Vector2(0f, tex.Height) : new Vector2(tex.Width, tex.Height);
+				sb.Draw(tex, hand, null, light, rot, origin, p.HeldItem?.scale ?? 1f, dir > 0 ? SpriteEffects.None : SpriteEffects.FlipHorizontally, 0f);
+			}
+		}
+
 		public static void Swing(Player p, NPC target, int damage = 0, bool crit = false)
 		{
+			if (!Main.dedServ && p.active && fighterWeapon.TryGetValue(p.whoAmI, out int weapon) && weapon > 0)
+				swings.Add((p.whoAmI, weapon, Main.GameUpdateCount));
 			// The hit's number on the enemy, out here too
 			if (!Main.dedServ && target.active && damage > 0)
 				CombatText.NewText(target.Hitbox, crit ? CombatText.DamagedHostileCrit : CombatText.DamagedHostile, damage, crit);
@@ -246,6 +299,16 @@ namespace MercyMode.Battle.Net
 				if (Enum.TryParse(k, out Keys key) && Main.keyState.IsKeyDown(key) && !Main.oldKeyState.IsKeyDown(key))
 					return true;
 			return false;
+		}
+
+		public override void PostDrawTiles()
+		{
+			if (!BattleNet.Online)
+				return;
+			Main.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None,
+				RasterizerState.CullNone, null, Main.GameViewMatrix.TransformationMatrix);
+			WorldVisuals.DrawSwings(Main.spriteBatch);
+			Main.spriteBatch.End();
 		}
 
 		public override void ModifyInterfaceLayers(List<GameInterfaceLayer> layers)
