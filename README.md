@@ -24,7 +24,7 @@ Battles pause the Terraria world and offer FIGHT, ACT, ITEM, SPARE, and DEFEND t
 
 ## Build
 
-Requirements: Windows, the .NET 8 SDK, and an installed tModLoader setup with its mod build targets. Open PowerShell in this mod's source directory and run:
+Requirements: Windows (or Mac, currently untested as of writing), the .NET 8 SDK, and an installed tModLoader setup with its mod build targets. Open PowerShell in this mod's source directory and run:
 
 ```powershell
 dotnet build -c Release
