@@ -6,6 +6,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Terraria;
 using Terraria.Utilities;
 using MercyMode.Battle.Net;
+using MercyMode.Deltarune;
 using static MercyMode.Battle.BattleConstants;
 
 namespace MercyMode.Battle
@@ -33,6 +34,11 @@ namespace MercyMode.Battle
 		private bool waitingShowsOthers;
 		private uint actingSince;
 		private readonly Dictionary<int, Vector2> allySoulDrawn = new();
+		/// <summary>When each ally first showed up on this screen (0: there from the start, gliding in with us).</summary>
+		private readonly Dictionary<int, uint> allySeen = new();
+		/// <summary>spr_dodgeheart turned white, so it can take each player's colour.</summary>
+		private static Texture2D whiteHeart;
+		private static Texture2D whiteHeartFrom;
 
 		/// <summary>This player's colour: everything that's Kris-cyan in Deltarune.</summary>
 		private static Color KrisCyan => PartyColors.Of(Main.LocalPlayer);
@@ -50,6 +56,7 @@ namespace MercyMode.Battle
 			netRand = null;
 			waitingShowsOthers = false;
 			allySoulDrawn.Clear();
+			allySeen.Clear();
 		}
 
 		/// <summary>
@@ -263,26 +270,50 @@ namespace MercyMode.Battle
 			return held != null && !held.IsAir && held.damage > 0 && !held.consumable ? held : null;
 		}
 
+		/// <summary>
+		/// How far an ally is along their glide from their spot in the world to the battle screen: with this player's own
+		/// glide (intro and outro), or their own if they joined later.
+		/// </summary>
+		private float AllyFly(Player p)
+		{
+			if (!allySeen.TryGetValue(p.whoAmI, out uint seen))
+				allySeen[p.whoAmI] = seen = phase == Phase.Intro ? 0u : Main.GameUpdateCount;
+			float own = 1f;
+			if (seen != 0)
+			{
+				float t = MathHelper.Clamp((Main.GameUpdateCount - seen) / (float)GlideTicks, 0f, 1f);
+				own = 1f - (float)Math.Pow(1f - t, 3);
+			}
+			return Math.Min(FlyProgress(), own);
+		}
+
 		private void DrawAllies(SpriteBatch sb, Matrix m)
 		{
 			if (!BattleNet.InParty)
 				return;
-			float fly = FlyProgress();
 			int slot = 0;
 			foreach (Player p in BattleNet.Allies)
 			{
 				if (slot >= AllyFeet.Length)
 					break;
-				Vector2 feet = AllyFeet[slot++];
+				Vector2 spot = AllyFeet[slot++];
 				if (p.dead)
 					continue;
+				// Like the player: from where they stand in the world to their spot, growing to battle size, lit by the
+				// world at the start of the glide and full bright once there
+				float fly = AllyFly(p);
+				Vector2 feet = Vector2.Lerp(WorldToBattle(p.Bottom), spot, fly);
+				float scale = MathHelper.Lerp(WorldPixelScale(), HeroScale, fly);
 				var (pose, timer) = AllyPose(p);
 				float bob = pose == HeroPose.Idle ? (float)Math.Round(Math.Sin((time + slot * 25) / 20f)) : 0f;
 				if (pose == HeroPose.Act)
 					bob = -(float)Math.Sin(Math.Min(1f, timer / 14f) * Math.PI) * 10f;
+				Color light = fly >= 1f ? Color.White : Color.Lerp(Lighting.GetColor(p.Center.ToTileCoordinates()), Color.White, fly);
 				// Watchers stand a little see-through until they jump in
-				float shadow = Math.Max((1f - fly) * 0.9f, BattleNet.Joining.Contains(p.whoAmI) ? 0.5f : 0f);
-				DrawPlayerPose(sb, m, p, feet + new Vector2(0f, bob), HeroScale, pose, timer, shadow, ally: true);
+				float shadow = BattleNet.Joining.Contains(p.whoAmI) ? 0.5f : 0f;
+				HeroLight = light;
+				DrawPlayerPose(sb, m, p, feet + new Vector2(0f, bob * fly), scale, fly >= 1f ? pose : HeroPose.Idle, timer, shadow, ally: true);
+				HeroLight = Color.White;
 			}
 		}
 
@@ -343,9 +374,39 @@ namespace MercyMode.Battle
 					? Vector2.Lerp(was, pos, 0.5f) : pos;
 				allySoulDrawn[who] = shown;
 				Color c = PartyColors.Of(Main.player[who]);
-				DrDraw.HeartShapeAt(shown.X + 1, shown.Y + 1, 18, Color.Black * 0.6f);
-				DrDraw.HeartShapeAt(shown.X + 2, shown.Y + 2, 16, c * 0.85f);
+				// The same SOUL sprite as ours, in their colour (a plain heart without Deltarune's)
+				if (WhiteHeart() is Texture2D white)
+					DrDraw.Sb.Draw(white, shown, null, c * 0.9f, 0f, DeltaruneAssets.Sprite("spr_dodgeheart").Origin, 1f, SpriteEffects.None, 0f);
+				else
+					DrDraw.HeartShapeAt(shown.X + 2, shown.Y + 2, 16, c * 0.9f);
 			}
+		}
+	
+
+		/// <summary>
+		/// spr_dodgeheart with its red turned to white (shading kept), so tinting it gives a SOUL in any colour.
+		/// </summary>
+		private static Texture2D WhiteHeart()
+		{
+			if (DeltaruneAssets.Sprite("spr_dodgeheart") is not DrSprite s || Main.dedServ)
+				return null;
+			Texture2D src = s.Frame(0);
+			if (whiteHeart != null && whiteHeartFrom == src)
+				return whiteHeart;
+			var pixels = new Color[src.Width * src.Height];
+			src.GetData(pixels);
+			for (int i = 0; i < pixels.Length; i++)
+			{
+				Color c = pixels[i];
+				// Premultiplied: the brightest channel against alpha is how light the pixel is
+				byte v = Math.Max(c.R, Math.Max(c.G, c.B));
+				pixels[i] = new Color(v, v, v, c.A);
+			}
+			whiteHeart?.Dispose();
+			whiteHeart = new Texture2D(Main.graphics.GraphicsDevice, src.Width, src.Height);
+			whiteHeart.SetData(pixels);
+			whiteHeartFrom = src;
+			return whiteHeart;
 		}
 	}
 }

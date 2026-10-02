@@ -116,7 +116,9 @@ namespace MercyMode.Battle
 		{
 			// The battle screen draws the character (gliding in and out of this spot); hide the world copy until it lands
 			// headOnlyRender: the nameplate portrait and map icons draw through here too; keep those
-			if (!BattleSystem.Active || BattleSystem.DrawingHero || drawInfo.headOnlyRender || drawInfo.drawPlayer.whoAmI != Main.myPlayer)
+			// Party members too (multiplayer): the battle screen glides them in from their spots as well
+			int who = drawInfo.drawPlayer.whoAmI;
+			if (!BattleSystem.Active || BattleSystem.DrawingHero || drawInfo.headOnlyRender || who != Main.myPlayer && !Net.BattleNet.Party.Contains(who))
 				return;
 			foreach (PlayerDrawLayer layer in PlayerDrawLayerLoader.Layers)
 				layer.Hide();
