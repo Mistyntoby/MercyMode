@@ -475,6 +475,9 @@ namespace MercyMode.Battle
 					case HeroPose.Item:
 						// Ours, or the item an ally picked (sent with their action)
 						int heldType = ally ? AllyItem(p) : usedItemType;
+						// Choosing from the ITEM list: the highlighted one
+						if (!ally && phase == Phase.ItemSelect && HealingItems() is var list && listIndex < list.Count)
+							heldType = list[listIndex].type;
 						if (heldType > 0 && (pose == HeroPose.ItemReady || timer <= ItemUseFrame) && shadow < 0.95f)
 						{
 							// Arm raised, holding the item up; it's used up at ItemUseFrame

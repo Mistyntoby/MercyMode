@@ -415,7 +415,7 @@ namespace MercyMode.Battle
 		{
 			messages.Clear();
 			foreach (string l in lines)
-				messages.Enqueue(l);
+				messages.Enqueue(Narration.ThirdPerson(l, Player.name));
 			afterMessages = then;
 			if (messages.Count == 0)
 			{
