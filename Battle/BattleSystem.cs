@@ -1313,7 +1313,8 @@ namespace MercyMode.Battle
 						b.Dead = true; // obj_collidebullet destroys itself on hit
 					continue;
 				}
-				if (inv < 0 && b.Touches(grazeBox))
+				// Downed: no SOUL in the box, so no grazing either
+				if (inv < 0 && !downed && b.Touches(grazeBox))
 					Graze(b, mp);
 			}
 			updatingBullets = false;
@@ -1758,7 +1759,7 @@ namespace MercyMode.Battle
 			else if (!downed)
 				DrawSoulMode(frame, phase == Phase.EnemyIntro ? soulAlpha : 1f);
 
-			if (grazeTimer > 0)
+			if (grazeTimer > 0 && !downed)
 			{
 				float a = grazeTimer / (float)TicksPerFrame / 6f;
 				Vector2 gc = SoulCenter;
@@ -1872,7 +1873,7 @@ namespace MercyMode.Battle
 			float textY = top + 48; // 376 when the panel is fully up
 			switch (phase)
 			{
-				case Phase.Waiting when Net.BattleNet.FightingNow.Count > 0:
+				case Phase.Waiting when AllyRowsVisible:
 					// Others are fighting: their bars (ours comes in when it's our turn)
 					DrawAllyFightRows();
 					break;
@@ -1893,7 +1894,7 @@ namespace MercyMode.Battle
 					DrawActInfo(textY);
 					break;
 				case Phase.PartySelect:
-					DrawItemList(textY, HealTargets().Select(t => t.Label).ToList());
+					DrawHealTargets(textY);
 					break;
 				case Phase.ItemSelect:
 					var items = HealingItems();
@@ -1946,8 +1947,9 @@ namespace MercyMode.Battle
 				string[] labels = { "FIGHT", "ACT", "ITEM", "SPARE", "DEFEND" };
 				for (int i = 0; i < 5; i++)
 				{
-					bool selected = (int)menuChoice == i && phase == Phase.Menu || (int)pendingChoice == i && phase != Phase.Menu && phase != Phase.ItemSelect
-						|| i == (int)Choice.Item && phase == Phase.ItemSelect;
+					bool itemPhase = phase is Phase.ItemSelect or Phase.PartySelect;
+					bool selected = (int)menuChoice == i && phase == Phase.Menu || (int)pendingChoice == i && phase != Phase.Menu && !itemPhase
+						|| i == (int)Choice.Item && itemPhase;
 					float bx = r.X + 15 + 35 * i;
 					if (!DrDraw.Sprite(names[i], selected ? 1 : 0, bx, buttonsY, Color.White))
 					{
