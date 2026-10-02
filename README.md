@@ -24,9 +24,11 @@ Battles pause the Terraria world and offer FIGHT, ACT, ITEM, SPARE, and DEFEND t
 
 ## Build
 
-Requirements: Windows (or Mac, currently untested as of writing), the .NET 8 SDK, and an installed tModLoader setup with its mod build targets. Open PowerShell in this mod's source directory and run:
+Requirements: Windows (or Mac, currently untested as of writing), the .NET 8 SDK, and an installed tModLoader setup with its mod build targets.
 
-```powershell
+Open a terminal in this mod's source directory and run:
+
+```bash
 dotnet build -c Release
 ```
 
@@ -45,7 +47,37 @@ Battle keys can be rebound in **Settings > Controls**:
 
 Use the Mercy Mode config to select the local Deltarune installation folder, select a chapter, or disable asset loading entirely.
 
-Run `/drassets` in chat to see the current asset-loading status, or `/drassets reload` to reload assets.
+Run:
+
+```text
+/drassets
+```
+
+in chat to see the current asset-loading status, or:
+
+```text
+/drassets reload
+```
+
+to reload assets.
+
+### Mac Users
+
+If MercyMode does not automatically find your Deltarune installation on macOS, you can manually specify the location with:
+
+```text
+/drassets path <path>
+```
+
+For example:
+
+```text
+/drassets path /Users/YourName/Library/Application Support/Steam/steamapps/common/DELTARUNE
+```
+
+Replace `YourName` with your macOS username and adjust the path if your Steam library is installed somewhere else.
+
+You can use `/drassets` afterward to verify whether the assets were detected.
 
 If the required local assets are unavailable, MercyMode uses its built-in fallbacks instead.
 
