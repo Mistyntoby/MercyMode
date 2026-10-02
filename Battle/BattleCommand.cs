@@ -14,7 +14,7 @@ namespace MercyMode.Battle
 	{
 		public override CommandType Type => CommandType.Chat;
 		public override string Command => "mmbattle";
-		public override string Usage => "/mmbattle [npc <id|name> | group <n> <name> | group <name>, <name>, ... | spawn [dx dy] | spawnnpc <id|name> | end | clear | heal | hp <n> | mercy <n> | kit | night | tp <0-100> | bosshp <n> | turn <n>]";
+		public override string Usage => "/mmbattle [npc <id|name> | group <n> <name> | group <name>, <name>, ... | spawn [dx dy] | spawnnpc <id|name> | join | end | clear | heal | hp <n> | mercy <n> | kit | night | tp <0-100> | bosshp <n> | turn <n>]";
 		public override string Description => "Start Mercy Mode battles for testing (no arguments: Eye of Cthulhu)";
 
 		public override void Action(CommandCaller caller, string input, string[] args)
@@ -89,6 +89,11 @@ namespace MercyMode.Battle
 								n.life = Math.Clamp(hp, 1, n.lifeMax);
 					}
 					caller.Reply($"* Enemy HP set to {hp}.", MercyMode.TextWhite);
+					return;
+				case "join":
+					// Multiplayer: join the battle going on nearby (same as the Join Battle key)
+					if (!Net.BattleNetSystem.TryJoin())
+						caller.Reply("* There's no battle with room close enough to join.", MercyMode.Gray);
 					return;
 				case "end":
 					// Multiplayer: just leave (the enemies belong to the server and the rest of the party)
