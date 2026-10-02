@@ -333,6 +333,20 @@ namespace MercyMode.Deltarune
 			// Rude Buster, streamed from the shared mus folder
 			(byte[] pcm, int rate, int channels)? music = null;
 			string musicPath = Path.Combine(install, "mus", "battle.ogg");
+			// The Mac build keeps it inside the app bundle (DELTARUNE.app/Contents/Resources/...): look for it
+			if (!File.Exists(musicPath))
+			{
+				try
+				{
+					musicPath = Directory.EnumerateFiles(install, "battle.ogg", SearchOption.AllDirectories)
+						.OrderByDescending(f => f.Contains($"{Path.DirectorySeparatorChar}mus{Path.DirectorySeparatorChar}"))
+						.FirstOrDefault() ?? musicPath;
+				}
+				catch (Exception e)
+				{
+					log.Warn($"Couldn't search for the battle music: {e.Message}");
+				}
+			}
 			if (File.Exists(musicPath))
 			{
 				try
