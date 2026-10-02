@@ -50,13 +50,14 @@ namespace MercyMode.Battle.Net
 			PlayerColor, // both ways: a player's party colour choice
 		}
 
-		public enum Stage : byte { Choosing, Acting, EnemyTurn }
+		/// <summary>Over: every enemy is gone (won); nobody can join and it isn't shown as a battle any more.</summary>
+		public enum Stage : byte { Choosing, Acting, EnemyTurn, Over }
 
 		public const int MaxParty = 3;
 		/// <summary>How close (pixels) players must be to the one starting the battle to be pulled in with them.</summary>
-		public const float JoinRange = 20 * 16;
+		public const float JoinRange = 7 * 16;
 		/// <summary>How close to a battle's enemy or fighter the join prompt shows up.</summary>
-		public const float PromptRange = 25 * 16;
+		public const float PromptRange = 8 * 16;
 		/// <summary>Picking an action / carrying it out: after this long the party goes on without them.</summary>
 		public const int ChooseTimeoutTicks = 60 * 60, ActTimeoutTicks = 45 * 60;
 
@@ -702,7 +703,7 @@ namespace MercyMode.Battle.Net
 		internal static void ServerJoin(int player, NPC npc)
 		{
 			NetBattle b = Find(BattleOf(npc));
-			if (b == null || InBattle(player) || b.Players.Count + b.Pending.Count >= MaxParty || Main.player[player].dead)
+			if (b == null || b.Stage == Stage.Over || !NpcsOf(b.Id).Any() || InBattle(player) || b.Players.Count + b.Pending.Count >= MaxParty || Main.player[player].dead)
 				return;
 			b.Pending.Add(player);
 			SendJoin(b, player, spectate: true);
@@ -713,7 +714,7 @@ namespace MercyMode.Battle.Net
 		internal static void ServerReady(int player, int id, int face)
 		{
 			NetBattle b = Find(id);
-			if (b == null || !b.Players.Contains(player) || b.Stage == Stage.Acting)
+			if (b == null || !b.Players.Contains(player) || b.Stage is Stage.Acting or Stage.Over)
 				return;
 			if (b.Stage == Stage.EnemyTurn)
 				SetStage(b, Stage.Choosing);
@@ -757,6 +758,12 @@ namespace MercyMode.Battle.Net
 			while (b.OrderIndex < b.Order.Count && !b.Players.Contains(b.Order[b.OrderIndex]))
 				b.OrderIndex++;
 			b.StageTicks = 0;
+			// Every enemy gone (won by an earlier action): nobody else acts, no bullet box
+			if (!NpcsOf(b.Id).Any())
+			{
+				SetStage(b, Stage.Over);
+				return;
+			}
 			if (b.OrderIndex >= b.Order.Count)
 			{
 				BeginEnemyTurn(b);
@@ -904,6 +911,9 @@ namespace MercyMode.Battle.Net
 				}
 
 				bool anyAlive = NpcsOf(b.Id).Any();
+				// Won: nobody joins a battle that's over, and outsiders stop seeing it as one
+				if (!anyAlive && b.Stage != Stage.Over)
+					SetStage(b, Stage.Over);
 				b.EmptyTicks = anyAlive ? 0 : b.EmptyTicks + 1;
 				if (b.EmptyTicks > 60 * 20)
 					EndBattle(b);

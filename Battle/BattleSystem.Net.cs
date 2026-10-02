@@ -71,12 +71,14 @@ namespace MercyMode.Battle
 			allyStaying.Clear();
 		}
 
-		/// <summary>An ally left the party: they walk off, or (the battle's ending anyway) stay to glide out with us.</summary>
+		/// <summary>An ally left the party: they walk off, or (we're already gliding out) come along.</summary>
 		internal void OnAllyLeft(int who)
 		{
 			if (phase == Phase.None || who < 0 || who >= Main.maxPlayers)
 				return;
-			if (battleOver || phase is Phase.Outro)
+			// Already gliding out ourselves: they come along. Otherwise (left the game, won and moved on before us,
+			// /mmbattle end) they turn around and walk off
+			if (phase is Phase.Outro)
 				allyStaying.Add(who);
 			else if (!Main.player[who].dead && allyLastFeet.ContainsKey(who))
 				allyWalkingOff[who] = Main.GameUpdateCount;
@@ -118,6 +120,9 @@ namespace MercyMode.Battle
 		{
 			if (spectating)
 				return "* You're watching for now.\n* You'll jump in at the next attack!";
+			// Alone: the server answers straight away; nothing to say for that moment
+			if (!BattleNet.Allies.Any(p => !BattleNet.Joining.Contains(p.whoAmI)))
+				return "";
 			var names = BattleNet.WaitingOn.ToList();
 			return names.Count == 0 ? "* Waiting for the others..." : $"* Waiting for {string.Join(" and ", names)} to choose...";
 		}
@@ -141,6 +146,10 @@ namespace MercyMode.Battle
 			actingSince = Main.GameUpdateCount;
 			if (player == Main.myPlayer)
 			{
+				// Won already (someone acted before us and finished it): the picked action is dropped, no FIGHT bar
+				// against nobody
+				if (battleOver || LivingEnemies.Count == 0 || phase != Phase.Waiting)
+					pendingAction = null;
 				if (pendingAction == null)
 				{
 					// Nothing to do (this player hadn't picked when the wait timed out)
@@ -332,6 +341,7 @@ namespace MercyMode.Battle
 			if (!BattleNet.InParty && allyStaying.Count == 0 && allyWalkingOff.Count == 0)
 				return;
 			var drawn = BattleNet.Allies.Select(p => p.whoAmI).Concat(allyStaying).Distinct().ToList();
+			// One walking off isn't drawn standing too
 			foreach (int who in drawn)
 			{
 				Player p = Main.player[who];
@@ -369,7 +379,8 @@ namespace MercyMode.Battle
 				Player p = Main.player[who];
 				float t = Main.GameUpdateCount - since;
 				Vector2 feet = allyLastFeet[who] - new Vector2(Math.Max(0f, t - 10f) * WalkOffSpeed, 0f);
-				if (!p.active || feet.X < -60f)
+				// Left the game: Terraria keeps their character around, so they can still walk off
+				if (feet.X < -60f)
 				{
 					allyWalkingOff.Remove(who);
 					allySlot.Remove(who);

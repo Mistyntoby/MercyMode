@@ -146,6 +146,9 @@ namespace MercyMode.Battle
 				return false;
 			if (!ignoreGrace && Main.GameUpdateCount - Instance.lastEndTick < GraceTicks && Instance.lastEndTick != 0)
 				return false;
+			// Just came into the world (back after leaving mid-battle, say): a moment before anything starts a battle
+			if (!ignoreGrace && Instance.enterGrace > 0)
+				return false;
 			return EncounterRegistry.Eligible(EncounterRegistry.ResolveRoot(npc));
 		}
 
@@ -375,6 +378,7 @@ namespace MercyMode.Battle
 
 		private void SetText(string s)
 		{
+			messageTicks = 0;
 			// Multiplayer: the others watch this player's turn in their own text box
 			if (executing)
 				Net.BattleNet.SendPartyText(s);
@@ -412,8 +416,23 @@ namespace MercyMode.Battle
 			Instance.queuedTicks = ticks;
 		}
 
+		/// <summary>Ticks after entering a world during which touching an enemy doesn't start a battle.</summary>
+		private int enterGrace;
+		private const int EnterGraceTicks = 5 * 60;
+
+		/// <summary>Entering a world: everything about battles starts fresh, with a moment's grace.</summary>
+		public void OnEnterWorld()
+		{
+			if (phase != Phase.None)
+				End();
+			enterGrace = EnterGraceTicks;
+			queuedNpc = -1;
+		}
+
 		public override void PostUpdateEverything()
 		{
+			if (enterGrace > 0)
+				enterGrace--;
 			if (queuedNpc >= 0 && --queuedTicks <= 0)
 			{
 				NPC q = Main.npc[queuedNpc];
@@ -600,8 +619,27 @@ namespace MercyMode.Battle
 		// ---- input ----
 
 		private static bool InputBlocked => Main.drawingPlayerChat || Main.editSign || Main.editChest || Main.gameMenu || Main.ingameOptionsWindow || !Main.hasFocus;
-		private static bool Pressed(Keys k) => !InputBlocked && Main.keyState.IsKeyDown(k) && !Main.oldKeyState.IsKeyDown(k);
-		private static bool Held(Keys k) => !InputBlocked && Main.keyState.IsKeyDown(k);
+		// The battle's keys are written as Deltarune's (Z, X, arrows) and mapped to whatever the player bound in
+		// Settings > Controls (MercyMode.BattleKeys)
+		private static bool Pressed(Keys k)
+		{
+			if (InputBlocked)
+				return false;
+			foreach (Keys b in MercyMode.BoundKeys(k))
+				if (Main.keyState.IsKeyDown(b) && !Main.oldKeyState.IsKeyDown(b))
+					return true;
+			return false;
+		}
+
+		private static bool Held(Keys k)
+		{
+			if (InputBlocked)
+				return false;
+			foreach (Keys b in MercyMode.BoundKeys(k))
+				if (Main.keyState.IsKeyDown(b))
+					return true;
+			return false;
+		}
 		private static bool Confirm => Pressed(Keys.Z);
 		private static bool Cancel => Pressed(Keys.X);
 
@@ -1021,11 +1059,18 @@ namespace MercyMode.Battle
 
 		// ---- text boxes ----
 
+		/// <summary>Ticks the current text box has been up.</summary>
+		private int messageTicks;
+		/// <summary>Once the battle is won, its last text boxes move on by themselves after this long.</summary>
+		private const int WonAutoContinueTicks = 5 * 60;
+
 		private void UpdateMessage()
 		{
-			if (Cancel)
+			messageTicks++;
+			bool auto = battleOver && messageTicks >= WonAutoContinueTicks;
+			if (Cancel || auto)
 				textShown = text.Length;
-			if (textShown < text.Length || !Confirm)
+			if (textShown < text.Length || !(Confirm || auto))
 				return;
 			if (messages.Count > 0)
 			{
@@ -2043,7 +2088,8 @@ namespace MercyMode.Battle
 				// Bolts further back start off the right of the bar; only draw them once they're on it
 				if (bx > x + 80 + FightBoxWidth + 4)
 					continue;
-				float boltAlpha = ahead < 0 ? 1f + ahead / 3f : 1f;
+				// Fades with the bar (bolts still on it when the last enemy falls go with it)
+				float boltAlpha = (ahead < 0 ? 1f + ahead / 3f : 1f) * alpha;
 				if (!DrDraw.Sprite("spr_attackspot", 0, bx, y, Color.White, 1f, 0f, boltAlpha))
 					DrDraw.Rect(bx + 2, y, 6, 38, Color.White * boltAlpha);
 			}
@@ -2054,8 +2100,8 @@ namespace MercyMode.Battle
 				float t = 1f - burst.Timer / 20f;
 				Color c = burst.Perfect ? new Color(255, 255, 0) : MergeColor(KrisCyan, Color.White, 0.5f);
 				Vector2 sc = new(1f + t * 2f, 1f + t * 0.5f);
-				if (!DrDraw.Sprite("spr_attackspot", 0, burst.Position.X - 5 * (sc.X - 1), burst.Position.Y - 19 * (sc.Y - 1), c, sc, 0f, 1f - t))
-					DrDraw.Rect(burst.Position.X, burst.Position.Y, 10 * sc.X, 38 * sc.Y, c * (1f - t));
+				if (!DrDraw.Sprite("spr_attackspot", 0, burst.Position.X - 5 * (sc.X - 1), burst.Position.Y - 19 * (sc.Y - 1), c, sc, 0f, (1f - t) * alpha))
+					DrDraw.Rect(burst.Position.X, burst.Position.Y, 10 * sc.X, 38 * sc.Y, c * ((1f - t) * alpha));
 			}
 		}
 	}

@@ -746,6 +746,12 @@ namespace MercyMode.Lab
 				BattleNet.ServerKill(0, new List<NPC> { z3 });
 				Check(!z3.active, "KillMembers didn't kill a battle member");
 
+				// Every enemy gone: the battle counts as won, nobody can join it, it stops showing as a battle
+				BattleNet.ServerUpdate();
+				Check(BattleNet.LabStage(id) == BattleNet.Stage.Over, $"stage {BattleNet.LabStage(id)} after every enemy went, expected Over");
+				BattleNet.ServerJoin(2, z1);
+				Check(!BattleNet.InBattle(2), "someone joined a battle that was already won");
+
 				// Everyone leaves: the battle closes and its enemies are let go
 				BattleNet.LabSent.Clear();
 				BattleNet.ServerLeave(1, id);
