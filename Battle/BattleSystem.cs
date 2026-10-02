@@ -25,7 +25,7 @@ namespace MercyMode.Battle
 	/// </summary>
 	public partial class BattleSystem : ModSystem
 	{
-		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting }
+		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting, PartySelect }
 		private enum Choice { Fight, Act, Item, Spare, Defend }
 
 		public static BattleSystem Instance => ModContent.GetInstance<BattleSystem>();
@@ -522,7 +522,9 @@ namespace MercyMode.Battle
 			Player.position = playerPosition;
 			Player.velocity = Vector2.Zero;
 			Player.fallStart = (int)(Player.position.Y / 16f);
-			Player.statLife = Math.Min(battleLife, Player.statLifeMax2);
+			// Downed (multiplayer): the battle's HP is below zero, the character stays alive at 1
+			Player.statLife = downed ? 1 : Math.Min(battleLife, Player.statLifeMax2);
+			CheckDowned();
 			Player.lifeRegenCount = 0;
 
 			// Every tick (60 fps), stepped in half Deltarune frames
@@ -555,6 +557,7 @@ namespace MercyMode.Battle
 				case Phase.EnemySelect: UpdateEnemySelect(); break;
 				case Phase.ActSelect: UpdateActSelect(); break;
 				case Phase.ItemSelect: UpdateItemSelect(); break;
+				case Phase.PartySelect: UpdatePartySelect(); break;
 				case Phase.FightBar: UpdateFightBar(); break;
 				case Phase.FightResult: UpdateFightResult(); break;
 				case Phase.Message: UpdateMessage(); break;
@@ -737,6 +740,9 @@ namespace MercyMode.Battle
 			RetargetIfNeeded();
 			if (!keepText)
 				SetText(encounter.FlavorText());
+			// Downed (multiplayer): back up once the HP is above zero; until then the turn is skipped
+			if (downed && !RecoverDowned())
+				return;
 			SetPhase(Phase.Menu);
 		}
 
@@ -1005,10 +1011,19 @@ namespace MercyMode.Battle
 				return;
 
 			var (type, _, name, heal) = items[listIndex];
+			// In a party: on whom? (a downed partner can be brought back up)
+			if (Net.BattleNet.InParty && HealTargets().Count > 1)
+			{
+				pickedItem = (type, name, heal);
+				listIndex = 0;
+				Sfx("select");
+				SetPhase(Phase.PartySelect);
+				return;
+			}
 			Commit(FaceItem, () => UseItem(type, name, heal));
 		}
 
-		private void UseItem(int type, string name, int heal)
+		private void UseItem(int type, string name, int heal, int target = -1)
 		{
 			for (int i = 0; i < 50; i++)
 			{
@@ -1020,6 +1035,18 @@ namespace MercyMode.Battle
 				if (item.stack <= 0)
 					item.TurnToAir();
 				break;
+			}
+
+			// On a partner: the heal goes to them through the server
+			if (target >= 0 && target != Player.whoAmI)
+			{
+				Net.BattleNet.SendHealAlly(target, heal);
+				usedItemType = type;
+				faceAction = FaceItem;
+				SetHeroPose(HeroPose.Item);
+				Player who = Main.player[target];
+				ShowMessages(new[] { $"* {Player.name} used the {name} on {who.name}!\n* {who.name} recovered {heal} HP!" }, StartEnemyTurn);
+				return;
 			}
 
 			int healed = HealPlayer(heal);
@@ -1340,6 +1367,9 @@ namespace MercyMode.Battle
 
 		private void HitSoul(Bullet b)
 		{
+			// Downed: out of the box
+			if (downed)
+				return;
 			Encounter by = b.Owner ?? encounter;
 			int damage = Math.Max(1, (int)Math.Round((b.Owner?.Damage ?? turnDamage) * b.DamageMult));
 			Player.immune = false;
@@ -1723,7 +1753,7 @@ namespace MercyMode.Battle
 			if (soulHome)
 			{
 			}
-			else
+			else if (!downed)
 				DrawSoulMode(frame, phase == Phase.EnemyIntro ? soulAlpha : 1f);
 
 			if (grazeTimer > 0)
@@ -1860,6 +1890,9 @@ namespace MercyMode.Battle
 					DrawGrid(textY, currentActs.Select(a => (a.Name, a.TPCost > 0 && Player.GetModPlayer<MercyPlayer>().TP < a.TPCost)).ToList());
 					DrawActInfo(textY);
 					break;
+				case Phase.PartySelect:
+					DrawItemList(textY, HealTargets().Select(t => t.Label).ToList());
+					break;
 				case Phase.ItemSelect:
 					var items = HealingItems();
 					DrawItemList(textY, items.Select(i => $"{i.name} x{i.count}").ToList());
@@ -1879,7 +1912,7 @@ namespace MercyMode.Battle
 		private void DrawPartyBox()
 		{
 			Rectangle r = PartyBox;
-			bool choosing = phase == Phase.Menu || phase == Phase.WeaponSelect || phase == Phase.EnemySelect || phase == Phase.ActSelect || phase == Phase.ItemSelect;
+			bool choosing = phase == Phase.Menu || phase == Phase.WeaponSelect || phase == Phase.EnemySelect || phase == Phase.ActSelect || phase == Phase.ItemSelect || phase == Phase.PartySelect;
 			float buttonsY = ScreenHeight - panel + 5f;
 			float selectionAlpha = choosing ? 1f : MathHelper.Clamp(partyLift / 32f, 0f, 1f);
 
@@ -1958,8 +1991,8 @@ namespace MercyMode.Battle
 			const float maxNumberScale = 1f;
 			bool hasMana = Player.statManaMax2 > 0;
 
-			float ratio = MathHelper.Clamp(Player.statLife / (float)Player.statLifeMax2, 0f, 1f);
-			string hp = $"{Player.statLife}/{Player.statLifeMax2}";
+			float ratio = MathHelper.Clamp(ShownLife / (float)Player.statLifeMax2, 0f, 1f);
+			string hp = $"{ShownLife}/{Player.statLifeMax2}";
 			string mp = $"{Player.statMana}/{Player.statManaMax2}";
 			float widest = Math.Max(DrDraw.Measure(hp, DrDraw.SmallFont), hasMana ? DrDraw.Measure(mp, DrDraw.SmallFont) : 0f);
 			float numberScale = Math.Min(maxNumberScale, numberRoom / Math.Max(1f, widest));
@@ -1969,7 +2002,7 @@ namespace MercyMode.Battle
 				DrDraw.Text("HP", r.X + labelX - 4, r.Y + hpBarY - 3, Color.White, DrDraw.SmallFont);
 			DrDraw.Rect(r.X + barX, r.Y + hpBarY, barWidth, hpBarHeight, new Color(128, 0, 0));
 			DrDraw.Rect(r.X + barX, r.Y + hpBarY, (float)Math.Ceiling(ratio * barWidth), hpBarHeight, KrisCyan);
-			Color hpColor = ratio <= 0.25f ? new Color(255, 255, 0) : Color.White;
+			Color hpColor = ShownLife <= 0 ? new Color(255, 40, 40) : ratio <= 0.25f ? new Color(255, 255, 0) : Color.White;
 			DrDraw.Text(hp, r.X + numberX, r.Y + hpBarY + hpBarHeight / 2f - numberHeight / 2f, hpColor, DrDraw.SmallFont, numberScale);
 
 			// Mana (magic weapons spend it per hit), blue like Terraria's

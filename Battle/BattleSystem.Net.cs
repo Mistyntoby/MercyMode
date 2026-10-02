@@ -68,6 +68,7 @@ namespace MercyMode.Battle
 			waitingShowsOthers = false;
 			allySoulDrawn.Clear();
 			allySeen.Clear();
+			downed = false;
 			allySlot.Clear();
 			allyLastFeet.Clear();
 			allyWalkingOff.Clear();
@@ -267,16 +268,123 @@ namespace MercyMode.Battle
 
 		private int lastSentHp = -1, lastSentHpMax = -1;
 
+		// ---- downed (multiplayer, like Deltarune) ----
+
+		/// <summary>HP fell to zero while a partner was still up: HP below zero, turns skipped, no SOUL in the box.</summary>
+		private bool downed;
+		/// <summary>The HP the battle shows: below zero while downed.</summary>
+		private int ShownLife => downed ? battleLife : Player.statLife;
+		private (int type, string name, int heal) pickedItem;
+
+		/// <summary>A partner still standing (fighting, not downed, not just watching).</summary>
+		private static bool AnyAllyUp() => BattleNet.Allies.Any(a => !BattleNet.Joining.Contains(a.whoAmI) && !a.dead
+			&& (!BattleNet.AllyHp.TryGetValue(a.whoAmI, out var hp) || hp.Life > 0));
+
+		/// <summary>A lethal hit in a party: go down (HP to minus half, like Deltarune) instead of dying, if anyone's up.</summary>
+		private bool TryGoDown()
+		{
+			if (!BattleNet.InParty || downed || !AnyAllyUp())
+				return false;
+			downed = true;
+			battleLife = -Player.statLifeMax2 / 2;
+			Player.statLife = 1;
+			Player.dead = false;
+			Sfx("hurt");
+			ShakeScreen(4);
+			HeroNumber(0, new Color(255, 40, 40), DamageNumber.MissFrame);
+			return true;
+		}
+
+		/// <summary>Each turn while downed, 1/8 of max HP comes back; above zero, they're up again. False: still down.</summary>
+		private bool RecoverDowned()
+		{
+			battleLife += (int)Math.Ceiling(Player.statLifeMax2 / 8f);
+			if (battleLife > 0)
+			{
+				downed = false;
+				Player.statLife = battleLife;
+				SetText($"* {Player.name} got back up!");
+				return true;
+			}
+			// Skip the turn: nothing to pick
+			Commit(FaceNone, StartEnemyTurn);
+			text = "* You're DOWN.\n* You'll get up once your HP is above 0.";
+			textShown = text.Length;
+			waitingShowsOthers = true;
+			return false;
+		}
+
+		/// <summary>Down with nobody left standing: the party is beaten, and this player really dies.</summary>
+		private void CheckDowned()
+		{
+			if (downed && (!BattleNet.InParty || !AnyAllyUp()) && phase != Phase.Death && !deathPending)
+			{
+				downed = false;
+				battleLife = 0;
+				RequestSoulDeath(null, Player.statLifeMax2);
+			}
+		}
+
+		/// <summary>A partner used an item on us.</summary>
+		internal void OnNetHealed(int from, int amount)
+		{
+			if (phase == Phase.None)
+				return;
+			battleLife = Math.Min(Player.statLifeMax2, (downed ? battleLife : Player.statLife) + amount);
+			if (downed && battleLife > 0)
+				downed = false;
+			if (!downed)
+				Player.statLife = battleLife;
+			QueueHealFx(amount, 1);
+		}
+
+		/// <summary>Who an ITEM can go to: this player, then the partners fighting (downed ones included).</summary>
+		private List<(int Who, string Label)> HealTargets()
+		{
+			var list = new List<(int, string)> { (Player.whoAmI, $"{Player.name}  {ShownLife}/{Player.statLifeMax2}") };
+			foreach (Player a in BattleNet.Allies.Where(a => !BattleNet.Joining.Contains(a.whoAmI)))
+			{
+				var (life, max) = BattleNet.AllyHp.TryGetValue(a.whoAmI, out var hp) ? hp : (a.statLife, a.statLifeMax2);
+				list.Add((a.whoAmI, $"{a.name}  {life}/{max}" + (life <= 0 ? "  DOWN" : "")));
+			}
+			return list;
+		}
+
+		private void UpdatePartySelect()
+		{
+			var targets = HealTargets();
+			int before = listIndex;
+			if (Pressed(Microsoft.Xna.Framework.Input.Keys.Down) && listIndex + 1 < targets.Count)
+				listIndex++;
+			if (Pressed(Microsoft.Xna.Framework.Input.Keys.Up) && listIndex > 0)
+				listIndex--;
+			listIndex = Math.Clamp(listIndex, 0, targets.Count - 1);
+			if (listIndex != before)
+				Sfx("menumove");
+			if (Cancel)
+			{
+				listIndex = 0;
+				SetPhase(Phase.ItemSelect);
+				return;
+			}
+			if (!Confirm)
+				return;
+			Sfx("select");
+			var (type, name, heal) = pickedItem;
+			int target = targets[listIndex].Who;
+			Commit(FaceItem, () => UseItem(type, name, heal, target));
+		}
+
 		/// <summary>The others see this SOUL in the box (and our HP, whenever it changes or once a second).</summary>
 		private void SendSoul()
 		{
-			if (BattleNet.InParty && (Player.statLife != lastSentHp || Player.statLifeMax2 != lastSentHpMax || time % 60 == 0))
+			if (BattleNet.InParty && (ShownLife != lastSentHp || Player.statLifeMax2 != lastSentHpMax || time % 60 == 0))
 			{
-				lastSentHp = Player.statLife;
+				lastSentHp = ShownLife;
 				lastSentHpMax = Player.statLifeMax2;
 				BattleNet.SendHp(lastSentHp, lastSentHpMax);
 			}
-			if (BattleNet.InParty && phase is Phase.EnemyIntro or Phase.EnemyTurn && time % 2 == 0)
+			if (BattleNet.InParty && !downed && phase is Phase.EnemyIntro or Phase.EnemyTurn && time % 2 == 0)
 				BattleNet.SendSoul(soul, (byte)soulMode);
 		}
 
@@ -498,7 +606,7 @@ namespace MercyMode.Battle
 				float room = 208 - (barX + barWidth + 3);
 				float numberScale = Math.Min(1f, room / Math.Max(1f, DrDraw.Measure(hp, DrDraw.SmallFont)));
 				DrDraw.Text(hp, r.X + barX + barWidth + 3, r.Y + barY + barHeight / 2f - DrDraw.LineHeight(DrDraw.SmallFont) * numberScale / 2f,
-					ratio <= 0.25f ? new Color(255, 255, 0) : Color.White, DrDraw.SmallFont, numberScale);
+					life <= 0 ? new Color(255, 40, 40) : ratio <= 0.25f ? new Color(255, 255, 0) : Color.White, DrDraw.SmallFont, numberScale);
 			}
 		}
 
