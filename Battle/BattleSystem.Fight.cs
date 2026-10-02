@@ -263,7 +263,18 @@ namespace MercyMode.Battle
 			if (cost.Length > 0)
 				DrDraw.Text(cost, sx, sy + 40, sel.Problem != null ? new Color(255, 80, 80) : gray, DrDraw.SmallFont);
 			DrDraw.Text($"DMG {sel.ShotDamage}", sx, sy + 60, gray, DrDraw.SmallFont);
+			// What a perfect hit actually does to the current target, after its defense
+			NPC foe = encounter?.TargetableParts == true && Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : encounter?.StrikeTarget();
+			if (foe != null)
+			{
+				int perHit = AfterDefense(Math.Max(1, (int)Math.Round(sel.ShotDamage * sel.HitShare * DamageScale)), foe);
+				DrDraw.Text($"VS DEF {foe.defense}: {perHit}/HIT", sx, sy + 80, new Color(255, 200, 80), DrDraw.SmallFont);
+			}
 		}
+
+		/// <summary>A hit after the enemy's defense: a quarter of the defense comes off (at least 1 gets through).</summary>
+		private static int AfterDefense(int damage, NPC target) =>
+			Math.Max(1, damage - (int)Math.Ceiling(target.defense / 4f));
 
 		/// <summary>A small pixel arrow: green pointing up for an upgrade, red pointing down for a downgrade.</summary>
 		private static void StatArrow(float x, float y, bool up)
@@ -498,10 +509,10 @@ namespace MercyMode.Battle
 			NPC target = encounter.TargetableParts && Encounter.CanHit(chosen) ? chosen : encounter.StrikeTarget();
 			Vector2 spot = PartSpot(target);
 			slashPart = encounter.TargetableParts ? target.whoAmI : -1;
-			// The number on the weapon, as is: enemy defense would cut a 5-damage shortsword down to 1 or 2 (crits double)
+			// Enemy defense takes a quarter of itself off (Terraria takes half, which cut a 5-damage shortsword to 1-2)
 			var strike = new NPC.HitInfo
 			{
-				Damage = hit.Crit ? raw * 2 : raw,
+				Damage = AfterDefense(raw, target) * (hit.Crit ? 2 : 1),
 				Crit = hit.Crit,
 				HitDirection = Player.direction,
 				DamageType = fightWeapon.Item?.DamageType ?? DamageClass.Melee,
