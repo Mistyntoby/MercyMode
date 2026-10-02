@@ -132,9 +132,12 @@ namespace MercyMode.Battle
 				SetHeroPose(HeroPose.Idle);
 			if (heroPose == HeroPose.Item && heroTimer >= ItemPoseFrames)
 				SetHeroPose(HeroPose.Idle);
-			// After the swing: back to holding the weapon ready (more bolts may come), then to idle once the FIGHT is over
+			// After the swing: back to holding the weapon ready while the bar runs (more bolts may come), weapon down after
 			if (heroPose == HeroPose.Attack && heroTimer >= WeaponSwingFrames + 6)
-				SetHeroPose(phase is Phase.FightBar or Phase.FightResult ? HeroPose.AttackReady : HeroPose.Idle);
+				SetHeroPose(phase == Phase.FightBar ? HeroPose.AttackReady : HeroPose.Idle);
+			// The bar's done: the weapon goes down
+			if (heroPose == HeroPose.AttackReady && phase == Phase.FightResult)
+				SetHeroPose(HeroPose.Idle);
 
 			// Afterimages: drop one every frame while gliding, let the old ones fade out
 			for (int i = trail.Count - 1; i >= 0; i--)
@@ -372,6 +375,8 @@ namespace MercyMode.Battle
 			int oldDir = p.direction;
 			int oldSlot = p.selectedItem;
 			Item oldHeld = p.inventory[oldSlot];
+			// Terraria draws the held item from lastVisualizedSelectedItem (the last item swung), not the selected slot
+			Item oldVisual = p.lastVisualizedSelectedItem;
 			int oldAnim = p.itemAnimation, oldAnimMax = p.itemAnimationMax, oldTime = p.itemTime;
 			float oldRot = p.itemRotation;
 			Vector2 oldLoc = p.itemLocation;
@@ -396,6 +401,7 @@ namespace MercyMode.Battle
 			if (swing >= 0f && weapon != null && shadow < 0.95f)
 			{
 				p.inventory[oldSlot] = weapon;
+				p.lastVisualizedSelectedItem = weapon;
 				p.itemAnimationMax = 30;
 				p.itemAnimation = Math.Max(1, (int)Math.Round(30 * (1f - swing)));
 				p.itemTime = p.itemAnimation;
@@ -454,6 +460,7 @@ namespace MercyMode.Battle
 			else
 			{
 				p.inventory[oldSlot] = new Item(); // nothing in hand
+				p.lastVisualizedSelectedItem = p.inventory[oldSlot];
 				switch (pose)
 				{
 					case HeroPose.ActReady:
@@ -548,6 +555,7 @@ namespace MercyMode.Battle
 				p.legFrame = oldLeg;
 				p.direction = oldDir;
 				p.inventory[oldSlot] = oldHeld;
+				p.lastVisualizedSelectedItem = oldVisual;
 				p.itemAnimation = oldAnim;
 				p.itemAnimationMax = oldAnimMax;
 				p.itemTime = oldTime;
