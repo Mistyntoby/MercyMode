@@ -14,8 +14,21 @@ namespace MercyMode.Battle
 	{
 		public override CommandType Type => CommandType.Chat;
 		public override string Command => "mmbattle";
-		public override string Usage => "/mmbattle [npc <id|name> | group <n> <name> | group <name>, <name>, ... | spawn [dx dy] | spawnnpc <id|name> | join | end | clear | heal | hp <n> | mercy <n> | kit | night | tp <0-100> | bosshp <n> | turn <n>]";
+		public override string Usage => "/mmbattle [npc <id|name> | group <n> <name> | group <name>, <name>, ... | spawn [dx dy] | spawnnpc <id|name> | loadout <starter|melee|spear|ranged|magic|thrown|endgame|mixed> | clearinv confirm | join | end | clear | heal | hp <n> | mercy <n> | kit | night | tp <0-100> | bosshp <n> | turn <n>]";
 		public override string Description => "Start Mercy Mode battles for testing (no arguments: Eye of Cthulhu)";
+
+		/// <summary>Weapon sets for demonstrating FIGHT with each kind of weapon (item, stack).</summary>
+		private static readonly Dictionary<string, (int, int)[]> Loadouts = new()
+		{
+			["starter"] = new (int, int)[] { (ItemID.CopperShortsword, 1), (ItemID.CopperBroadsword, 1), (ItemID.WoodenBow, 1), (ItemID.WoodenArrow, 200), (ItemID.WandofSparking, 1) },
+			["melee"] = new (int, int)[] { (ItemID.Gladius, 1), (ItemID.Muramasa, 1), (ItemID.NightsEdge, 1), (ItemID.TerraBlade, 1) },
+			["spear"] = new (int, int)[] { (ItemID.Spear, 1), (ItemID.Trident, 1), (ItemID.Gungnir, 1) },
+			["ranged"] = new (int, int)[] { (ItemID.WoodenBow, 1), (ItemID.WoodenArrow, 300), (ItemID.Minishark, 1), (ItemID.Megashark, 1), (ItemID.MusketBall, 999) },
+			["magic"] = new (int, int)[] { (ItemID.WandofSparking, 1), (ItemID.WaterBolt, 1), (ItemID.MagicMissile, 1), (ItemID.LastPrism, 1) },
+			["thrown"] = new (int, int)[] { (ItemID.Shuriken, 200), (ItemID.ThrowingKnife, 200), (ItemID.BoneDagger, 200), (ItemID.Javelin, 200) },
+			["endgame"] = new (int, int)[] { (ItemID.Zenith, 1), (ItemID.SDMG, 1), (ItemID.ChlorophyteBullet, 999), (ItemID.LastPrism, 1), (ItemID.DayBreak, 1) },
+			["mixed"] = new (int, int)[] { (ItemID.NightsEdge, 1), (ItemID.Minishark, 1), (ItemID.MusketBall, 999), (ItemID.MagicMissile, 1), (ItemID.Shuriken, 200) },
+		};
 
 		public override void Action(CommandCaller caller, string input, string[] args)
 		{
@@ -75,6 +88,40 @@ namespace MercyMode.Battle
 					player.QuickSpawnItem(src, ItemID.WandofSparking, 1);
 					player.QuickSpawnItem(src, ItemID.Shuriken, 50);
 					caller.Reply("* Got healing items and one of each kind of weapon.", MercyMode.TextWhite);
+					return;
+				case "loadout":
+				{
+					// Weapon sets for showing off FIGHT (video clips): /mmbattle loadout <name>
+					string which = args.Length > 1 ? args[1].ToLowerInvariant() : "";
+					if (!Loadouts.TryGetValue(which, out var items))
+					{
+						caller.Reply($"* Loadouts: {string.Join(", ", Loadouts.Keys)}. Use /mmbattle clearinv confirm first for a clean weapon list.", MercyMode.Gray);
+						return;
+					}
+					var lsrc = player.GetSource_FromThis();
+					foreach (var (type, stack) in items)
+						player.QuickSpawnItem(lsrc, type, stack);
+					player.QuickSpawnItem(lsrc, ItemID.HealingPotion, 5);
+					// Magic needs the mana to show more than one hit
+					if (which is "magic" or "endgame" or "mixed")
+					{
+						player.statManaMax = Math.Max(player.statManaMax, 200);
+						player.statMana = player.statManaMax2;
+					}
+					caller.Reply($"* Got the {which} loadout.", MercyMode.TextWhite);
+					return;
+				}
+				case "clearinv":
+					// Empties the 50 main inventory slots (not armor, accessories, coins or ammo slots) so the weapon list
+					// shows only a loadout. Destroys those items, so it has to be confirmed
+					if (args.Length < 2 || args[1] != "confirm")
+					{
+						caller.Reply("* This DELETES everything in your main inventory (not armor/accessories). Type /mmbattle clearinv confirm to do it.", new Color(255, 80, 80));
+						return;
+					}
+					for (int i = 0; i < 50; i++)
+						player.inventory[i].TurnToAir();
+					caller.Reply("* Main inventory cleared.", MercyMode.Gray);
 					return;
 				case "bosshp" when args.Length == 2 && int.TryParse(args[1], out int hp):
 					if (BattleSystem.Active)
