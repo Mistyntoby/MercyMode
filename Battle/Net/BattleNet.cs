@@ -549,8 +549,9 @@ namespace MercyMode.Battle.Net
 				{
 					int player = r.ReadByte();
 					byte choice = r.ReadByte();
-					if (player != Main.myPlayer)
-						Main.player[player].GetModPlayer<BattleNetPlayer>().ColorChoice = choice;
+					// Kept in a plain array: it can arrive before that player's character is set up on this client
+					if (player != Main.myPlayer && player < Main.maxPlayers)
+						PartyColors.Remote[player] = choice;
 					break;
 				}
 			}
@@ -674,7 +675,7 @@ namespace MercyMode.Battle.Net
 					// Only for themselves
 					if (player != from)
 						return;
-					Main.player[player].GetModPlayer<BattleNetPlayer>().ColorChoice = choice;
+					PartyColors.Remote[player] = choice;
 					SendColor(player, choice, -1, from);
 					break;
 				}

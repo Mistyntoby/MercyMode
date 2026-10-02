@@ -31,9 +31,16 @@ namespace MercyMode.Battle.Net
 		/// <summary>Automatic: by the slot the player joined the server in (the first player is Kris cyan).</summary>
 		private static readonly int[] AutoOrder = { 1, 2, 3, 4, 5, 6, 7 };
 
+		/// <summary>Other players' choices, by player slot, as the server sent them.</summary>
+		public static readonly byte[] Remote = new byte[256];
+
 		public static Color Of(Player p)
 		{
-			int choice = p?.GetModPlayer<BattleNetPlayer>().ColorChoice ?? 0;
+			int choice = 0;
+			if (p != null && p.whoAmI == Main.myPlayer && !Main.dedServ)
+				choice = (int)(ModContent.GetInstance<MercyConfig>()?.PartyColor ?? PartyColorChoice.Automatic);
+			else if (p != null && p.whoAmI >= 0 && p.whoAmI < Main.maxPlayers)
+				choice = Remote[p.whoAmI];
 			if (choice <= 0 || choice >= Choices.Length)
 				choice = AutoOrder[(p?.whoAmI ?? 0) % AutoOrder.Length];
 			return Choices[choice];
