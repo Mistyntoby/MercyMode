@@ -56,6 +56,9 @@ namespace MercyMode.Battle
 		/// <summary>Then the hero swings their weapon (the weapon-draw sound plays)...</summary>
 		private const int IntroSwingAt = GlideTicks + 3 * TicksPerFrame;
 		private const int SwingFrames = 12; // attackframes 6 at speed 0.5
+		/// <summary>The swing follows the weapon's own speed (its use time), within reason.</summary>
+		private int WeaponSwingFrames => fightWeapon?.Item is Item w && w.useAnimation > 0
+			? Math.Clamp((int)Math.Round(w.useAnimation / (float)TicksPerFrame), 6, 18) : SwingFrames;
 		// The shortsword / spear stab, in Deltarune frames: wind-up, out, hold, back; reach and body lean in battle px
 		private const float StabWindup = 2f, StabOut = 2f, StabHold = 3f, StabBack = 5f;
 		private const float StabReach = 12f, StabLean = 4f;
@@ -129,8 +132,9 @@ namespace MercyMode.Battle
 				SetHeroPose(HeroPose.Idle);
 			if (heroPose == HeroPose.Item && heroTimer >= ItemPoseFrames)
 				SetHeroPose(HeroPose.Idle);
-			if (heroPose == HeroPose.Attack && heroTimer >= SwingFrames + 6 && phase != Phase.FightResult && phase != Phase.FightBar)
-				SetHeroPose(HeroPose.Idle);
+			// After the swing: back to holding the weapon ready (more bolts may come), then to idle once the FIGHT is over
+			if (heroPose == HeroPose.Attack && heroTimer >= WeaponSwingFrames + 6)
+				SetHeroPose(phase is Phase.FightBar or Phase.FightResult ? HeroPose.AttackReady : HeroPose.Idle);
 
 			// Afterimages: drop one every frame while gliding, let the old ones fade out
 			for (int i = trail.Count - 1; i >= 0; i--)
@@ -348,10 +352,10 @@ namespace MercyMode.Battle
 			new(c.R * tint.R / 255, c.G * tint.G / 255, c.B * tint.B / 255, c.A);
 
 		/// <summary>How far through a weapon swing a pose is (0 = start, 1 = end), or -1 for no weapon.</summary>
-		private static float SwingProgress(HeroPose pose, float timer) => pose switch
+		private float SwingProgress(HeroPose pose, float timer) => pose switch
 		{
 			HeroPose.AttackReady => 0.5f,
-			HeroPose.Attack => Math.Min(1f, timer / SwingFrames),
+			HeroPose.Attack => Math.Min(1f, timer / WeaponSwingFrames),
 			HeroPose.Defend => 0.12f,
 			_ => -1f,
 		};

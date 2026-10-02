@@ -172,7 +172,10 @@ namespace MercyMode.Battle
 		{
 			if (phase == Phase.WeaponSelect && listIndex < weaponOptions.Count)
 				return weaponOptions[listIndex].Item;
-			return fightWeapon?.Item ?? CurrentWeapon().Item;
+			// The weapon of the FIGHT going on; otherwise the one picked (not last turn's)
+			if (phase is Phase.FightBar or Phase.FightResult && fightWeapon != null)
+				return fightWeapon.Item;
+			return CurrentWeapon().Item;
 		}
 
 		// ================================================================== weapon menu
@@ -466,7 +469,10 @@ namespace MercyMode.Battle
 			if (ranged)
 				FireShot(w, projectile);
 			else
+			{
 				Sfx("slash");
+				MeleeEffect(w);
+			}
 			if (points == 150)
 			{
 				Sfx("crit");
@@ -599,6 +605,9 @@ namespace MercyMode.Battle
 		private void UpdateFightResult()
 		{
 			FadeBoltGhosts();
+			// The player's minions join in once their FIGHT landed (not after ACT, ITEM, SPARE or DEFEND)
+			if (phaseTicks == 6 * TicksPerFrame && hitsLanded > 0)
+				SummonAttack();
 			for (int i = boltBursts.Count - 1; i >= 0; i--)
 				if (--boltBursts[i].Timer <= 0)
 					boltBursts.RemoveAt(i);
@@ -641,6 +650,103 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>Gun, bow or spell: its own sound, a kick back, a flash at the muzzle and the projectile flying over.</summary>
+		/// <summary>Swords that shoot something (beams, the Zenith's swords) show it flying at the enemy too.</summary>
+		private void MeleeEffect(WeaponOption w)
+		{
+			Item item = w.Item;
+			if (item == null || item.shoot <= ProjectileID.None)
+				return;
+			NPC aim = Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : null;
+			Vector2 to = PartSpot(aim);
+			Vector2 from = Muzzle();
+			if (item.type == ItemID.Zenith)
+			{
+				// The Zenith throws the swords it was forged from
+				int[] swords = { ItemID.CopperShortsword, ItemID.Starfury, ItemID.EnchantedSword, ItemID.BeeKeeper, ItemID.Seedler,
+					ItemID.TheHorsemansBlade, ItemID.InfluxWaver, ItemID.StarWrath, ItemID.Meowmere, ItemID.TerraBlade };
+				for (int i = 0; i < 4; i++)
+					AddEffect(new ItemFlight(Main.rand.Next(swords), from, to + Main.rand.NextVector2Circular(30f, 30f), 14f + i * 3f, i % 2 == 0 ? 1 : -1));
+				return;
+			}
+			// Spears, shortswords and yoyos "shoot" themselves: the swing already shows them
+			if (item.noUseGraphic || item.channel)
+				return;
+			AddEffect(new ShotProjectile(item.shoot, from, to + Main.rand.NextVector2Circular(10f, 10f), 9f));
+		}
+
+		/// <summary>The player's minions, one of each kind: they join in after a FIGHT that landed.</summary>
+		private List<Projectile> Minions()
+		{
+			var seen = new HashSet<int>();
+			var list = new List<Projectile>();
+			foreach (Projectile p in Main.ActiveProjectiles)
+				if (p.owner == Player.whoAmI && p.minion && p.damage > 0 && seen.Add(p.type))
+					list.Add(p);
+			return list;
+		}
+
+		/// <summary>After the player's hits: every kind of minion they have out flies at the target and hits once.</summary>
+		private void SummonAttack()
+		{
+			if (!encounter.Alive)
+				return;
+			int n = 0;
+			foreach (Projectile m in Minions())
+			{
+				if (!encounter.Alive)
+					break;
+				int count = Main.projectile.Count(p => p.active && p.owner == Player.whoAmI && p.type == m.type);
+				NPC target = encounter.TargetableParts && Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : encounter.StrikeTarget();
+				Vector2 spot = PartSpot(target);
+				AddEffect(new ShotProjectile(m.type, MinionSpot(n), spot, 12f));
+				var strike = new NPC.HitInfo
+				{
+					Damage = AfterDefense(Math.Max(1, (int)Math.Round(m.damage * count * DamageScale)), target),
+					HitDirection = Player.direction,
+					DamageType = DamageClass.Summon,
+				};
+				int dealt = target.StrikeNPC(strike);
+				if (Main.netMode != NetmodeID.SinglePlayer)
+					NetMessage.SendStrikeNPC(target, in strike);
+				EnemyNumber(dealt, new Color(180, 140, 255), -1, yOffset: -18f * (hitsLanded + n), at: spot);
+				Net.BattleNet.SendPartyHit(target, dealt, false);
+				n++;
+			}
+			if (n == 0)
+				return;
+			Sfx("damage");
+			enemyShake = 18;
+			if (!encounter.Alive && enemyOverride == null)
+			{
+				PlayEnemyDeath();
+				targetEnemy.Out = true;
+				OnEnemyDefeated(targetEnemy);
+				RetargetIfNeeded();
+			}
+		}
+
+		/// <summary>Where the n-th kind of minion floats on the battle screen, beside the player.</summary>
+		private Vector2 MinionSpot(int n) => HeroFeetNow + new Vector2(70f + n * 18f, -110f + (n % 2) * 26f + (float)Math.Sin((time + n * 30) / 18f) * 4f);
+
+		/// <summary>The player's minions floating beside them in the battle.</summary>
+		private void DrawMinions()
+		{
+			if (Player.dead)
+				return;
+			int n = 0;
+			foreach (Projectile m in Minions())
+			{
+				Main.instance.LoadProjectile(m.type);
+				Texture2D tex = TextureAssets.Projectile[m.type].Value;
+				int frames = Math.Max(1, Main.projFrames[m.type]);
+				int frame = (time / 8) % frames;
+				var src = new Rectangle(0, tex.Height / frames * frame, tex.Width, tex.Height / frames);
+				Vector2 at = Vector2.Lerp(WorldToBattle(m.Center), MinionSpot(n), FlyProgress());
+				DrDraw.Sb.Draw(tex, at, src, Color.White * FlyProgress(), 0f, src.Size() / 2f, HeroScaleNow * 0.8f, SpriteEffects.None, 0f);
+				n++;
+			}
+		}
+
 		private void FireShot(WeaponOption w, int projectile)
 		{
 			if (w.Item?.UseSound is Terraria.Audio.SoundStyle use)
@@ -754,6 +860,46 @@ namespace MercyMode.Battle
 				Vector2 d = (MathHelper.TwoPi * i / 6f + 0.3f).ToRotationVector2();
 				DrDraw.Line(pos + d * r * 0.4f, pos + d * r, 2f, Color.White * a);
 			}
+		}
+	}
+}
+
+namespace MercyMode.Battle
+{
+	/// <summary>An item (a sword) spinning through the air to the enemy: the Zenith's swords.</summary>
+	public sealed class ItemFlight : BattleEffect
+	{
+		private readonly int type, spin;
+		private readonly Vector2 from, to;
+		private readonly float frames;
+		private float t;
+
+		public ItemFlight(int type, Vector2 from, Vector2 to, float frames, int spin)
+		{
+			this.type = type;
+			this.from = from;
+			this.to = to;
+			this.frames = frames;
+			this.spin = spin;
+		}
+
+		public override void Step(float dt)
+		{
+			t += dt;
+			if (t >= frames)
+				Done = true;
+		}
+
+		public override void Draw()
+		{
+			float k = MathHelper.Clamp(t / frames, 0f, 1f);
+			// An arc out and in, like the Zenith's
+			Vector2 pos = Vector2.Lerp(from, to, k) + new Vector2(0f, -(float)Math.Sin(k * Math.PI) * 50f * spin);
+			Main.instance.LoadItem(type);
+			Texture2D tex = Terraria.GameContent.TextureAssets.Item[type].Value;
+			float a = k > 0.85f ? (1f - k) / 0.15f : 1f;
+			DrDraw.Sb.Draw(tex, pos, null, Color.White * a, t * 0.6f * spin, tex.Size() / 2f, BattleConstants.BattleCharacterScale * 0.7f,
+				Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
 		}
 	}
 }
