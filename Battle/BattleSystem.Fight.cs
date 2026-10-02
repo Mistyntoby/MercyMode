@@ -498,8 +498,17 @@ namespace MercyMode.Battle
 			NPC target = encounter.TargetableParts && Encounter.CanHit(chosen) ? chosen : encounter.StrikeTarget();
 			Vector2 spot = PartSpot(target);
 			slashPart = encounter.TargetableParts ? target.whoAmI : -1;
-			int dealt = target.SimpleStrikeNPC(raw, Player.direction, crit: hit.Crit, knockBack: 0f,
-				damageType: fightWeapon.Item?.DamageType ?? DamageClass.Melee);
+			// The number on the weapon, as is: enemy defense would cut a 5-damage shortsword down to 1 or 2 (crits double)
+			var strike = new NPC.HitInfo
+			{
+				Damage = hit.Crit ? raw * 2 : raw,
+				Crit = hit.Crit,
+				HitDirection = Player.direction,
+				DamageType = fightWeapon.Item?.DamageType ?? DamageClass.Melee,
+			};
+			int dealt = target.StrikeNPC(strike);
+			if (Main.netMode != NetmodeID.SinglePlayer)
+				NetMessage.SendStrikeNPC(target, in strike);
 
 			Sfx("damage");
 			if (!hit.Ranged)
