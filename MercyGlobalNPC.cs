@@ -42,6 +42,9 @@ namespace MercyMode
 
 		public override void PostDraw(NPC npc, SpriteBatch spriteBatch, Vector2 screenPos, Color drawColor)
 		{
+			// Not on the battle screen: the battle has its own MERCY display
+			if (Battle.BattleSystem.DrawingEnemy)
+				return;
 			if (!npc.boss || npc.realLife >= 0 && npc.realLife != npc.whoAmI)
 				return;
 
@@ -63,9 +66,12 @@ namespace MercyMode
 		}
 
 		/// <summary>End the fight peacefully. The boss still drops its loot and counts as defeated.</summary>
+		private static bool EncounterRegistryIsBoss(NPC npc) => Battle.EncounterRegistry.IsBossFight(npc);
+
 		public static void Spare(NPC root)
 		{
-			Deltarune.DeltaruneAssets.Play("spare", SoundID.Item4, root.Center);
+			if (!Main.dedServ)
+				Deltarune.DeltaruneAssets.Play("spare", SoundID.Item4, root.Center);
 			CombatText.NewText(root.Hitbox, MercyMode.MercyYellow, "SPARED", dramatic: true);
 			MercyMode.Say($"* {root.FullName} was spared!", MercyMode.MercyYellow);
 
@@ -84,7 +90,26 @@ namespace MercyMode
 			}
 
 			// Loot, downed flags, boss messages, hardmode for Wall of Flesh, etc.
-			root.NPCLoot();
+			if (EncounterRegistryIsBoss(root))
+			{
+				root.NPCLoot();
+			}
+			else
+			{
+				// A regular enemy goes through Terraria's own death, so it counts toward an invasion's or event's
+				// progress (goblins, pirates, Pumpkin Moon waves...); quietly, the spare has its own sound
+				var sound = root.DeathSound;
+				root.DeathSound = null;
+				root.life = 0;
+				try
+				{
+					root.checkDead();
+				}
+				finally
+				{
+					root.DeathSound = sound;
+				}
+			}
 
 			foreach (NPC npc in Main.ActiveNPCs)
 			{

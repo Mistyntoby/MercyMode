@@ -62,15 +62,42 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			bool hard = LifeRatio < 0.5f;
-			int pick = Turn % 4;
+			int pick = Turn % 8;
 			return pick switch
 			{
 				0 => new TearRain(hard),
 				1 => new ServantSwarm(hard),
 				2 => new EyeDash(hard),
-				_ => hard ? new EyeRing() : new TearRain(false) { WithServants = true },
+				// Its stare, as a beam aimed at the SOUL; in phase 2 it keeps crying while it stares
+				3 => hard
+					? new Combo(BattleConstants.DefaultEnemyTurnTicks, new Beam(50) { Width = 16f }, new TearRain(false))
+					: new Beam(70) { Width = 14f },
+				// Tears gather around the SOUL, then fall in on it
+				4 => new Converge(EyeTear, hard ? 50 : 66) { Count = hard ? 10 : 8, Speed = hard ? 4.6f : 3.8f },
+				5 => hard ? new Combo(BattleConstants.DefaultEnemyTurnTicks, new EyeRing(), new ServantSwarm(false))
+					: new TearRain(false) { WithServants = true },
+				// Servants line up over the SOUL and dive at it, trailing blood
+				7 => new Diver((p, v) => Shots.Npc(NPCID.ServantofCthulhu, p, v, 1f, 0.8f, new Vector2(14, 14), rotate: false)
+					.Dripping(new Color(200, 30, 40)), hard ? 22 : 32) { DiveSpeed = hard ? 8.5f : 7f },
+				// Phase 2's full-screen frenzy: its gaze slashes across everything while it cries blood
+				_ => hard
+					? new Combo(BattleConstants.FullScreenTurnTicks,
+						new Slashes(64) { Color = new Color(255, 70, 70), PerBurst = 3 },
+						new TearRain(false)) { FullScreen = true }
+					: new ServantSwarm(false),
 			};
 		}
+
+		private static Bullet EyeTear(Vector2 p, Vector2 v) => new()
+		{
+			Position = p,
+			Velocity = v,
+			Sprite = "spr_ponman_eyebullet",
+			Color = new Color(255, 90, 90),
+			Scale = 1.5f,
+			HitSize = new Vector2(10, 10),
+			DamageMult = 0.7f,
+		};
 
 		// ================================================================== patterns
 
@@ -184,6 +211,7 @@ namespace MercyMode.Battle.Encounters
 				float lane = vertical ? soul.X : soul.Y;
 				const float laneWidth = 30f;
 				dashes++;
+				AttackSfx.Appear();
 
 				// Warning lane (not harmful)
 				battle.Spawn(new Bullet
@@ -229,6 +257,8 @@ namespace MercyMode.Battle.Encounters
 						{
 							b.Harmful = true;
 							b.Velocity = dir * speed;
+							// The Eye's own charge roar
+							AttackSfx.Vanilla(SoundID.ForceRoar, 0.6f);
 						}
 					},
 				});

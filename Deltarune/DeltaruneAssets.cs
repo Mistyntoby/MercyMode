@@ -74,6 +74,19 @@ namespace MercyMode.Deltarune
 			["item"] = new[] { "snd_item" },
 			["boost"] = new[] { "snd_boost" },
 			["mercyadd"] = new[] { "snd_mercyadd" },
+			// a SOUL changing mode: the bell (Undertale's blue-SOUL ding; chapter 5 has it)
+			["soulchange"] = new[] { "snd_bell", "snd_bell_bc" },
+			// the yellow SOUL (chapter 2)
+			["chargeshot"] = new[] { "snd_chargeshot_charge" },
+			["chargefire"] = new[] { "snd_chargeshot_fire" },
+			// attack patterns
+			["bulletappear"] = new[] { "snd_spearappear" },
+			["bulletfire"] = new[] { "snd_spearrise" },
+			["impact"] = new[] { "snd_impact", "snd_screenshake" },
+			["explosion"] = new[] { "snd_badexplosion", "snd_explosion", "snd_bomb" },
+			// game over: the SOUL cracks, then shatters
+			["soulcrack"] = new[] { "snd_break1" },
+			["soulshatter"] = new[] { "snd_break2" },
 		};
 
 		/// <summary>Sprites the battle screen uses. Missing ones fall back to simple shapes.</summary>
@@ -86,9 +99,30 @@ namespace MercyMode.Deltarune
 			"spr_grazeappear", "spr_hpname", "spr_numbersfontbig", "spr_numbersfontbig_gold",
 			"spr_ponman_eyebullet", "spr_smallbullet", "spr_healsparkle", "spr_sparestar",
 			"bg_battleback1", "spr_battlemsg", "spr_heartoutline", "spr_heartoutline2", "spr_sparestar_anim", "spr_lightfairy",
+			"spr_heartbreak", "spr_heartshards", "spr_headkris",
+			"spr_yellowheart", "spr_yheart_shot", "spr_yheart_bigshot", "spr_yheart_charge", "spr_yheart_shot_hit",
 		};
 
 		public static readonly string[] FontNames = { "fnt_mainbig", "fnt_main", "fnt_small" };
+
+		/// <summary>
+		/// Coloured SOULs and other sprites whose names vary by chapter. Each takes the first exact name any chapter has,
+		/// else a name matching the pattern (kept strict: a loose keyword search picked spr_bhero_shield, a party member's
+		/// shield, for the green SOUL's). Chapter 5 has spr_yellowheart and spr_purpleheart; no blue or green heart, bone or
+		/// SOUL shield (2026-10-01 asset list), so those may come from another chapter or stay drawn by the mod.
+		/// </summary>
+		public static readonly (string key, string[] exact, string pattern)[] SearchedSprites =
+		{
+			("soul_blue", new[] { "spr_blueheart", "spr_heart_blue", "spr_blueheart_centered" }, @"^spr_(blue_?heart|heart_?blue|blue_?soul|soul_?blue)$"),
+			("soul_green", new[] { "spr_greenheart", "spr_heart_green", "spr_greenheart_centered" }, @"^spr_(green_?heart|heart_?green|green_?soul|soul_?green)$"),
+			("soul_purple", new[] { "spr_purpleheart", "spr_heart_purple" }, @"^spr_(purple_?heart|heart_?purple|purple_?soul|soul_?purple)$"),
+			("soul_yellow", new[] { "spr_yellowheart", "spr_heart_yellow" }, @"^spr_(yellow_?heart|heart_?yellow)$"),
+			("bone", new[] { "spr_bone", "spr_s_bone", "spr_bonebullet", "spr_bone_bullet", "spr_papyrus_bone", "spr_bullet_bone" }, @"^spr_(bullet_?)?bone(_?bullet)?(_v|_vertical|_h|_horizontal)?$"),
+			("shield", new[] { "spr_greenshield", "spr_heart_shield", "spr_soulshield", "spr_shield_soul", "spr_greenheart_shield" }, @"^spr_.*(heart|soul|green).*shield.*$|^spr_.*shield.*(heart|soul|green).*$"),
+		};
+
+		/// <summary>Which Deltarune sprite each coloured SOUL (and searched sprite) came from (for /drassets).</summary>
+		public static readonly Dictionary<string, string> SoulModeSources = new();
 
 		public override void PostSetupContent()
 		{
@@ -186,6 +220,7 @@ namespace MercyMode.Deltarune
 			}
 
 			DumpPath = "";
+			SoulModeSources.Clear();
 			var dataFiles = InstallFinder.FindDataFiles(install);
 			if (dataFiles.Count == 0)
 			{
@@ -245,6 +280,23 @@ namespace MercyMode.Deltarune
 						rawSprites[n] = s;
 				}
 
+				foreach (var (key, exact, pattern) in SearchedSprites)
+				{
+					if (rawSprites.ContainsKey(key))
+						continue;
+					string best = exact.FirstOrDefault(data.Sprites.ContainsKey) ?? data.Sprites.Keys
+						.Where(n => System.Text.RegularExpressions.Regex.IsMatch(n, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+						.OrderBy(n => n.Length).ThenBy(n => n).FirstOrDefault();
+					if (best == null)
+						continue;
+					RawSprite s = TryRead(() => data.ReadSprite(best), best, log);
+					if (s != null && s.Frames.Count > 0)
+					{
+						rawSprites[key] = s;
+						SoulModeSources[key] = $"{best} (chapter {chapter})";
+					}
+				}
+
 				foreach (string n in FontNames)
 				{
 					if (rawFonts.ContainsKey(n))
@@ -254,14 +306,20 @@ namespace MercyMode.Deltarune
 						rawFonts[n] = f;
 				}
 
-				if (chapter > 0 && DumpPath == "")
-					DumpPath = WriteDump(data, chapter);
+				// A name list per chapter (the newest one is the one /drassets mentions)
+				if (chapter >= 0)
+				{
+					string dump = WriteDump(data, chapter);
+					if (DumpPath == "" && chapter > 0)
+						DumpPath = dump;
+				}
 				data.ClearPageCache();
 
 				if (rawSounds.Count + rawSprites.Count + rawFonts.Count + (soulFrame != null ? 1 : 0) > before)
 					usedChapters.Add(chapter);
 
-				if (soulFrame != null && rawSounds.Count == SoundRoles.Count && rawSprites.Count == SpriteNames.Length && rawFonts.Count == FontNames.Length)
+				if (soulFrame != null && rawSounds.Count == SoundRoles.Count && SpriteNames.All(rawSprites.ContainsKey)
+					&& SearchedSprites.All(x => rawSprites.ContainsKey(x.key)) && rawFonts.Count == FontNames.Length)
 					break;
 			}
 
@@ -275,6 +333,20 @@ namespace MercyMode.Deltarune
 			// Rude Buster, streamed from the shared mus folder
 			(byte[] pcm, int rate, int channels)? music = null;
 			string musicPath = Path.Combine(install, "mus", "battle.ogg");
+			// The Mac build keeps it inside the app bundle (DELTARUNE.app/Contents/Resources/...): look for it
+			if (!File.Exists(musicPath))
+			{
+				try
+				{
+					musicPath = Directory.EnumerateFiles(install, "battle.ogg", SearchOption.AllDirectories)
+						.OrderByDescending(f => f.Contains($"{Path.DirectorySeparatorChar}mus{Path.DirectorySeparatorChar}"))
+						.FirstOrDefault() ?? musicPath;
+				}
+				catch (Exception e)
+				{
+					log.Warn($"Couldn't search for the battle music: {e.Message}");
+				}
+			}
 			if (File.Exists(musicPath))
 			{
 				try
@@ -334,6 +406,8 @@ namespace MercyMode.Deltarune
 					.Concat(SoundRoles.Keys.Where(r => !sounds.ContainsKey(r)).Select(r => "sound:" + r)).ToList();
 				if (missing.Count > 0)
 					log.Info("Missing Deltarune assets (using fallbacks): " + string.Join(", ", missing));
+				log.Info("Coloured SOULs: " + (SoulModeSources.Count == 0 ? "none found (recoloured red SOUL)"
+					: string.Join(", ", SoulModeSources.Select(kv => $"{kv.Key} = {kv.Value}"))));
 			});
 		}
 
@@ -393,6 +467,74 @@ namespace MercyMode.Deltarune
 			}
 		}
 
+		private sealed class FadingSound
+		{
+			public SoundEffectInstance Instance;
+			public ReLogic.Utilities.SlotId Slot;
+			public float Volume;
+			public int Age, Hold, Fade;
+		}
+		private static readonly List<FadingSound> fadingSounds = new();
+
+		/// <summary>
+		/// Like <see cref="Play"/>, but the sound is cut short: it plays at full volume for <paramref name="hold"/> ticks,
+		/// then fades out over <paramref name="fade"/> ticks (long booms like explosions).
+		/// </summary>
+		public static void PlayFading(string role, SoundStyle fallback, float gain, int hold, int fade)
+		{
+			MercyConfig config = ModContent.GetInstance<MercyConfig>();
+			MercySoundRedirect redirect = SoundRedirectFor(role, config);
+			if (redirect == MercySoundRedirect.Silent)
+				return;
+			float roleGain = RoleGain(role) * gain;
+			if (redirect == MercySoundRedirect.Deltarune && sounds.TryGetValue(role, out var effect))
+			{
+				float vol = MathHelper.Clamp(Main.soundVolume * config.BattleSoundVolume * soundVolumes.GetValueOrDefault(role, 1f) * roleGain, 0f, 1f);
+				if (vol <= 0f)
+					return;
+				SoundEffectInstance instance = effect.CreateInstance();
+				instance.Volume = vol;
+				instance.Play();
+				fadingSounds.Add(new FadingSound { Instance = instance, Volume = vol, Hold = hold, Fade = Math.Max(1, fade) });
+				return;
+			}
+			SoundStyle style = redirect == MercySoundRedirect.Deltarune ? fallback : RedirectedStyle(redirect);
+			var slot = SoundEngine.PlaySound(style with { Volume = style.Volume * config.BattleSoundVolume * roleGain });
+			fadingSounds.Add(new FadingSound { Slot = slot, Volume = 1f, Hold = hold, Fade = Math.Max(1, fade) });
+		}
+
+		public override void PostUpdateEverything()
+		{
+			for (int i = fadingSounds.Count - 1; i >= 0; i--)
+			{
+				FadingSound s = fadingSounds[i];
+				s.Age++;
+				float t = s.Age <= s.Hold ? 1f : 1f - (s.Age - s.Hold) / (float)s.Fade;
+				if (s.Instance != null)
+				{
+					if (t <= 0f || s.Instance.State == SoundState.Stopped)
+					{
+						s.Instance.Stop();
+						s.Instance.Dispose();
+						fadingSounds.RemoveAt(i);
+						continue;
+					}
+					s.Instance.Volume = s.Volume * t;
+				}
+				else
+				{
+					// A Terraria sound: its ActiveSound.Volume is a multiplier on top of the style's volume
+					if (!SoundEngine.TryGetActiveSound(s.Slot, out var active) || t <= 0f)
+					{
+						active?.Stop();
+						fadingSounds.RemoveAt(i);
+						continue;
+					}
+					active.Volume = t;
+				}
+			}
+		}
+
 		/// <summary>Plays the real Deltarune sound for a role if we have it, otherwise the vanilla fallback.</summary>
 		public static void Play(string role, SoundStyle fallback, Vector2? position = null)
 		{
@@ -419,6 +561,23 @@ namespace MercyMode.Deltarune
 			SoundEngine.PlaySound(fallback with { Volume = fallback.Volume * config.BattleSoundVolume * roleGain }, position);
 		}
 
+		/// <summary>
+		/// A looping instance of a role's Deltarune sound (silent to start), with the volume it should play at; null when
+		/// the real sound isn't loaded or the role is redirected. The caller sets Volume/Pitch and stops it.
+		/// </summary>
+		public static SoundEffectInstance CreateLoop(string role, out float volume)
+		{
+			volume = 0f;
+			MercyConfig config = ModContent.GetInstance<MercyConfig>();
+			if (config == null || SoundRedirectFor(role, config) != MercySoundRedirect.Deltarune || !sounds.TryGetValue(role, out var effect))
+				return null;
+			volume = MathHelper.Clamp(Main.soundVolume * config.BattleSoundVolume * soundVolumes.GetValueOrDefault(role, 1f) * RoleGain(role), 0f, 1f);
+			SoundEffectInstance loop = effect.CreateInstance();
+			loop.IsLooped = true;
+			loop.Volume = 0f;
+			return loop;
+		}
+
 		/// <summary>Only plays if the real sound loaded. For effects that vanilla Terraria has no good match for.</summary>
 		public static void PlayIfLoaded(string role)
 		{
@@ -442,13 +601,20 @@ namespace MercyMode.Deltarune
 			}
 		}
 
+		/// <summary>
+		/// Rude Buster is mastered louder than Terraria's music; this brings it down to sit with the boss tracks at the
+		/// same Music volume. The config's Battle Music Volume still scales it.
+		/// </summary>
+		private const float RudeBusterGain = 0.45f;
+
 		public static float BattleMusicVolume => MathHelper.Clamp(
-			Main.musicVolume * ModContent.GetInstance<MercyConfig>().BattleMusicVolume, 0f, 1f);
+			Main.musicVolume * ModContent.GetInstance<MercyConfig>().BattleMusicVolume * RudeBusterGain, 0f, 1f);
 
 		private static MercySoundRedirect SoundRedirectFor(string role, MercyConfig config) => role switch
 		{
 			"menumove" or "select" or "cantselect" or "error" or "text" => config.MenuSoundRedirect,
-			"hurt" or "damage" or "slash" or "crit" or "attack" => config.BattleSoundRedirect,
+			"hurt" or "damage" or "slash" or "crit" or "attack"
+				or "bulletappear" or "bulletfire" or "impact" or "explosion" => config.BattleSoundRedirect,
 			"act" or "heal" or "spare" or "item" or "boost" => config.ActionSoundRedirect,
 			"weaponpull" => config.BattleStartSoundRedirect,
 			"mercyadd" => config.MercyGainSoundRedirect,

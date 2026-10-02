@@ -9,6 +9,14 @@ namespace MercyMode.Battle
 	{
 		/// <summary>Terraria ticks per Deltarune frame.</summary>
 		public const int TicksPerFrame = 2;
+		/// <summary>One tick in Deltarune frames: animations step every tick by this much, so they run at 60 fps.</summary>
+		public const float FrameStep = 1f / TicksPerFrame;
+
+		/// <summary>
+		/// A per-frame ease (x = lerp(x, target, f) each Deltarune frame) as a per-tick factor that lands in the
+		/// same place after one frame's worth of ticks.
+		/// </summary>
+		public static float EasePerTick(float perFrame) => 1f - (float)System.Math.Pow(1f - perFrame, FrameStep);
 
 		public const int ScreenWidth = 640;
 		public const int ScreenHeight = 480;
@@ -35,6 +43,13 @@ namespace MercyMode.Battle
 		public const int BoxGrowTicks = 15 * TicksPerFrame;
 		public const float BoxCenterX = 320f;
 		public const float BoxCenterY = 170f;
+		/// <summary>
+		/// A full-screen attack's arena: the whole 640x480 battle screen, inset a little so its border (the edge of
+		/// the play area) stays visible however the window is shaped.
+		/// </summary>
+		public static readonly Microsoft.Xna.Framework.Rectangle FullScreenArena = new(10, 10, 620, 460);
+		/// <summary>How fast the box opens into the arena (and closes again), per Deltarune frame.</summary>
+		public const float ArenaEase = 0.22f;
 
 		// ---- Getting hit (scr_damage) ----
 		/// <summary>global.inv = global.invc * 40 frames, invc = 1. Bullets only hurt while inv &lt; 0.</summary>
@@ -98,6 +113,8 @@ namespace MercyMode.Battle
 		// ---- Turns ----
 		/// <summary>Most common global.turntimer in chapter 1 is 120-180 frames. 150 frames.</summary>
 		public const int DefaultEnemyTurnTicks = 150 * TicksPerFrame;
+		/// <summary>Full-screen attacks run longer: the arena takes a moment to open and close.</summary>
+		public const int FullScreenTurnTicks = 300 * TicksPerFrame;
 
 		// ---- HUD (obj_battlecontroller) ----
 		/// <summary>bpy = 152: bottom panel height.</summary>

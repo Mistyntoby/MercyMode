@@ -134,5 +134,284 @@ Resolution 640x480. All sizes below in those pixels.
   item rise + heal stars + MAX, FIGHT thrust + slash + aqua number, MISS, spare flash/stars/streak, death dissolve,
   fly-back at the end.
 
+## Heal timing, SOUL death, outro lighting, attacks (2026-10-01)
+- Heal: the sound plays in PlayHealFx with the stars + green number (was on the key press, ~0.5 s early). Item use
+  frame 15 -> 8, potion rise 4 frames, pose 16 frames; Heal Prayer heals 4 frames into the ACT hop.
+- Death: BattlePlayer.PreKill returns false during a battle and queues Phase.Death (deferred out of the bullet loop).
+  Black over everything, SOUL alone, crack at frame 20 (snd_break1, spr_heartbreak), shatter at 50 (snd_break2,
+  6 spr_heartshards with gravity), End(killPlayer) at 95 -> Player.KillMe in the world. Music cut on the hit.
+  Terraria's other zero-HP checks (poison/drowning regen loops) call KillMe every tick -> PreKill keeps returning false.
+- Music: starts at BattleMusicVolume, no fade-in; outro still fades out.
+- Glide: hero/enemy colours blend toward Lighting.GetColor at their world spot by 1 - FlyProgress (intro start,
+  outro end); hero stays solid. World copies hidden while Active (HideDrawLayers skipping headOnlyRender, which the
+  nameplate portrait also goes through; GlobalNPC.PreDraw for encounter.DrawNpc). Outro waits for trail.Count == 0.
+- Attacks (`PatternsAdvanced.cs`): Converge (spear ring on the SOUL), Beam (telegraph line, then beam; segment
+  collision via Bullet.HitTest, DestroyOnHit false), Slam (column warning, drop, floor shockwave + debris, shake),
+  Sprinkler (fan or spiral; harmless while fading in inside the box), GapRows (zigzag gap), Fireworks (shell -> ring).
+  Bullets spawned from OnUpdate are queued until the bullet loop ends (List modified during foreach otherwise).
+  Waiting (StartDelay) bullets no longer hit. Sounds: AttackSfx roles bulletappear/bulletfire/impact/explosion
+  (Deltarune names guessed: snd_spearappear, snd_spearrise, snd_impact, snd_badexplosion; Terraria fallbacks),
+  roars on charges (ForceRoar/Roar), Item12/Item33 lasers.
+- Every custom boss got 5-6 attacks (generic boss 9) with harder phase-2 variants; enemy families got 1-2 more.
+- Test: `/mmbattle turn <n>` picks the next attack, `/mmbattle hp <n>` (then take a hit) for the SOUL death.
+  `/mmbattle heal` now also works mid-battle.
+- Ambience (owls, birds, frogs, wind, rain, waterfalls) is all SoundType.Ambient, scaled by Main.ambientVolume
+  (ActiveSound.Update and Main's ambient cues). `AmbienceMute` sets it to 0 from Start to End; an On_Main.SaveSettings
+  detour writes the real value, since Terraria saves settings from ~10 places (exit, options menu...).
+- Command icons (from the DELTAModKit decompile, scr_charbox): the nameplate draws spr_headkris at frame
+  global.faceaction. Frames: 0 head, 1 FIGHT sword, 2 magic waves, 3 ITEM bag, 4 DEFEND shield, 5 hurt, 6 ACT waves,
+  7 menu heart, 8 grey head, 9 Zzz (down), 10 SPARE X. Set when the command is confirmed, reset at the next player
+  turn (scr_turn). 32x24, origin 0,0. Head 0 stays the player's own portrait.
+- FIGHT bar: spr_pressfront (75x38) is Kris's head (left 40 px) + "Z"; only the Z part is drawn, with the player's
+  head portrait where Kris's was.
+- 60 fps: UpdateHudFrame/UpdateHeroFrame and every BattleEffect now run every tick, stepped by
+  FrameStep = 0.5 Deltarune frames (BattleEffect.Frame() -> Step(dt)). Per-frame eases become
+  EasePerTick(f) = 1 - (1 - f)^0.5 (same spot after a frame). TP bar slide uses its closed form
+  -40 + 13n - n(n+1)/2 (n frames, stops at 38). Hurt shift uses hurttimer / 2 unrounded (GameMaker division
+  isn't integer, so Deltarune slides it too). Shake swings with cos(pi * tick / 2) instead of jumping.
+  Afterimages still spawn once per frame but fade per tick. Event timings (heal, crack, shatter) unchanged.
+- Death timing: hard cut to black (no fade), SOUL alone 30 frames (1 s), crack, 30 more frames, shatter,
+  then 45 frames of falling shards before Player.KillMe.
+- Full-screen attacks (Roaring Knight style; the DELTAModKit decompile is chapters 1-2 only, so this is built
+  from how the fight plays, not its code): EnemyAttack.FullScreen opens Box into FullScreenArena (10,10 620x460:
+  the whole battle screen, inset 10 px) with an eased arenaBlend. Its border fades out as it opens (only the
+  collision stays). Everything else, panel and TP bar included, is drawn first and covered in black; only the arena
+  border, bullets and SOUL are drawn on top. Beams are 1640 px long so they cross the screen from anywhere.
+  Patterns built on Box fill it. The outro holds until the arena has closed (clamping the SOUL in), then does the
+  normal spin. `Slashes`: bursts of sharp beams (Beam.Make sharp: full width at once, thins out, only hurts for
+  the first half), the first through the SOUL, staggered 9 ticks, FIGHT slash sound + shake. Used by EoC/Skeletron/
+  Deerclops in phase 2, WoF always, generic bosses in Hardmode or under half HP. Turn 300 frames (~10 s).
+- FIGHT rework (`BattleSystem.Fight.cs`): FIGHT -> weapon list -> enemy -> bar. `Weapons()` is the single source
+  for the stat, the menu and the sprite (fixes held-vs-hotbar mismatch). Every damaging inventory item except
+  ammo, accessories and summon staves (whips stay); tools sorted last; bare hands (5) if none.
+  ShotDamage = GetWeaponDamage, or PickAmmo's damage (weapon + ammo) for useAmmo weapons. Bolts =
+  clamp(round(45 / useAnimation), 1, 4); HitShare = (TurnSeconds 8 * 60 / useAnimation) / bolts, so a perfect turn
+  = ~8 s of the weapon's Terraria DPS whatever its speed. Hit = ShotDamage * HitShare * points/150 * config,
+  then SimpleStrikeNPC with Terraria's crit roll (GetWeaponCrit, x2) and the item's DamageClass; defense applies.
+  Each pressed bolt pays: PickAmmo(dontConsume: false) (ammo-saving effects apply), ItemLoader.ConsumeItem for
+  throwables, CheckMana(pay: true) (mana flower applies); unpaid = fizzle. Weapons with no ammo / mana are greyed.
+  Bolts spaced 12 or 18 frames like obj_attackpress (boltframe 30 + boltxoff, diff 12); a press scores the alive
+  bolt in the window with the lowest close (scr_boltcheck_onebutton). TP per hit / bolts. Menu: ATK = perfect-turn
+  damage, arrows vs the current weapon, hits, crit, ammo/mana. Choosing a hotbar weapon selects it for real.
+  Est. turns to kill EoC (normal, def 12) at ~80% timing: copper shortsword 20, gold broadsword 11, gold bow 14,
+  musket 7, minishark 4.5. Tune TurnSeconds in BattleSystem.Fight.cs.
+- Shots (guns, bows, spells, throwables): item.UseSound, recoil (weapon tips up, hero rocks back 6 frames), muzzle
+  flash, the projectile sprite flying 10 frames to the enemy (with a streak for invisible magic shots), impact sparks.
+  `/mmbattle kit` now also gives a Flintlock Pistol + Musket Balls, Wand of Sparking and Shurikens.
+- Hardmode bosses (`Encounters/HardmodeBosses.cs`, base `HardmodeBoss`): Queen Slime, Twins, Destroyer, Skeletron
+  Prime, Plantera, Golem, Duke Fishron, Empress of Light, Lunatic Cultist, Moon Lord. 6-7 attacks each from their
+  real moves; most get a full-screen attack in phase 2 (Destroyer, Duke, Empress, Moon Lord always). Parts and
+  minions resolve to their boss in `EncounterRegistry.ResolveRoot`. New pattern `SweepBeam` (rays rotating round a
+  pivot): Moon Lord's deathray from above the screen, Empress's Sun Dance (rainbow arms round the arena centre).
+  Facts: Moon Lord head/hands "die" by going back to full life with ai[0] = -2 (closed, dontTakeDamage, spawns a
+  True Eye); the core goes back to full life with ai[0] = 2 and its AI plays the death + loot. Members() skips
+  those, so the HP bar falls and the fight ends; the real death runs once the world unfreezes. Its parts have no
+  contact damage -> Damage 70 x EnemyDamageMultiplier. Golem's body shield and Moon Lord's core shield are dropped
+  in StrikeTarget (paused AI). Spare keeps the loot part (Golem body, Moon Lord core, Prime head).
+  Multi-part / special-drawn bosses (Skeletron, Deerclops, Queen Slime, Twins, Prime, Golem, Empress, Moon Lord) set
+  Encounter.DrawWithTerraria: `BattleSystem.EnemyDraw.cs` draws every DrawParts() NPC with Main.DrawNPCDirect in one
+  batch whose matrix maps world pixels around the anchor NPC to the battle screen (scaled to fit ~230x210), with
+  Main.screenPosition pointed at it (some draw code reads it instead of the argument) and Main.gameMenu set so
+  Lighting.GetColor returns white (chains, arms). GlobalNPC.DrawEffects tints for the glide; PreDraw lets these
+  through while BattleSystem.DrawingEnemy and hides the world copies otherwise. ForceOpaque (Empress) zeroes alpha
+  for the draw: the battle can freeze her mid fade-in. No selection flash or afterimages on these; spare/death
+  animations use the main part's sprite only.
+- Composite sizing: hitboxes/frames badly underestimate what's drawn (Moon Lord's torso filled the whole screen),
+  so Encounter.CompositeSize sets a minimum world size per boss, fitted into CompositeArea (default 260x250, capped
+  at the hero's 1.5x). Measured from screenshots: Empress ~180x200, Golem ~250x250 (first guesses were ~2x too
+  big, so they came out tiny). Now: Empress 190x200, Golem 260x250, Prime 320x260, Skeletron 300x220, Twins
+  240x160, Deerclops 200x240, Queen Slime 180x150; Moon Lord 1400x1150 into 380x310 at (440,160). The overhead MERCY bar (MercyGlobalNPC.PostDraw) is skipped while DrawingEnemy.
+- Moon Lord core: ai[0] = -1 for its first 60 ticks (rising), then it spawns the hands (800 px apart, 100 up) and
+  head (400 up). Battles wait for ai[0] >= 0 (Eligible); `/mmbattle npc` retries for up to 5 s instead of starting
+  at 20 ticks. Head and hands have npc.hide (the normal pass skips them; Main.CacheNPCDraws draws them with the
+  core) but DrawNPCDirect draws them fine.
+- Composite draw order matches Main.DrawNPCs: behindTiles pass first, each pass from slot 199 down to 0 (lower
+  slots on top). Ascending order put Golem's head behind its body.
+- Composite parts are drawn with IsABestiaryIconDummy set and an Immediate batch: the Empress's draw ends the batch
+  and begins one with Main.Transform (world camera) for her dyed wings unless she's a Bestiary icon, which threw her
+  body into the screen corner and broke our matrix. ForceOpaque also on Golem (head was half transparent).
+- Single-sprite enemies: DrawScale = npc.scale x 1.5 (the hero's scale), capped to fit 220x200. Was hitbox height
+  x 1.5 / frame height, which made most enemies (Eater of Souls...) too small since sprites exceed hitboxes.
+- Music: boss battles (Encounter.IsBoss) don't create the Rude Buster instance, and BattleMusicScene (Music 0,
+  BossHigh) is only active while that instance exists, so Terraria's own boss-track selection plays (vanilla,
+  modded ModNPC.Music, Otherworldly). Config BossBattleMusic (default on); off = Rude Buster everywhere. Regular
+  enemies keep Rude Buster.
+- Config defaults from play-testing at Music 100%: BattleSoundVolume 0.45, BattleMusicVolume 0.25.
+- Rude Buster: BattleMusicVolume x RudeBusterGain 0.45 (it was louder than the boss tracks at Music 100%). A constant
+  rather than a new config default, since a saved config keeps its old value.
+- Boss music boost: AmbienceMute.BoostMusic(config BossMusicBoost, default 1.6) raises Main.musicVolume for boss
+  battles (capped at 1), restored at End unless the player moved it; the SaveSettings detour saves the real value.
+- Explosion/impact SFX: DeltaruneAssets.PlayFading plays an instance (or a Terraria slot via ActiveSound.Volume)
+  and fades it after a hold (explosion x0.5, hold 8, fade 14 ticks; impact x0.7, 10/16).
+- Prime: one arm per type (this head's, nearest to it); leftovers from earlier Primes pointing at a reused head slot
+  were floating around as extra cannon/saw/vice.
+- The Dungeon Guardian never starts a battle (Eligible): vanilla behaviour. As a regular enemy it was 1000-damage
+  bullets vs 9999 HP/defense, or a two-ACT spare that skipped the pre-Skeletron Dungeon barrier.
+- Skeletron's DrawCenter raised to (500, 150): its bones hang below the parts the bounds measure.
+- PoseForBattle runs before the bounds are measured (it used to run after, so centring used the unposed world
+  layout and Skeletron sat low). Skeletron's hands: raised beside the head like its spin phase
+  (-120 * ai[0], head.position.Y - 60); its rest spot (+230) looked like a zombie walk. Raised hands are turned
+  over (rotation pi, spriteDirection = ai[0] instead of -ai[0]) so the fingers point up.
+- Encounter.PoseForBattle poses composite parts for the draw (position, rotation, frame, spriteDirection; all
+  restored). Arms/hands use their AI's rest spots, since the bones are drawn from the part toward fixed points by
+  the head (Main.DrawNPCDirect: segments of 92 + 60 px aimed at head -200/-50 * ai[0], +130/+80) and come apart
+  anywhere else: Skeletron hands (aiStyle 12) at head.Center.X - 120 * ai[0], head.position.Y + 230; Prime saw/vice
+  (33/34) -200 * ai[0], +230; cannon/laser (35/36) -120 * ai[0], -100, rotated so the barrel points away from the
+  first bone (aimed left at the party they came off their bones: the bone start doesn't follow the rotation). Members only take arms
+  whose ai[1] is this head (a leftover second Prime's arms were being drawn too). Deerclops: frame.Y is a cell of a 5x5 sheet (Main.DrawNPCDirect_Deerclops:
+  Frame(5,5,Y/5,Y%5)); FindFrame: 0 stand, 1 air, 2-11 walk (velocity-driven, so 0 while frozen), 12-17/18 roar
+  attacks, 19-24 rubble attack. Battle: walk cycle in place, roar while attacking.
+- Deerclops rubble (projectile 962): texture is Frame(projFrames, 4) (a column per shape, 4 rows; Main.DrawProj),
+  drawn whole it showed a grid of rocks. Now one random cell.
+- Composite idle animation: s * (1 + 0.015 sin(t/45)) breathing, and each non-anchor part offset by sin/cos sway of
+  1.8% of the boss's size, applied to the NPCs' positions for the draw (restored after) so connectors follow.
+- Widescreen / rounded-down scale: the bottom panel's black now reaches the window bottom (DrawPanel(bottom)).
+- `/mmbattle npc` matches internal names (spaces ignored: "moon lord core") and, when display names collide
+  ("Moon Lord" is the head, hands and core), prefers the boss / custom-encounter type.
+- Enemy families: Water (Piranha, Jellyfish), Spider (Spider, Herpling), Mimic (+ biome mimics), Charger (Unicorn,
+  Giant Tortoise, Sand Shark), Spirit (Cursed Skull, Dungeon Spirit, Ancient Vision), Blade (Enchanted Sword),
+  Snapper (Man Eater, Antlion).
+- Events: regular-enemy battles during invasions, Pumpkin/Frost Moon, eclipse and Old One's Army are army squads
+  (below); config `EventBattles` (default on, replaces `BattlesDuringEvents`). Eternia Crystal and lane portals
+  never start battles.
+- Balance: boss ACT MERCY x0.65 (`Encounter.BossMercyScale`) so sparing a boss takes ~6-8 turns like beating it.
+  FIGHT damage x sqrt(EnemyMaxLifeMultiplier): Expert fights ~1.4x Normal length, Master ~1.7x (not 2x/3x).
+- Built in the cloud against tModLoader's release DLLs (0 warnings, 0 errors); beam collision unit-tested.
+  NOT yet verified in game: needs the lab loop above.
+
+## Enemy squads and armies (2026-10-01)
+- Regular battles pull in up to 2 more eligible enemies within 640 px of the player (`BattleSystem.Enemies.cs`,
+  `GatherEnemies`); during an event only the same army. Bosses always fight alone. Each enemy is a `BattleEnemy`
+  (its encounter, glide-in spot, snapshot, spare/death animation, shake, afterimages, `Out`).
+- Formation: 2 enemies at (470,135)/(545,235) fitting 160x120; 3 at (455,100)/(550,180)/(455,262) fitting 130x95
+  (`Encounter.Slot`/`SlotArea`; `ScreenCenter` is the slot or the old DrawCenter).
+- FIGHT/ACT/SPARE pick a target (Up/Down in the enemy list, one row per living enemy with HP and MERCY).
+  Defeating or sparing one marks it Out; the battle goes on to the enemy turn while any are left; YOU WON only when
+  none are. SPARE glows if anyone is spareable.
+- Enemy turn: every living enemy attacks when there are 2, two random ones when there are 3, layered (`Combo`).
+  `OwnedAttack` runs each with its own enemy as `battle.Encounter` and tags bullets (`Bullet.Owner`), so a hit uses
+  the shooter's damage and name.
+- Armies (`Encounters/Armies.cs`): Goblins, Pirates, Frost Legion, Martians, Pumpkin Moon, Frost Moon, Old One's
+  Army, Eclipse, each with its own CHECK, lines, ACTs and attacks (per type: goblin archers shoot arrows, sorcerers
+  homing chaos balls). Sparing one gives the rest of its squad +30 MERCY ("the war isn't worth it"); defeating one
+  enrages the rest (`EnemyEncounter.Enraged`: attacks as Hard).
+- Spared regular enemies go through `NPC.checkDead` (death sound muted) instead of `NPCLoot`, so they count toward
+  invasion / event progress like kills. Bosses keep `NPCLoot`.
+- Defeating one of a group skips the "was defeated" box and goes straight to the enemy turn; the rest of a multi-hit
+  FIGHT carries on into the next living enemy. The slash only draws on the enemy hit.
+- During a battle enemies can't be hit by items or projectiles (`CanBeHitByItem/Projectile`); only FIGHT's
+  SimpleStrikeNPC hurts them. Starting a battle cancels the player's swing and removes their in-flight shots
+  (the swing that started a battle used to keep hitting the frozen enemy in the background).
+- `/mmbattle group 3 zombie` or `/mmbattle group goblin peon, goblin archer, goblin sorcerer` spawns a squad and
+  starts the battle; `/mmbattle end` ends every enemy in it.
+
+## Headless lab (2026-10-01)
+- `tools/lab/lab.sh test [scenarios]` (Linux / the cloud) and `tools/lab/lab.ps1 test` (Windows) build the mod, start
+  a tModLoader dedicated server on a throwaway world with `MERCYMODE_LAB=<scenarios|all>`, and print the report
+  (also `lab-results.txt` in the lab folder). Exit code 0 = all passed. `lab.ps1 client` is the old windowed lab.
+- `Lab/LabSystem.cs` only runs on a dedicated server with that variable set. A server only updates the world while a
+  client is connected, so the lab runs `Main.DoUpdate` itself from `Main.OnTickForThirdPartySoftwareOnly`, keeps
+  player 0 active as the local player (stubs `Netplay.UpdateConnectedClients`), counts as single-player
+  (`MercyMode.IsSingleplayer`), feeds keys through `Main.keyState`, and gives every texture a 48x48 pixel-less
+  stand-in (`Asset<Texture2D>.DefaultValue`). No drawing or sound is tested; every battle rule is.
+- Scenarios: `squad-fight` (3 zombies, kill one at a time, 2 then 1 attackers), `goblin-squad-spare` (morale line,
+  +30 MERCY, invasion 80 -> 77), `army-enrage` (pirates), `act-second-target`, `boss-fights-alone` (EoC ignores
+  nearby zombies), `single-enemy`, `boss-kill`, `boss-kill-king-slime`, `boss-spare`, `no-world-hits`,
+  `multi-hit-spills-over`. All pass (2026-10-01, tML 2026.8.3.0).
+- Bugs the lab caught on the way: none in battle rules; server-only crashes (texture sizes, view matrix, fonts) now
+  have fallbacks (`Main.dedServ`).
+
+## SOUL modes, new attacks, effects (2026-10-01)
+- `EnemyAttack.Soul` (`.WithSoul(mode)`), `Battle/BattleSystem.Soul.cs`. A `Combo` shares its parts' mode (green only when all
+  parts are green, since the shield SOUL can't dodge).
+  - Yellow is Deltarune's own (chapter 2, `scr_miscbattle_config` soul mode data + `obj_yheart_shot` in the DELTAModKit
+    decompile): Z fires right at 8 px/tick, max 3 shots; release after holding 10-39 ticks also fires; hold 40 ticks and
+    release for a big shot (4 px/tick, +0.1/tick, 4 damage, pierces). Sprites `spr_yellowheart` (frame 2 = charged),
+    `spr_yheart_shot`, `spr_yheart_bigshot`; sounds `snd_heartshot_dr_b`, `snd_chargeshot_charge/_fire`. Shots break
+    bullets (`Bullet.Toughness`, default 1, or 3 for big ones), +0.8 TP each.
+  - Blue / green / purple are Undertale's (Deltarune has none of them), from how Undertale plays, not decompiled:
+    blue gravity 0.18, jump 4.8 (cut to 1.5 on release), max fall 7: a held jump is ~54 px, a tap ~15 px; `SlamSoul()`
+    throws it down. Green: fixed at the box centre, arrows turn a 30x6 shield 19 px out that destroys bullets (+0.6 TP).
+    Purple: 3 strings at 1/4, 2/4, 3/4 of the box; Up/Down hop, Left/Right slide.
+  - Who uses them: blue for King Slime / Queen Slime bounces and slams, Skeletron (bone walls + slam), Deerclops (spikes,
+    boulder), Golem (slam, stone pillars), slimes' slam, zombies' horde, goblin/frost legion/Old One's Army marchers.
+    Green: Queen Bee (stingers), Plantera (seeds). Purple: Brain of Cthulhu (Creepers on strings), spiders.
+    Yellow: Twins (Retinazer), Destroyer (probes), Skeletron Prime (cannons), Martians (drones).
+- New patterns (`PatternsSpecial.cs`): ShieldSpears (with tricksters that jump sides), StringRunners, BoneWalls,
+  Gunships, Ricochet, Splitter, Lobs (ballistic, floor marker, splash), Diver, Blinker, Walkers, Jaws, `Phasing()`.
+  Every family and army got a signature attack; EoC servants dive, EoW Eaters dive, WoF's mouth (Jaws), Cultist clones.
+- Boss desperation: below 30% HP (one enemy left) a boss says "is fighting with everything it has left!" and its next
+  turn is two of its attacks at once, 1.25x as long, bullets at 0.75x damage; once per battle.
+- Effects (`AttackEffects.cs`, drawn with the bullets over the box): `Bullet.Trail` afterimages (dashes, slams, dives,
+  homing, converging), `Sparks`, `Shockwave` rings, `Puff` smoke; emitters `.Smoking()` (rockets, cannonballs, bombs),
+  `.Fiery()`, `.Sparkly(color)`, `.Dripping(color)`. Slams kick up dust and a ring; fireworks/splitters burst with a ring;
+  bouncers puff on the floor; warnings fill in with a solid edge; a SOUL mode change rings and chimes.
+- Fixed: `RepeatingAttack` never ran on tick 0 (the turn's first Update is tick 1), so every pattern started one interval
+  late and attacks that spawn only once (spirits' Orbiters) spawned nothing. Found by the lab sweep.
+- Lab: `soul-blue/green/purple/yellow`, `desperation`, and `attacks-enemies/armies/bosses` (every attack of every family,
+  army and boss: spawns something, ends, no crash). `LAB_SPEED` runs the game faster than real time (default 8).
+
+## Breakable bosses, stab, purple strings, yellow charge (2026-10-01)
+- Bosses with parts that have their own health (`Encounter.TargetableParts`): Skeletron (head, LEFT/RIGHT HAND by
+  hand ai[0]), the Twins (RETINAZER, SPAZMATISM; no core, both must go), Skeletron Prime (PRIME, CANNON, SAW, VICE,
+  LASER), Golem (GOLEM body, HEAD, fists; the body is GUARDED until the head breaks), Moon Lord (HEAD, hands, HEART
+  guarded until every eye is shut). FIGHT's enemy list shows one row per part with its own HP (3 rows visible,
+  scrolling); ACT/SPARE still target the boss. The picked part is `Encounter.ChosenPart`; the other parts dim on screen.
+  Breaking a part bursts it (shockwave, sparks, explosion) and the rest of a multi-hit FIGHT moves to the next part;
+  breaking the core (`CorePart`) removes the rest. Hit effects land where the part was drawn (`partScreen`).
+  Attacks follow: Skeletron's head does the hands' attacks once both are gone, a lone Twin only uses its own,
+  each Prime arm's attacks go with it. Wall of Flesh isn't split: its eyes share the mouth's health.
+- Shortsword / spear stab: the composite arm carries the blade (Quarter stretch wind-up, then ThreeQuarters/Full out,
+  hold, back; 2/2/3/5 Deltarune frames), the body leans 4 px in, and a white streak flicks off the point.
+- Purple SOUL strings stretch out from the SOUL as the turn starts (harp twang, Item26), quiver as a standing wave when
+  plucked or landed on, and pull back into it as the turn ends.
+- Yellow SOUL charge as in Deltarune's soul mode code: from z_hold 15 four spr_yheart_charge sparks spiral in from 35 px,
+  from 35 the SOUL pulses (two glow layers), the snd_chargeshot_charge hum loops from 20, fading in and rising in
+  pitch to 40; shots that hit play spr_yheart_shot_hit; max 3 shots including big ones.
+- Worms (Destroyer, Eater of Worlds, regular worm enemies) are drawn whole with Terraria's renderer: `BossKit.WormChain`
+  follows the segments from the head (ai[1] = segment ahead), shortened to 14 / 16 / 10 with the tail kept, and
+  `PoseWorm` lays them out as a slithering S leading left. Before, only the head sprite showed. Lab `worm-chains`.
+- Lab: `parts-skeletron`, `parts-twins`, `parts-golem`.
+
+## Multiplayer party battles (2026-10-01, untested with real clients)
+- `Battle/Net/BattleNet.cs` (packets + server round), `Battle/Net/NetSystems.cs` (colours, join prompt, outside view),
+  `Battle/BattleSystem.Net.cs` (battle-screen side). Each client runs its own battle screen; the server runs the round.
+- Starting: touching/hitting an enemy sends `RequestBattle`. The server pulls in up to 2 more players within 20 tiles of
+  the starter (party of 3), freezes ONLY that battle's NPCs (roots + `Members()`, velocity restored
+  after), and sends `JoinBattle` + `Party`. Touching a frozen enemy does nothing (no contact damage).
+- Joining later: near a battle with room, outsiders see "Press J to join the battle!" (keybind "Join Battle"). They
+  open the battle screen as watchers (`Pending`), see everything, and jump in at the next bullet box.
+- Round: (1) Choosing: each player's menu pick is stored (`Commit`), not run; "* Waiting for X to choose...". (2)
+  Acting: the server sends `TurnOf` to each player in party order; that client runs its action (FIGHT bar, ACT text,
+  ITEM, SPARE, DEFEND) and its text lines go to the others' text boxes (`PartyText`); `ActionDone` passes the turn.
+  (3) Enemy turn: `BeginEnemyTurn` with a shared seed and round; `Main.rand` is swapped for the seeded one while the
+  attack is built and spawns, and every enemy's `Turn` is set to the round, so every screen gets the same attack.
+  SOUL positions go out every 2 ticks (`SoulPos`) and are drawn in each player's colour. Timeouts: 60 s to choose
+  (the rest go ahead), 45 s per action.
+- Limits of the shared box: bullets aimed at "the SOUL" aim at YOUR soul on your screen, and anything a hit/graze
+  changes (bullets destroyed on hit, effects) is local, so screens drift apart within an attack. Hits only count on
+  your own screen. True lockstep would need every input round-tripped and would lag.
+- Colours (`PartyColors`): config `PartyColor` (Automatic = by join slot: cyan, magenta, green, yellow, orange, blue,
+  white). Replaces Kris cyan in your own UI (`KrisCyan` is now a property); others' boxes, HP bars and SOULs use their
+  colour. Synced with `ModPlayer.SyncPlayer/SendClientChanges`.
+- Synced: enemy HP (`SimpleStrikeNPC`), MERCY (delta to server, total broadcast), SPARE (server runs
+  `Encounter.Spare()`, party gets `playerInteraction` for bags), core-part kills, FIGHT numbers (`PartyHit`; allies'
+  attack pose).
+- Outside view: `BattleState` goes to every client. Outsiders see fighters swing at the enemy when a hit lands (only
+  their local copy of the remote player animates; nothing is hit), harmless dust "bullets" from the enemies at the
+  fighters during the bullet box, and "IN BATTLE" over fighters. Frozen enemies can't be hit; fighters are immune.
+- In multiplayer only the battle's NPCs freeze; projectiles and time keep going. `/mmbattle end` leaves the battle.
+- Lab `mp-server`: party pick-up (near starter or enemy) and the 3 cap, freezing, choose barrier, turn order and that
+  only the acting player can pass it, watcher queued then promoted at the bullet box, acting player leaving, both
+  timeouts, MERCY cap, spare + bag credit, KillMembers scope, unfreeze. The client side has NOT been run.
+- Known gaps: enemy HP isn't scaled for party size; enemy pose tweaks are local and can snap on NPC sync.
+
 ## Log
 - 2026-09-30: recon, decompile, numbers above. Implemented battle loop for Eye of Cthulhu, verified in lab (above).
+- 2026-10-01: enemy squads (up to 3 per battle), armies with squad morale, spares count toward events; headless lab.
+- 2026-10-01: SOUL modes (Deltarune yellow; Undertale blue/green/purple), new patterns and effects, boss desperation; lab sweeps of every attack.
+- 2026-10-01: breakable boss parts as FIGHT targets; shortsword stab; purple string and yellow charge animations.
+- 2026-10-01: multiplayer party battles (server bookkeeping lab-tested; clients untested).
+- 2026-10-02 (0.6): removed the outside-battle ACT/SPARE/Heal Prayer keybinds, the world TP gauge/SOUL overlay (MercyUI) and world grazing; TP is only built in battles now.
+- 2026-10-02 (0.9): allies glide in/out, cheer on a win, walk off left when leaving mid-battle; party pull-in 20 tiles from the starter, join prompt 25 tiles from the battle; buildIgnore keeps notes/scripts out of the .tmod; Workshop description refreshed.
+- 2026-10-02 (0.10): GPL-3.0 LICENSE; battle keys rebindable (MercyMode.BattleKeys, Deltarune keys mapped in Pressed/Held); party pull-in 7 tiles, prompt 8 tiles; won battles go to Stage.Over (no join, no IN BATTLE, no more turns: fixed a stray MISS from a queued FIGHT after the win); YOU WON! auto-continues after 5 s; allies always walk off when they leave first (also when they leave the game); 5 s no-battle grace after entering a world; FIGHT bar bolts/bursts fade with the bar; no waiting text when alone.

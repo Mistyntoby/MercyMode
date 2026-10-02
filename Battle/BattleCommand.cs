@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.GameContent;
 using Terraria.ID;
 using Terraria.ModLoader;
 
@@ -11,7 +14,7 @@ namespace MercyMode.Battle
 	{
 		public override CommandType Type => CommandType.Chat;
 		public override string Command => "mmbattle";
-		public override string Usage => "/mmbattle [npc <id|name> | spawn [dx dy] | spawnnpc <id|name> | end | clear | heal | mercy <n> | kit | night | tp <0-100> | bosshp <n>]";
+		public override string Usage => "/mmbattle [npc <id|name> | group <n> <name> | group <name>, <name>, ... | spawn [dx dy] | spawnnpc <id|name> | join | end | clear | heal | hp <n> | mercy <n> | kit | night | tp <0-100> | bosshp <n> | turn <n>]";
 		public override string Description => "Start Mercy Mode battles for testing (no arguments: Eye of Cthulhu)";
 
 		public override void Action(CommandCaller caller, string input, string[] args)
@@ -37,7 +40,21 @@ namespace MercyMode.Battle
 					return;
 				case "heal":
 					player.statLife = player.statLifeMax2;
+					if (BattleSystem.Active)
+						BattleSystem.Instance.SetBattleLife(player.statLife);
 					caller.Reply("* HP restored.", MercyMode.TextWhite);
+					return;
+				case "hp" when args.Length == 2 && int.TryParse(args[1], out int life):
+					// e.g. "/mmbattle hp 1" then take a hit to see the SOUL break
+					player.statLife = Math.Clamp(life, 1, player.statLifeMax2);
+					if (BattleSystem.Active)
+						BattleSystem.Instance.SetBattleLife(player.statLife);
+					caller.Reply($"* HP set to {player.statLife}.", MercyMode.TextWhite);
+					return;
+				case "turn" when args.Length == 2 && int.TryParse(args[1], out int turn) && BattleSystem.Active:
+					// Attacks are picked by turn number, so this chooses the next enemy attack
+					BattleSystem.Instance.Encounter.Turn = Math.Max(0, turn);
+					caller.Reply($"* The next enemy turn uses attack {turn}.", MercyMode.TextWhite);
 					return;
 				case "night":
 					Main.dayTime = false;
@@ -52,7 +69,12 @@ namespace MercyMode.Battle
 					player.QuickSpawnItem(src, ItemID.WoodenBow, 1);
 					player.QuickSpawnItem(src, ItemID.WoodenArrow, 100);
 					player.QuickSpawnItem(src, ItemID.CopperBroadsword, 1);
-					caller.Reply("* Got some healing items.", MercyMode.TextWhite);
+					// One of each kind of weapon for testing FIGHT: a gun with bullets, a wand, throwables
+					player.QuickSpawnItem(src, ItemID.FlintlockPistol, 1);
+					player.QuickSpawnItem(src, ItemID.MusketBall, 100);
+					player.QuickSpawnItem(src, ItemID.WandofSparking, 1);
+					player.QuickSpawnItem(src, ItemID.Shuriken, 50);
+					caller.Reply("* Got healing items and one of each kind of weapon.", MercyMode.TextWhite);
 					return;
 				case "bosshp" when args.Length == 2 && int.TryParse(args[1], out int hp):
 					if (BattleSystem.Active)
@@ -68,10 +90,19 @@ namespace MercyMode.Battle
 					}
 					caller.Reply($"* Enemy HP set to {hp}.", MercyMode.TextWhite);
 					return;
+				case "join":
+					// Multiplayer: join the battle going on nearby (same as the Join Battle key)
+					if (!Net.BattleNetSystem.TryJoin())
+						caller.Reply("* There's no battle with room close enough to join.", MercyMode.Gray);
+					return;
 				case "end":
-					if (BattleSystem.Active)
-						foreach (NPC m in BattleSystem.Instance.Encounter.Members())
-							m.active = false;
+					// Multiplayer: just leave (the enemies belong to the server and the rest of the party)
+					if (BattleSystem.Active && Net.BattleNet.Online)
+						BattleSystem.Instance.Leave();
+					else if (BattleSystem.Active)
+						foreach (Encounter e in BattleSystem.Instance.Encounters.ToList())
+							foreach (NPC m in e.Members())
+								m.active = false;
 					caller.Reply("* Battle ended.", MercyMode.Gray);
 					return;
 			}
@@ -84,6 +115,37 @@ namespace MercyMode.Battle
 			if (!MercyMode.IsSingleplayer)
 			{
 				caller.Reply("* Singleplayer only.", MercyMode.Gray);
+				return;
+			}
+
+			if (cmd == "group" && args.Length >= 2)
+			{
+				// "/mmbattle group 3 zombie" or a mixed squad: "/mmbattle group goblin peon, goblin archer, goblin sorcerer"
+				var types = new List<int>();
+				if (int.TryParse(args[1], out int count) && args.Length >= 3)
+				{
+					int t = ParseNpc(string.Join(" ", args, 2, args.Length - 2));
+					for (int i = 0; i < Math.Clamp(count, 1, 3); i++)
+						types.Add(t);
+				}
+				else
+				{
+					foreach (string name in string.Join(" ", args, 1, args.Length - 1).Split(','))
+						types.Add(ParseNpc(name.Trim()));
+				}
+				if (types.Count == 0 || types.Any(t => t <= 0))
+				{
+					caller.Reply("* No NPC with that id or name.", MercyMode.Gray);
+					return;
+				}
+				NPC first = null;
+				for (int i = 0; i < types.Count && i < 3; i++)
+				{
+					NPC n = SpawnNear(player, types[i], 160 + i * 70, -40 - (i % 2) * 50);
+					first ??= n;
+				}
+				BattleSystem.QueueStart(first, 20);
+				caller.Reply($"* Spawned {types.Count} enemies, starting the battle...", MercyMode.TextWhite);
 				return;
 			}
 
@@ -150,16 +212,25 @@ namespace MercyMode.Battle
 		{
 			if (int.TryParse(text, out int id))
 				return id > 0 && id < NPCLoader.NPCCount ? id : 0;
-			string want = text.Replace(" ", "").ToLowerInvariant();
+			string want = text.Replace(" ", "").Replace("'", "").ToLowerInvariant();
+			// Internal names, spaces ignored: "moon lord core" -> MoonLordCore
+			for (int t = 1; t < NPCID.Count; t++)
+				if (NPCID.Search.GetName(t).ToLowerInvariant() == want)
+					return t;
+			// Display names; several parts can share one ("Moon Lord"), so prefer the one a battle is about
+			int first = 0;
 			for (int t = 1; t < NPCLoader.NPCCount; t++)
 			{
-				string name = Lang.GetNPCNameValue(t).Replace(" ", "").ToLowerInvariant();
-				if (name == want)
+				string name = Lang.GetNPCNameValue(t).Replace(" ", "").Replace("'", "").ToLowerInvariant();
+				if (name != want)
+					continue;
+				bool isBoss = ContentSamples.NpcsByNetId.TryGetValue(t, out NPC sample) && sample.boss;
+				if (EncounterRegistry.HasCustom(t) || isBoss)
 					return t;
+				if (first == 0)
+					first = t;
 			}
-			if (NPCID.Search.TryGetId(text, out int byInternal))
-				return byInternal;
-			return 0;
+			return first;
 		}
 	}
 }

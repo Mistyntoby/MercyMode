@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
+using Terraria.Audio;
 using Terraria.GameContent;
 
 namespace MercyMode.Battle
@@ -81,6 +83,26 @@ namespace MercyMode.Battle
 			return b;
 		}
 
+		/// <summary>A short glowing laser streak pointing the way it flies: a coloured glow around a white core.</summary>
+		public static Bullet Laser(Vector2 pos, Vector2 vel, Color color, float length = 14f, float damage = 0.7f) => new()
+		{
+			Position = pos,
+			Velocity = vel,
+			Color = color,
+			HitSize = new Vector2(6, 6),
+			DamageMult = damage,
+			SoundOnSpawn = true,
+			OnDraw = b =>
+			{
+				Vector2 dir = b.Velocity.LengthSquared() > 0.01f ? Vector2.Normalize(b.Velocity) : Vector2.UnitX;
+				Vector2 tip = b.Position + dir * length / 2f, tail = b.Position - dir * length / 2f;
+				Color c = b.Flash > 0 ? Color.White : b.Color;
+				DrDraw.Line(tail, tip, 5f, c * (0.45f * b.Alpha));
+				DrDraw.Line(tail, tip, 3f, c * b.Alpha);
+				DrDraw.Line(tail + dir * 2f, tip - dir * 1f, 1f, Color.White * b.Alpha);
+			},
+		};
+
 		/// <summary>A flashing red area that can't hurt: telegraphs an attack.</summary>
 		public static Bullet Warning(Rectangle area, int ticks, Color? color = null) => new()
 		{
@@ -89,8 +111,13 @@ namespace MercyMode.Battle
 			Lifetime = ticks,
 			OnDraw = b =>
 			{
-				float a = b.Age / 3 % 2 == 0 ? 0.55f : 0.25f;
-				DrDraw.Rect(area.X, area.Y, area.Width, area.Height, (color ?? new Color(255, 0, 0)) * a);
+				Color c = color ?? new Color(255, 0, 0);
+				float a = b.Age / 3 % 2 == 0 ? 0.45f : 0.2f;
+				// Fills in as the hit gets closer, with a steady edge so it reads even while flickering
+				float t = Math.Min(1f, b.Age / (float)Math.Max(1, ticks));
+				DrDraw.Rect(area.X, area.Y, area.Width, area.Height, c * a);
+				DrDraw.Rect(area.X, area.Y, area.Width, area.Height, c * (0.25f * t));
+				DrDraw.Outline(area.X, area.Y, area.Width, area.Height, c * 0.8f, 1);
 			},
 		};
 
@@ -109,10 +136,13 @@ namespace MercyMode.Battle
 
 		public override void Update(BattleSystem battle, int tick)
 		{
-			if (tick < FirstAt || tick > Duration - StopBeforeEnd)
+			// The battle's first Update of a turn is tick 1, so count from there: the first volley comes right away
+			// (counting from 0 skipped it, and an attack that only spawns once spawned nothing)
+			int t = tick - 1 - FirstAt;
+			if (t < 0 || tick > Duration - StopBeforeEnd)
 				return;
-			if ((tick - FirstAt) % Math.Max(1, Every) == 0)
-				Spawn(battle, (tick - FirstAt) / Math.Max(1, Every));
+			if (t % Math.Max(1, Every) == 0)
+				Spawn(battle, t / Math.Max(1, Every));
 		}
 
 		protected abstract void Spawn(BattleSystem battle, int index);
@@ -231,6 +261,8 @@ namespace MercyMode.Battle
 				{
 					x.Position.Y = floor;
 					x.Velocity.Y = -Math.Max(2.2f, x.Velocity.Y * bounce);
+					battle.AddEffect(new Sparks(new Vector2(x.Position.X - 4, floor + x.HitSize.Y / 2f), new Vector2(-1.2f, -0.6f), x.Color, 3f, 0.08f));
+					battle.AddEffect(new Sparks(new Vector2(x.Position.X + 4, floor + x.HitSize.Y / 2f), new Vector2(1.2f, -0.6f), x.Color, 3f, 0.08f));
 				}
 			};
 			b.Lifetime = 420;
@@ -249,6 +281,8 @@ namespace MercyMode.Battle
 		/// <summary>Always come straight down from above (a slime's hop).</summary>
 		public bool FromTopOnly;
 		public float LaneWidth = 30f;
+		/// <summary>Played as the charge launches (a boss's roar); null for the generic launch sound.</summary>
+		public SoundStyle? LaunchSound;
 
 		public LaneDash(Func<Vector2, Vector2, Bullet> make, int every = 70)
 		{
@@ -268,6 +302,7 @@ namespace MercyMode.Battle
 				? new Rectangle((int)(lane - LaneWidth / 2), box.Top, (int)LaneWidth, box.Height)
 				: new Rectangle(box.Left, (int)(lane - LaneWidth / 2), box.Width, (int)LaneWidth);
 			battle.Spawn(Shots.Warning(area, Warn));
+			AttackSfx.Appear();
 
 			Vector2 dir = vertical ? new Vector2(0, fromStart ? 1 : -1) : new Vector2(fromStart ? 1 : -1, 0);
 			Vector2 start = vertical
@@ -280,12 +315,18 @@ namespace MercyMode.Battle
 			b.OffscreenMargin = 400f;
 			int warn = Warn;
 			float speed = Speed;
+			SoundStyle? launch = LaunchSound;
 			b.OnUpdate += x =>
 			{
 				if (x.Age == warn)
 				{
 					x.Harmful = true;
 					x.Velocity = dir * speed;
+					x.Trail = 5;
+					if (launch is SoundStyle roar)
+						AttackSfx.Vanilla(roar, 0.7f);
+					else
+						AttackSfx.Fire();
 				}
 			};
 			battle.Spawn(b);
@@ -425,6 +466,7 @@ namespace MercyMode.Battle
 			float speed = Speed, turn = Turn;
 			int steer = SteerTicks;
 			b.Lifetime = 300;
+			b.Trail = 3;
 			b.OnUpdate += x =>
 			{
 				if (x.Age > steer)
@@ -460,6 +502,8 @@ namespace MercyMode.Battle
 			float x = index % 2 == 0 ? battle.SoulCenter.X : Main.rand.NextFloat(box.Left + Width / 2, box.Right - Width / 2);
 			x = MathHelper.Clamp(x, box.Left + Width / 2, box.Right - Width / 2);
 			battle.Spawn(Shots.Warning(new Rectangle((int)(x - Width / 2), box.Top, (int)Width, box.Height), Warn, new Color(120, 200, 255)));
+			if (index % 2 == 0)
+				AttackSfx.Appear();
 			Vector2 dir = new(0, FromTop ? 1 : -1);
 			Bullet b = Make(new Vector2(x, FromTop ? box.Top - 30 : box.Bottom + 30), dir);
 			b.Velocity = Vector2.Zero;
@@ -473,6 +517,7 @@ namespace MercyMode.Battle
 				{
 					s.Harmful = true;
 					s.Velocity = dir * speed;
+					AttackSfx.Fire();
 				}
 			};
 			battle.Spawn(b);
@@ -556,6 +601,10 @@ namespace MercyMode.Battle
 			Duration = duration;
 			foreach (var p in parts)
 				p.Duration = duration;
+			// One SOUL mode for all: shared if they agree; a shield that can't move doesn't mix with other attacks
+			Soul = parts.All(p => p.Soul == parts[0].Soul) ? parts[0].Soul
+				: parts.Any(p => p.Soul == SoulMode.Green) ? SoulMode.Red
+				: parts.FirstOrDefault(p => p.Soul != SoulMode.Red)?.Soul ?? SoulMode.Red;
 		}
 
 		public override void Update(BattleSystem battle, int tick)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
@@ -19,6 +20,25 @@ namespace MercyMode.Battle
 	{
 		/// <summary>True while the battle draws the player, so their colours ignore world lighting.</summary>
 		public static bool DrawingHero;
+		/// <summary>
+		/// Multiplied into the hero's colours while drawing. White on the battle screen; the world's light at the
+		/// player's spot while gliding in or out, so the battle sprite turns into exactly what the world shows.
+		/// </summary>
+		public static Color HeroLight = Color.White;
+
+		/// <summary>True for the NPC the battle screen draws; the world copy is hidden so it never shows twice.</summary>
+		public static bool IsBattleSprite(NPC npc)
+		{
+			if (!Active)
+				return false;
+			foreach (BattleEnemy en in Instance.enemies)
+			{
+				Encounter e = en.E;
+				if (e.DrawNpc == npc || e.DrawWithTerraria && (e.Npc == npc || e.DrawParts().Contains(npc)))
+					return true;
+			}
+			return false;
+		}
 
 		private enum HeroPose { Idle, AttackReady, Attack, ActReady, Act, ItemReady, Item, Defend, Victory }
 
@@ -36,33 +56,43 @@ namespace MercyMode.Battle
 		/// <summary>Then the hero swings their weapon (the weapon-draw sound plays)...</summary>
 		private const int IntroSwingAt = GlideTicks + 3 * TicksPerFrame;
 		private const int SwingFrames = 12; // attackframes 6 at speed 0.5
+		// The shortsword / spear stab, in Deltarune frames: wind-up, out, hold, back; reach and body lean in battle px
+		private const float StabWindup = 2f, StabOut = 2f, StabHold = 3f, StabBack = 5f;
+		private const float StabReach = 12f, StabLean = 4f;
+		private float stabLean, stabStreak;
 		/// <summary>...and once the swing is over the bottom UI glides up.</summary>
 		private const int IntroPanelAt = IntroSwingAt + SwingFrames * TicksPerFrame;
 
+		// ---- healing (Deltarune frames) ----
+		/// <summary>The potion is raised and used this many frames into the ITEM pose; the heal lands then.</summary>
+		private const int ItemUseFrame = 8;
+		/// <summary>How long the potion takes to rise to its overhead spot.</summary>
+		private const float ItemRiseFrames = 4f;
+		/// <summary>The ITEM pose returns to idle shortly after the use frame.</summary>
+		private const int ItemPoseFrames = ItemUseFrame + 8;
+		/// <summary>Heal Prayer (an ACT) heals near the top of the ACT hop.</summary>
+		private const int ActHealFrame = 4;
+
 		private HeroPose heroPose = HeroPose.Idle;
 		private float heroTimer; // Deltarune frames into the current pose
-		private int hurtTimer = -1; // hurttimer, frames
+		private float hurtTimer = -1; // hurttimer, frames
 		private Vector2 heroWorldScreen; // the player's feet in the world, in battle-screen coordinates
 		private float heroWorldScale;
-		private Vector2 enemyWorldScreen;
-		private float enemyWorldScale;
-		private int shake; // obj_shake: 4 px, flips each frame, decays by 1
-		private int shakeSign = 1;
-		private int pendingHealFx = -1;
+		private float shake; // obj_shake: 4 px, flips each frame, decays by 1 per frame
+		private float pendingHealFx = -1; // frames until the heal lands
 		private int pendingHealAmount;
 		private readonly List<BattleEffect> effects = new();
-		private EnemySnapshot enemySnap;
-		private BattleEffect enemyOverride; // spare / death animation replaces the enemy sprite
 		private int usedItemType;
+		/// <summary>Frames of gun kick left after a shot (the weapon tips up and the hero rocks back).</summary>
+		private float heroRecoil;
+		private const float RecoilFrames = 6f;
 
 		/// <summary>Afterimages left behind while gliding (obj_afterimage).</summary>
 		private struct TrailPoint
 		{
 			public Vector2 HeroFeet;
 			public float HeroScale;
-			public Vector2 EnemyPos;
-			public float EnemyScale;
-			public int Age;
+			public float Age; // frames
 		}
 		private readonly List<TrailPoint> trail = new();
 		private const int TrailLife = 8; // frames
@@ -73,70 +103,98 @@ namespace MercyMode.Battle
 			heroTimer = 0;
 		}
 
-		/// <summary>Deltarune-frame updates for the hero and the effects.</summary>
+		/// <summary>
+		/// Every tick: the hero, the effects and the afterimages, stepped by <see cref="FrameStep"/> (half a Deltarune
+		/// frame) so they keep Deltarune's timing but move at Terraria's 60 fps.
+		/// </summary>
 		private void UpdateHeroFrame()
 		{
-			heroTimer += 1f;
-			if (hurtTimer >= 0 && ++hurtTimer > 15)
-				hurtTimer = -1;
-			if (shake > 0)
+			const float dt = FrameStep;
+			heroTimer += dt;
+			if (hurtTimer >= 0)
 			{
-				shake--;
-				shakeSign = -shakeSign;
+				hurtTimer += dt;
+				if (hurtTimer > 15)
+					hurtTimer = -1;
 			}
-			enemyAttackEnergy = Math.Max(0f, enemyAttackEnergy - 0.055f);
-			enemyAttackDirection = Vector2.Lerp(enemyAttackDirection, Vector2.Zero, 0.12f);
+			if (shake > 0)
+				shake = Math.Max(0f, shake - dt);
+			if (heroRecoil > 0)
+				heroRecoil = Math.Max(0f, heroRecoil - dt);
+			enemyAttackEnergy = Math.Max(0f, enemyAttackEnergy - 0.055f * dt);
+			enemyAttackDirection = Vector2.Lerp(enemyAttackDirection, Vector2.Zero, EasePerTick(0.12f));
 
 			// ACT returns to idle after actreturnframes (10 at 0.5 per frame = 20 frames)
 			if (heroPose == HeroPose.Act && heroTimer >= 20)
 				SetHeroPose(HeroPose.Idle);
-			if (heroPose == HeroPose.Item && heroTimer >= 24)
+			if (heroPose == HeroPose.Item && heroTimer >= ItemPoseFrames)
 				SetHeroPose(HeroPose.Idle);
-			if (heroPose == HeroPose.Attack && heroTimer >= SwingFrames + 6 && phase != Phase.FightResult)
+			if (heroPose == HeroPose.Attack && heroTimer >= SwingFrames + 6 && phase != Phase.FightResult && phase != Phase.FightBar)
 				SetHeroPose(HeroPose.Idle);
 
 			// Afterimages: drop one every frame while gliding, let the old ones fade out
 			for (int i = trail.Count - 1; i >= 0; i--)
 			{
 				var t = trail[i];
-				t.Age++;
+				t.Age += dt;
 				if (t.Age > TrailLife)
 					trail.RemoveAt(i);
 				else
 					trail[i] = t;
 			}
-			if (Gliding)
+			// A new afterimage every Deltarune frame; they fade every tick
+			if (Gliding && time % TicksPerFrame == 0)
 			{
 				trail.Add(new TrailPoint
 				{
 					HeroFeet = HeroFeetNow,
 					HeroScale = HeroScaleNow,
-					EnemyPos = EnemyPosNow,
-					EnemyScale = EnemyScaleNow(out _, out _),
 				});
 			}
+			// Every enemy leaves its own afterimages, and plays its own spare / death animation
+			foreach (BattleEnemy en in enemies)
+			{
+				for (int i = en.Trail.Count - 1; i >= 0; i--)
+				{
+					EnemyTrail et = en.Trail[i];
+					et.Age += dt;
+					if (et.Age > TrailLife)
+						en.Trail.RemoveAt(i);
+					else
+						en.Trail[i] = et;
+				}
+				if (Gliding && time % TicksPerFrame == 0 && en.Living)
+					WithEnemy(en, () => en.Trail.Add(new EnemyTrail { Pos = EnemyPosNow, Scale = EnemyScaleNow(out _, out _) }));
+				if (en.Override != null)
+				{
+					en.Override.Step(dt);
+					if (en.Override.Done)
+						en.Override = null;
+				}
+			}
 
-			foreach (var e in effects)
-				e.Frame();
+			// By index: an effect can add others while it steps (a hit animation falling back to sparks)
+			for (int i = 0; i < effects.Count; i++)
+				effects[i].Step(dt);
 			effects.RemoveAll(e => e.Done);
 			for (int i = boxAfterimages.Count - 1; i >= 0; i--)
 			{
 				BoxAfterimage image = boxAfterimages[i];
-				image.Age++;
+				image.Age += dt;
 				if (image.Age > 18)
 					boxAfterimages.RemoveAt(i);
 				else
 					boxAfterimages[i] = image;
 			}
-			if (enemyOverride != null)
+			if (pendingHealFx > 0)
 			{
-				enemyOverride.Frame();
-				if (enemyOverride.Done)
-					enemyOverride = null;
+				pendingHealFx -= dt;
+				if (pendingHealFx <= 0)
+				{
+					pendingHealFx = -1;
+					PlayHealFx(pendingHealAmount);
+				}
 			}
-
-			if (pendingHealFx > 0 && --pendingHealFx == 0)
-				PlayHealFx(pendingHealAmount);
 		}
 
 		/// <summary>The pose shown right now: menus show the "ready" pose for the chosen command.</summary>
@@ -148,7 +206,7 @@ namespace MercyMode.Battle
 				return pendingChoice switch { Choice.Fight => HeroPose.AttackReady, _ => HeroPose.ActReady };
 			if (phase == Phase.ItemSelect)
 				return HeroPose.ItemReady;
-			if (phase == Phase.FightBar)
+			if (phase == Phase.FightBar || phase == Phase.WeaponSelect)
 				return HeroPose.AttackReady;
 			return HeroPose.Idle;
 		}
@@ -169,7 +227,7 @@ namespace MercyMode.Battle
 		private Vector2 WorldToBattle(Vector2 world)
 		{
 			ComputeScreenTransform();
-			Vector2 screen = Vector2.Transform(world - Main.screenPosition, Main.GameViewMatrix.ZoomMatrix);
+			Vector2 screen = Vector2.Transform(world - Main.screenPosition, Main.GameViewMatrix?.ZoomMatrix ?? Matrix.Identity);
 			return new Vector2((screen.X - drOx) / drScale, (screen.Y - drOy) / drScale);
 		}
 
@@ -177,7 +235,7 @@ namespace MercyMode.Battle
 		private float WorldPixelScale()
 		{
 			ComputeScreenTransform();
-			return Main.GameViewMatrix.Zoom.X / drScale;
+			return (Main.GameViewMatrix?.Zoom.X ?? 1f) / drScale;
 		}
 
 		private bool Gliding => phase == Phase.Intro && phaseTicks <= GlideTicks || phase == Phase.Outro && phaseTicks <= GlideTicks;
@@ -201,7 +259,7 @@ namespace MercyMode.Battle
 
 		private Vector2 HeroFeetNow => Vector2.Lerp(heroWorldScreen, HeroFeet, FlyProgress());
 		private float HeroScaleNow => MathHelper.Lerp(heroWorldScale, HeroScale, FlyProgress());
-		private Vector2 EnemyPosNow => encounter == null ? Vector2.Zero : Vector2.Lerp(enemyWorldScreen, encounter.DrawCenter, FlyProgress());
+		private Vector2 EnemyPosNow => encounter == null ? Vector2.Zero : Vector2.Lerp(enemyWorldScreen, encounter.ScreenCenter, FlyProgress());
 
 		/// <summary>The enemy's sprite frame and its size right now (world size at the start of the glide).</summary>
 		private float EnemyScaleNow(out Texture2D tex, out Rectangle frame)
@@ -209,21 +267,32 @@ namespace MercyMode.Battle
 			tex = null;
 			frame = default;
 			NPC npc = encounter?.DrawNpc;
-			if (npc == null || !npc.active)
+			// No textures on a dedicated server (the headless lab)
+			if (npc == null || !npc.active || Main.dedServ)
 				return 1f;
 			Main.instance.LoadNPC(npc.type);
 			tex = TextureAssets.Npc[npc.type].Value;
 			frame = npc.frame.Width > 0 && npc.frame.Height > 0 ? npc.frame : new Rectangle(0, 0, tex.Width, tex.Height / Math.Max(1, Main.npcFrameCount[npc.type]));
-			return MathHelper.Lerp(enemyWorldScale, encounter.DrawScale(frame), FlyProgress());
+			float battleScale = encounter.DrawScale(frame);
+			// In a group, each enemy also fits its own slot
+			if (encounter.SlotArea is Vector2 area)
+				battleScale = Math.Min(battleScale, Math.Min(area.X / Math.Max(1, frame.Width), area.Y / Math.Max(1, frame.Height)));
+			return MathHelper.Lerp(enemyWorldScale, battleScale, FlyProgress());
 		}
 
 		/// <summary>Called when the battle starts: remembers where and how big things were in the world.</summary>
-		private void CaptureWorldPositions(NPC root)
+		private void CaptureWorldPositions()
 		{
 			heroWorldScreen = WorldToBattle(Player.Bottom);
 			heroWorldScale = WorldPixelScale();
-			enemyWorldScreen = WorldToBattle(root.Center);
-			enemyWorldScale = WorldPixelScale() * root.scale;
+			foreach (BattleEnemy en in enemies)
+			{
+				NPC n = en.E.Npc;
+				en.WorldScreen = WorldToBattle(n.Center);
+				en.WorldScale = WorldPixelScale() * n.scale;
+				en.WorldRotation = n.rotation;
+				en.Trail.Clear();
+			}
 			trail.Clear();
 		}
 
@@ -234,6 +303,8 @@ namespace MercyMode.Battle
 			Player p = Player;
 			if (p.dead)
 				return;
+
+			HeroLight = WorldLightTint(p.Center);
 
 			// Fading afterimages first (Terraria's own "shadow" draw makes them see-through)
 			foreach (var t in trail)
@@ -249,11 +320,32 @@ namespace MercyMode.Battle
 				bob = -(float)Math.Abs(Math.Sin(Math.Min(1f, heroTimer / 27f) * Math.PI * 2)) * 8f;
 			// Hurt: drawn at x - 20 + hurtindex * 10 (hurtindex = hurttimer / 2, max 2) for 15 frames
 			if (hurtTimer >= 0)
-				hurtShift = -20 + Math.Min(2, hurtTimer / 2) * 10;
+				hurtShift = -20 + Math.Min(2f, hurtTimer / 2f) * 10; // GameMaker's hurttimer / 2 isn't rounded: it slides
 
-			float outroFade = phase == Phase.Outro ? 1f - FlyProgress() : 0f;
-			DrawPlayerPose(sb, m, p, HeroFeetNow + new Vector2(hurtShift, bob), HeroScaleNow, pose, heroTimer, outroFade);
+			// Stays solid on the way back: the world lighting (HeroLight) takes over instead of fading out,
+			// and it lands exactly on the real character, which is hidden until the battle ends
+			// A shot rocks the hero back a little
+			float kick = heroRecoil / RecoilFrames;
+			DrawPlayerPose(sb, m, p, HeroFeetNow + new Vector2(hurtShift - kick * 4f, bob), HeroScaleNow, pose, heroTimer, 0f);
+			HeroLight = Color.White;
 		}
+
+		/// <summary>
+		/// Battle-screen colours are full bright; the world's are lit. Blends toward the light at a world spot as the
+		/// glide approaches the world (start of the intro, end of the outro).
+		/// </summary>
+		private Color WorldLightTint(Vector2 worldPosition)
+		{
+			float blend = 1f - FlyProgress();
+			if (blend <= 0f)
+				return Color.White;
+			Color light = Lighting.GetColor(worldPosition.ToTileCoordinates());
+			return Color.Lerp(Color.White, light, blend);
+		}
+
+		/// <summary>Multiplies a colour's RGB by a tint, keeping its alpha.</summary>
+		public static Color Tint(Color c, Color tint) =>
+			new(c.R * tint.R / 255, c.G * tint.G / 255, c.B * tint.B / 255, c.A);
 
 		/// <summary>How far through a weapon swing a pose is (0 = start, 1 = end), or -1 for no weapon.</summary>
 		private static float SwingProgress(HeroPose pose, float timer) => pose switch
@@ -269,7 +361,7 @@ namespace MercyMode.Battle
 		/// the hand; items that Terraria doesn't draw while used (shortswords, spears...) and potions are drawn at
 		/// the hand position of a posed arm.
 		/// </summary>
-		private void DrawPlayerPose(SpriteBatch sb, Matrix m, Player p, Vector2 feet, float scale, HeroPose pose, float timer, float shadow)
+		private void DrawPlayerPose(SpriteBatch sb, Matrix m, Player p, Vector2 feet, float scale, HeroPose pose, float timer, float shadow, bool ally = false, int facing = 1, int walkFrame = -1)
 		{
 			// Save everything we touch
 			Rectangle oldBody = p.bodyFrame, oldLeg = p.legFrame;
@@ -281,13 +373,15 @@ namespace MercyMode.Battle
 			Vector2 oldLoc = p.itemLocation;
 			Player.CompositeArmData oldFront = p.compositeFrontArm, oldBack = p.compositeBackArm;
 
-			p.direction = 1;
+			p.direction = facing;
 			p.itemAnimation = 0;
+			stabLean = 0f;
+			stabStreak = 0f;
 			p.compositeFrontArm = default;
 			p.compositeBackArm = default;
 			int bodyFrame = 0, legFrame = 0;
 
-			Item weapon = WeaponForDisplay();
+			Item weapon = ally ? AllyWeapon(p) : WeaponForDisplay();
 			float swing = SwingProgress(pose, timer);
 			Item manualItem = null; // drawn by us at the hand
 			float manualRotation = 0f;
@@ -301,7 +395,8 @@ namespace MercyMode.Battle
 				p.itemAnimationMax = 30;
 				p.itemAnimation = Math.Max(1, (int)Math.Round(30 * (1f - swing)));
 				p.itemTime = p.itemAnimation;
-				p.itemRotation = 0f; // guns and bows point straight ahead
+				// Guns and bows point straight ahead, tipping up with the recoil of a shot
+				p.itemRotation = -0.35f * (heroRecoil / RecoilFrames);
 				if (!weapon.noUseGraphic)
 				{
 					Main.instance.LoadItem(weapon.type);
@@ -310,14 +405,45 @@ namespace MercyMode.Battle
 				}
 				else
 				{
-					// Shortswords and spears: arm straight out, item in the hand, a short thrust when attacking
+					// Shortswords and spears: a real stab, the arm carrying the blade. It pulls back and up a little
+					// (wind-up), shoots out with the body leaning in, holds a moment, then eases back to the ready pose.
 					float armRot = pose == HeroPose.Defend ? -MathHelper.Pi * 0.85f : -MathHelper.PiOver2;
-					p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot);
-					manualItem = weapon;
-					manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot);
-					manualRotation = armRot + MathHelper.PiOver2; // along the arm
+					var stretch = Player.CompositeArmStretchAmount.Full;
 					if (pose == HeroPose.Attack)
-						manualThrust = (float)Math.Sin(Math.Min(1f, timer / 8f) * Math.PI) * 10f;
+					{
+						float t = timer; // Deltarune frames since the hit
+						if (t < StabWindup)
+						{
+							stretch = Player.CompositeArmStretchAmount.Quarter;
+							armRot -= 0.18f * (t / StabWindup);
+							manualThrust = -4f * (t / StabWindup);
+						}
+						else if (t < StabWindup + StabOut)
+						{
+							float k = (t - StabWindup) / StabOut;
+							stretch = k < 0.5f ? Player.CompositeArmStretchAmount.ThreeQuarters : Player.CompositeArmStretchAmount.Full;
+							manualThrust = MathHelper.Lerp(-4f, StabReach, 1f - (1f - k) * (1f - k));
+							stabLean = StabLean * k;
+						}
+						else if (t < StabWindup + StabOut + StabHold)
+						{
+							manualThrust = StabReach;
+							stabLean = StabLean;
+						}
+						else
+						{
+							float k = Math.Min(1f, (t - StabWindup - StabOut - StabHold) / StabBack);
+							manualThrust = StabReach * (1f - k);
+							stabLean = StabLean * (1f - k);
+							stretch = k < 0.5f ? Player.CompositeArmStretchAmount.Full : Player.CompositeArmStretchAmount.ThreeQuarters;
+						}
+						// The streak of the thrust, drawn at the tip while it's going out
+						stabStreak = t >= StabWindup && t < StabWindup + StabOut + StabHold ? 1f - Math.Max(0f, t - StabWindup - StabOut) / StabHold : 0f;
+					}
+					p.SetCompositeArmFront(true, stretch, armRot);
+					manualItem = weapon;
+					manualHand = p.GetFrontHandPosition(stretch, armRot);
+					manualRotation = armRot + MathHelper.PiOver2; // along the arm
 					p.itemAnimation = 0;
 				}
 			}
@@ -334,15 +460,15 @@ namespace MercyMode.Battle
 						break;
 					case HeroPose.ItemReady:
 					case HeroPose.Item:
-						if (usedItemType > 0 && (pose == HeroPose.ItemReady || timer <= 15) && shadow < 0.95f)
+						if (!ally && usedItemType > 0 && (pose == HeroPose.ItemReady || timer <= ItemUseFrame) && shadow < 0.95f)
 						{
-							// Arm raised, holding the item up; it's used up at 15 frames
+							// Arm raised, holding the item up; it's used up at ItemUseFrame
 							float armRot = MathHelper.Pi;
 							p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot);
 							manualItem = ContentSamples.ItemsByType[usedItemType];
 							manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot);
 							// Raise the potion briskly, then hold it overhead until the use pose ends.
-							float rise = 22f * (1f - (float)Math.Pow(1f - Math.Min(timer, 8f) / 8f, 2f));
+							float rise = 22f * (1f - (float)Math.Pow(1f - Math.Min(timer, ItemRiseFrames) / ItemRiseFrames, 2f));
 							manualThrust = pose == HeroPose.Item ? rise : 0f;
 						}
 						else
@@ -355,13 +481,18 @@ namespace MercyMode.Battle
 						break;
 				}
 			}
-			if (hurtTimer >= 0 && shadow == 0f && pose != HeroPose.Defend)
+			if (!ally && hurtTimer >= 0 && shadow == 0f && pose != HeroPose.Defend)
 				bodyFrame = legFrame = 5;
+			// Walking (an ally leaving the battle): Terraria's walk cycle, body and legs together
+			if (walkFrame >= 0)
+				bodyFrame = legFrame = walkFrame;
 
 			p.bodyFrame.Y = bodyFrame * p.bodyFrame.Height;
 			p.legFrame.Y = legFrame * p.legFrame.Height;
 
 			// Where the player's hitbox bottom-centre lands on the battle screen; world offsets scale around it
+			// The stab leans the whole body in a little
+			feet.X += stabLean * scale / BattleCharacterScale;
 			Vector2 anchorWorld = p.position + new Vector2(p.width / 2f, p.height);
 			Vector2 ToBattle(Vector2 world) => feet + (world - anchorWorld) * scale;
 
@@ -395,8 +526,17 @@ namespace MercyMode.Battle
 					{
 						// Blade sprites point up-right (-45 degrees); turn them to follow the arm, handle in the hand
 						Vector2 along = manualRotation.ToRotationVector2();
-						DrDraw.Sb.Draw(tex, hand + along * manualThrust, src, Color.White * (1f - shadow), manualRotation + MathHelper.PiOver4,
+						Vector2 grip = hand + along * manualThrust * scale / BattleCharacterScale;
+						DrDraw.Sb.Draw(tex, grip, src, Color.White * (1f - shadow), manualRotation + MathHelper.PiOver4,
 							new Vector2(0, src.Height), scale * 0.85f, SpriteEffects.None, 0f);
+						if (stabStreak > 0f && shadow < 0.5f)
+						{
+							// A thin white streak off the point of the blade
+							float blade = (float)Math.Sqrt(src.Width * src.Width + src.Height * src.Height) * scale * 0.85f;
+							Vector2 tip = grip + along * blade;
+							DrDraw.Line(tip, tip + along * 22f * stabStreak, 3f * stabStreak, Color.White * (0.8f * stabStreak));
+							DrDraw.Line(tip - along * 6f, tip + along * 10f * stabStreak, 1.5f, new Color(255, 255, 200) * stabStreak);
+						}
 					}
 				}
 
@@ -438,61 +578,69 @@ namespace MercyMode.Battle
 			}
 		}
 
-		private Item WeaponForDisplay()
-		{
-			Item held = Player.HeldItem;
-			if (!held.IsAir && held.damage > 0 && held.useStyle != ItemUseStyleID.None && !held.accessory)
-				return held;
-			Item best = null;
-			for (int i = 0; i < 10; i++)
-			{
-				Item it = Player.inventory[i];
-				if (!it.IsAir && it.damage > 0 && !it.accessory && it.ammo == AmmoID.None && (best == null || it.damage > best.damage))
-					best = it;
-			}
-			return best;
-		}
-
 		private void DrawEffects()
 		{
 			foreach (var e in effects)
-				e.Draw();
+				if (!e.WithBullets)
+					e.Draw();
 		}
 
-		private Matrix ShakeMatrix => shake > 0 ? Matrix.CreateTranslation(shakeSign * shake, shakeSign * shake, 0) : Matrix.Identity;
+		private void DrawBulletEffects()
+		{
+			foreach (var e in effects)
+				if (e.WithBullets)
+					e.Draw();
+		}
+
+		/// <summary>obj_shake flips side every Deltarune frame; between frames it swings through the middle.</summary>
+		private Matrix ShakeMatrix
+		{
+			get
+			{
+				if (shake <= 0)
+					return Matrix.Identity;
+				float offset = shake * (float)Math.Cos(time * MathHelper.Pi / TicksPerFrame);
+				return Matrix.CreateTranslation(offset, offset, 0);
+			}
+		}
 
 		// ---- effects ----
 
-		private void AddEffect(BattleEffect e) => effects.Add(e);
+		public void AddEffect(BattleEffect e) => effects.Add(e);
+
+		/// <summary>Shakes the battle screen (obj_shake), for slams and explosions in attack patterns.</summary>
+		public void ShakeScreen(float amount) => shake = Math.Max(shake, amount);
 
 		public void ShowMercyGain(float amount)
 		{
 			if (amount <= 0f || encounter == null)
 				return;
 
-			AddEffect(new MercyGainPopup(encounter.DrawCenter + new Vector2(0f, -55f), amount));
+			AddEffect(new MercyGainPopup(encounter.ScreenCenter + new Vector2(0f, -55f), amount));
 			Sfx("mercyadd");
 		}
 
 		/// <summary>scr_dmgwriter_selfchar: (x, y + myheight - 24) on the hero.</summary>
-		private void HeroNumber(int amount, Color color, int message = -1)
+		private void HeroNumber(int amount, Color color, int message = -1, int delay = 2)
 		{
 			Vector2 feet = HeroFeetNow;
 			float x = feet.X - (HeroFeet.X - HeroX);
 			float y = feet.Y - (HeroFeet.Y - HeroY) + HeroHeight - 24;
-			AddEffect(new DamageNumber(x, y, amount, color, message));
+			AddEffect(new DamageNumber(x, y, amount, color, message, delay));
 		}
 
 		/// <summary>The enemy's damage number: from its sprite, 8 frames after the hit.</summary>
-		private void EnemyNumber(int amount, Color color, int message = -1)
+		private void EnemyNumber(int amount, Color color, int message = -1, float yOffset = 0f, Vector2? at = null)
 		{
-			Vector2 c = encounter.DrawCenter;
-			AddEffect(new DamageNumber(c.X - 30, c.Y - 20, amount, color, message, delay: 8));
+			Vector2 c = at ?? encounter.ScreenCenter;
+			AddEffect(new DamageNumber(c.X - 30, c.Y - 20 + yOffset, amount, color, message, delay: 8));
 		}
 
 		/// <summary>obj_healanim: green stars rise off the hero, then the healed amount (or MAX) in green.</summary>
 		private void PlayHealFx(int healed)
 		{
+			// Sound, sparkles and number all land on the same frame
+			Sfx("heal");
 			Vector2 feet = HeroFeetNow;
 			var area = new Rectangle((int)(feet.X - 34), (int)(feet.Y - 74), 68, 74);
 			for (int i = 0; i < 10; i++)
@@ -502,9 +650,9 @@ namespace MercyMode.Battle
 				AddEffect(new StarParticle(pos, vel, Vector2.Zero, 0.2f, -10f, new Color(0, 255, 0), 5));
 			}
 			if (healed > 0 && Player.statLife < Player.statLifeMax2)
-				HeroNumber(healed, new Color(0, 255, 0));
+				HeroNumber(healed, new Color(0, 255, 0), delay: 1);
 			else
-				HeroNumber(0, new Color(0, 255, 0), DamageNumber.MaxFrame);
+				HeroNumber(0, new Color(0, 255, 0), DamageNumber.MaxFrame, delay: 1);
 		}
 
 		/// <summary>Plays the heal sparkles after the item/act animation reaches its use frame.</summary>
