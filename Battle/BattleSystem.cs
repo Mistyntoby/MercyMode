@@ -249,6 +249,9 @@ namespace MercyMode.Battle
 					projVelocities[p.whoAmI] = (p.type, p.velocity);
 			}
 			playerPosition = Player.position;
+			// Multiplayer: from outside, the party lines up on the enemy's left, facing it (only where there's room)
+			if (Net.BattleNet.Online)
+				LineUpForOutsiders(root);
 			battleLife = Player.statLife;
 			CreatePlayerHeadPortrait();
 
@@ -270,6 +273,21 @@ namespace MercyMode.Battle
 			SetText(OpeningText());
 			SetPhase(Phase.Intro);
 			Mod.Logger.Info($"Battle started with {boss.FullName} as {encounter.GetType().Name} ({encounter.Life}/{encounter.LifeMax} HP) by {reason}");
+		}
+
+		/// <summary>Moves the player to the enemy's left side, at their own height, if that spot is clear.</summary>
+		private void LineUpForOutsiders(NPC root)
+		{
+			// The party list may not have arrived yet: fall back to the player slot so two players don't share a spot
+			int slot = Net.BattleNet.Party.IndexOf(Player.whoAmI) is int i && i >= 0 ? i : Player.whoAmI % 3;
+			float x = root.Left.X - 40f - slot * 28f - Player.width;
+			var spot = new Vector2(x, Player.position.Y);
+			if (Math.Abs(spot.X - Player.position.X) < 8f * 16f && !Collision.SolidCollision(spot, Player.width, Player.height))
+			{
+				Player.position = spot;
+				playerPosition = spot;
+			}
+			Player.direction = root.Center.X >= Player.Center.X ? 1 : -1;
 		}
 
 		private void End(bool killPlayer = false)

@@ -47,6 +47,7 @@ namespace MercyMode.Battle.Net
 			SoulPos, // c→s→party: my SOUL in the box
 			Left, // c→s
 			BattleState, // s→all: a battle's stage and players (outsiders' view, join prompt)
+			WorldAction, // s→all: who acts now and with what (outsiders show it in the world)
 			PlayerColor, // both ways: a player's party colour choice
 			PartyHp, // c→s→party: my HP in the battle (Terraria's own sync drifts: other clients guess regen)
 			HealAlly, // c→s→target: an ITEM used on a partner
@@ -58,6 +59,8 @@ namespace MercyMode.Battle.Net
 		public const int MaxParty = 3;
 		/// <summary>How close (pixels) players must be to the one starting the battle to be pulled in with them.</summary>
 		public const float JoinRange = 7 * 16;
+		/// <summary>Against a boss everyone in the area is in the fight: a much bigger range for pulling in and the prompt.</summary>
+		public const float BossJoinRange = 60 * 16;
 		/// <summary>How close to a battle's enemy or fighter the join prompt shows up.</summary>
 		public const float PromptRange = 8 * 16;
 		/// <summary>Picking an action / carrying it out: after this long the party goes on without them.</summary>
@@ -150,6 +153,10 @@ namespace MercyMode.Battle.Net
 			public readonly List<int> Players = new();
 			public readonly List<int> Pending = new();
 			public readonly Dictionary<int, int> Ready = new();
+			/// <summary>The weapon or item each player picked (for the outside view).</summary>
+			public readonly Dictionary<int, int> Weapons = new();
+			/// <summary>The command each player picked this round (kept after Ready is cleared).</summary>
+			public readonly Dictionary<int, int> Faces = new();
 			public readonly Dictionary<int, Vector2> SavedVelocity = new();
 			public Stage Stage;
 			/// <summary>Who acts, step by step: each ACT/ITEM/SPARE/DEFEND alone, then every FIGHT together.</summary>
@@ -398,6 +405,10 @@ namespace MercyMode.Battle.Net
 			AllySouls.Clear();
 			ActingNow.Clear();
 			FightingNow.Clear();
+			// Nothing from this battle carries into the next (an old HP looked like a heal when they came back)
+			AllyHp.Clear();
+			AllyWeapons.Clear();
+			AllyHitTick.Clear();
 		}
 
 		// ================================================================== client handling
@@ -453,6 +464,12 @@ namespace MercyMode.Battle.Net
 					// Whoever is gone leaves the battle screen (walking off, or with us if the battle is ending)
 					foreach (int gone in Party.Where(k => k != Main.myPlayer && !players.Contains(k) && !pending.Contains(k)).ToList())
 						battle.OnAllyLeft(gone);
+					// Newcomers start clean: no HP or weapon left over from an earlier battle
+					foreach (int fresh in players.Concat(pending).Where(k => !Party.Contains(k)))
+					{
+						AllyHp.Remove(fresh);
+						AllyWeapons.Remove(fresh);
+					}
 					Party.Clear();
 					Party.AddRange(players);
 					Party.AddRange(pending);
@@ -565,7 +582,7 @@ namespace MercyMode.Battle.Net
 					else
 					{
 						// Outside the battle: the fighter swings in the world (only a picture, it hits nothing)
-						WorldVisuals.Swing(Main.player[player], n);
+						WorldVisuals.Swing(Main.player[player], n, damage, crit);
 					}
 					break;
 				}
@@ -577,6 +594,20 @@ namespace MercyMode.Battle.Net
 					byte mode = r.ReadByte();
 					if (id == MyBattle)
 						AllySouls[player] = (pos, mode, Main.GameUpdateCount);
+					break;
+				}
+				case Msg.WorldAction:
+				{
+					int id = r.ReadInt32();
+					int count = r.ReadByte();
+					for (int i = 0; i < count; i++)
+					{
+						int player = r.ReadByte();
+						int face = r.ReadByte();
+						int item = r.ReadInt32();
+						if (id != MyBattle)
+							WorldVisuals.Act(Main.player[player], face, item);
+					}
 					break;
 				}
 				case Msg.BattleState:
@@ -798,7 +829,8 @@ namespace MercyMode.Battle.Net
 			b.Roots.AddRange(roots.Select(n => n.whoAmI));
 			b.Players.Add(requester);
 			Player leader = Main.player[requester];
-			bool Near(Player p) => p.DistanceSQ(leader.Center) <= JoinRange * JoinRange;
+			float range = roots.Any(EncounterRegistry.IsBossFight) ? BossJoinRange : JoinRange;
+			bool Near(Player p) => p.DistanceSQ(leader.Center) <= range * range;
 			foreach (Player p in Main.player.Where(p => p.active).OrderBy(p => p.DistanceSQ(leader.Center)).ToList())
 			{
 				if (b.Players.Count >= MaxParty)
@@ -839,6 +871,7 @@ namespace MercyMode.Battle.Net
 			if (face != 0 && !b.Ready.Values.Any(f => f != 0))
 				b.StageTicks = 0;
 			b.Ready[player] = face;
+			b.Weapons[player] = weapon;
 			ToParty(b, () =>
 			{
 				ModPacket p = Packet(Msg.ReadyState);
@@ -864,6 +897,9 @@ namespace MercyMode.Battle.Net
 				return;
 			b.Steps.Clear();
 			var ready = b.Players.Where(b.Ready.ContainsKey).ToList();
+			b.Faces.Clear();
+			foreach (int pl in ready)
+				b.Faces[pl] = b.Ready[pl];
 			foreach (int pl in ready.Where(pl => b.Ready[pl] != FightFace))
 				b.Steps.Add(new List<int> { pl });
 			var fighters = ready.Where(pl => b.Ready[pl] == FightFace).ToList();
@@ -919,6 +955,17 @@ namespace MercyMode.Battle.Net
 				WritePlayers(p, who);
 				return p;
 			}, Msg.TurnOf);
+			// Everyone else sees them act in the world
+			ModPacket w = Packet(Msg.WorldAction);
+			w.Write(b.Id);
+			w.Write((byte)who.Count);
+			foreach (int pl in who)
+			{
+				w.Write((byte)pl);
+				w.Write((byte)(b.Faces.TryGetValue(pl, out int f) ? f : 0));
+				w.Write(b.Weapons.TryGetValue(pl, out int it) ? it : 0);
+			}
+			ToAll(w, Msg.WorldAction);
 		}
 
 		private static void BeginEnemyTurn(NetBattle b)
