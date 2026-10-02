@@ -48,6 +48,7 @@ namespace MercyMode.Battle.Net
 			Left, // c→s
 			BattleState, // s→all: a battle's stage and players (outsiders' view, join prompt)
 			PlayerColor, // both ways: a player's party colour choice
+			PartyHp, // c→s→party: my HP in the battle (Terraria's own sync drifts: other clients guess regen)
 		}
 
 		/// <summary>Over: every enemy is gone (won); nobody can join and it isn't shown as a battle any more.</summary>
@@ -123,6 +124,9 @@ namespace MercyMode.Battle.Net
 
 		/// <summary>Other party members' SOULs in the box: position, SOUL mode, when last heard.</summary>
 		public static readonly Dictionary<int, (Vector2 Pos, byte Mode, uint Tick)> AllySouls = new();
+		/// <summary>Each ally's HP as they last reported it from their battle.</summary>
+		public static readonly Dictionary<int, (int Life, int Max)> AllyHp = new();
+
 		/// <summary>When each ally last landed a FIGHT hit (their attack pose).</summary>
 		public static readonly Dictionary<int, uint> AllyHitTick = new();
 
@@ -172,6 +176,7 @@ namespace MercyMode.Battle.Net
 			ReadyFaces.Clear();
 			AllySouls.Clear();
 			AllyHitTick.Clear();
+			AllyHp.Clear();
 			MyBattle = -1;
 			ActingNow.Clear();
 			FightingNow.Clear();
@@ -291,6 +296,17 @@ namespace MercyMode.Battle.Net
 			p.Write((short)soul.X);
 			p.Write((short)soul.Y);
 			p.Write(mode);
+			ToServer(p);
+		}
+
+		public static void SendHp(int life, int max)
+		{
+			if (!InParty || Party.Count < 2)
+				return;
+			ModPacket p = Packet(Msg.PartyHp);
+			p.Write(MyBattle);
+			p.Write((short)life);
+			p.Write((short)max);
 			ToServer(p);
 		}
 
@@ -545,6 +561,15 @@ namespace MercyMode.Battle.Net
 					wb.Players = players;
 					break;
 				}
+				case Msg.PartyHp:
+				{
+					int id = r.ReadInt32();
+					int player = r.ReadByte();
+					int life = r.ReadInt16(), max = r.ReadInt16();
+					if (id == MyBattle)
+						AllyHp[player] = (life, max);
+					break;
+				}
 				case Msg.PlayerColor:
 				{
 					int player = r.ReadByte();
@@ -663,6 +688,23 @@ namespace MercyMode.Battle.Net
 							p.Write(mode);
 							return p;
 						}, Msg.SoulPos, except: from);
+					break;
+				}
+				case Msg.PartyHp:
+				{
+					int id = r.ReadInt32();
+					short life = r.ReadInt16(), max = r.ReadInt16();
+					NetBattle b = Find(id);
+					if (b != null)
+						ToParty(b, () =>
+						{
+							ModPacket p = Packet(Msg.PartyHp);
+							p.Write(id);
+							p.Write((byte)from);
+							p.Write(life);
+							p.Write(max);
+							return p;
+						}, Msg.PartyHp, except: from);
 					break;
 				}
 				case Msg.Left:
