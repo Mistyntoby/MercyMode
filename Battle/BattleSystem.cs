@@ -346,14 +346,36 @@ namespace MercyMode.Battle
 			playerHeadPortrait = null;
 		}
 
+		public override void Load()
+		{
+			// Leaving a multiplayer game mid-battle (or being disconnected) doesn't always unload the world right away,
+			// and the battle music kept playing over the menu: stop everything as soon as we're back in the menu
+			Main.OnTickForThirdPartySoftwareOnly += StopInMenu;
+		}
+
+		public override void Unload()
+		{
+			Main.OnTickForThirdPartySoftwareOnly -= StopInMenu;
+		}
+
+		private static void StopInMenu()
+		{
+			if (Main.gameMenu && !Main.dedServ && (Instance?.phase != Phase.None || Instance?.music != null))
+				Instance.OnWorldUnload();
+		}
+
+		public override void PreSaveAndQuit() => OnWorldUnload();
+
 		public override void OnWorldUnload()
 		{
 			ReleasePlayerHeadPortrait();
+			// The music and the muted ambience go back, battle or not
+			music?.Stop();
+			music?.Dispose();
+			music = null;
+			AmbienceMute.Restore();
 			if (phase != Phase.None)
 			{
-				music?.Stop();
-				music?.Dispose();
-				music = null;
 				StopChargeLoop();
 				phase = Phase.None;
 				encounter = null;
