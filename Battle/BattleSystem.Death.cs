@@ -43,6 +43,9 @@ namespace MercyMode.Battle
 		{
 			if (phase == Phase.Death || deathPending)
 				return;
+			// Multiplayer: down instead of dead while a partner is still standing
+			if (TryGoDown())
+				return;
 			deathReason = reason;
 			deathDamage = damage;
 			// The bullet loop may be running right now; the death starts once it's done

@@ -49,6 +49,7 @@ namespace MercyMode.Battle.Net
 			BattleState, // s→all: a battle's stage and players (outsiders' view, join prompt)
 			PlayerColor, // both ways: a player's party colour choice
 			PartyHp, // c→s→party: my HP in the battle (Terraria's own sync drifts: other clients guess regen)
+			HealAlly, // c→s→target: an ITEM used on a partner
 		}
 
 		/// <summary>Over: every enemy is gone (won); nobody can join and it isn't shown as a battle any more.</summary>
@@ -301,6 +302,17 @@ namespace MercyMode.Battle.Net
 			p.Write((short)soul.X);
 			p.Write((short)soul.Y);
 			p.Write(mode);
+			ToServer(p);
+		}
+
+		public static void SendHealAlly(int target, int amount)
+		{
+			if (!InParty)
+				return;
+			ModPacket p = Packet(Msg.HealAlly);
+			p.Write(MyBattle);
+			p.Write((byte)target);
+			p.Write(amount);
 			ToServer(p);
 		}
 
@@ -570,6 +582,15 @@ namespace MercyMode.Battle.Net
 					wb.Players = players;
 					break;
 				}
+				case Msg.HealAlly:
+				{
+					int id = r.ReadInt32();
+					int from = r.ReadByte();
+					int amount = r.ReadInt32();
+					if (id == MyBattle)
+						battle.OnNetHealed(from, amount);
+					break;
+				}
 				case Msg.PartyHp:
 				{
 					int id = r.ReadInt32();
@@ -697,6 +718,22 @@ namespace MercyMode.Battle.Net
 							p.Write(mode);
 							return p;
 						}, Msg.SoulPos, except: from);
+					break;
+				}
+				case Msg.HealAlly:
+				{
+					int id = r.ReadInt32();
+					int target = r.ReadByte();
+					int amount = r.ReadInt32();
+					NetBattle b = Find(id);
+					if (b != null && b.Players.Contains(from) && b.Players.Contains(target))
+					{
+						ModPacket p = Packet(Msg.HealAlly);
+						p.Write(id);
+						p.Write((byte)from);
+						p.Write(amount);
+						ToPlayer(p, target, Msg.HealAlly);
+					}
 					break;
 				}
 				case Msg.PartyHp:
