@@ -607,7 +607,12 @@ namespace MercyMode.Battle.Net
 					int player = r.ReadByte();
 					int life = r.ReadInt16(), max = r.ReadInt16();
 					if (id == MyBattle)
+					{
+						// Went up: they were healed (shown on them here, MAX if full)
+						if (AllyHp.TryGetValue(player, out var was) && life > was.Life)
+							battle.OnAllyHealed(player, life - was.Life, life >= max);
 						AllyHp[player] = (life, max);
+					}
 					break;
 				}
 				case Msg.PlayerColor:

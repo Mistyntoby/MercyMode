@@ -1020,6 +1020,7 @@ namespace MercyMode.Battle
 				SetPhase(Phase.PartySelect);
 				return;
 			}
+			usedItemType = type;
 			Commit(FaceItem, () => UseItem(type, name, heal));
 		}
 
@@ -1040,8 +1041,8 @@ namespace MercyMode.Battle
 			// On a partner: the heal goes to them through the server
 			if (target >= 0 && target != Player.whoAmI)
 			{
+				// The heal shows on them when their HP comes back up (OnAllyHealed)
 				Net.BattleNet.SendHealAlly(target, heal);
-				PlayAllyHealFx(target, heal);
 				usedItemType = type;
 				faceAction = FaceItem;
 				SetHeroPose(HeroPose.Item);
@@ -1057,7 +1058,8 @@ namespace MercyMode.Battle
 			SetHeroPose(HeroPose.Item);
 			QueueHealFx(healed, ItemUseFrame);
 
-			string result = Player.statLife >= Player.statLifeMax2 ? "* Your HP was maxed out." : $"* You recovered {healed} HP!";
+			// Named, not "you": the others read this in their text box too
+			string result = Player.statLife >= Player.statLifeMax2 ? $"* {Player.name}'s HP was maxed out." : $"* {Player.name} recovered {healed} HP!";
 			ShowMessages(new[] { $"* {Player.name} used the {name}!\n{result}" }, StartEnemyTurn);
 		}
 
@@ -1118,7 +1120,8 @@ namespace MercyMode.Battle
 		private void UpdateMessage()
 		{
 			messageTicks++;
-			bool auto = battleOver && messageTicks >= WonAutoContinueTicks;
+			// Won, or our action's lines in a party (the others wait on them): they move on by themselves
+			bool auto = battleOver && messageTicks >= WonAutoContinueTicks || Net.BattleNet.InParty && executing && messageTicks >= 4 * 60;
 			if (Cancel || auto)
 				textShown = text.Length;
 			if (textShown < text.Length || !(Confirm || auto))

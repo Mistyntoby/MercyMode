@@ -110,7 +110,8 @@ namespace MercyMode.Battle
 				FaceDefend => HeroPose.Defend,
 				_ => HeroPose.ActReady,
 			});
-			BattleNet.SendReady(face, CurrentWeapon().Item?.type ?? 0);
+			// The others draw us with what we picked: the weapon for FIGHT, the item for ITEM
+			BattleNet.SendReady(face, face == FaceItem ? usedItemType : CurrentWeapon().Item?.type ?? 0);
 			EnterWaiting();
 		}
 
@@ -202,7 +203,8 @@ namespace MercyMode.Battle
 			else
 				rowAlpha = Math.Max(0f, rowAlpha - 0.06f);
 			// Fading with our own bar while it fades
-			float fade = rowAlpha * (phase is Phase.FightBar or Phase.FightResult ? 1f - MathHelper.Clamp(fightFade, 0f, 1f) : 1f);
+			// Rows we fought alongside fade with our bar, and stay gone once it has (no blink back in after it)
+			float fade = rowAlpha * (rowFighters.Contains(Main.myPlayer) ? 1f - MathHelper.Clamp(fightFade, 0f, 1f) : 1f);
 			if (fade <= 0.01f)
 				return;
 			for (int i = 0; i < rowFighters.Count; i++)
@@ -335,7 +337,7 @@ namespace MercyMode.Battle
 			// Skip the turn: nothing to pick
 			Commit(FaceNone, StartEnemyTurn);
 			SetHeroPose(HeroPose.Idle);
-			text = $"* {Player.name} recovered {gain} HP.\n* Still DOWN: up once your HP is above 0.";
+			text = $"* {Player.name} recovered {gain} HP.\n* Still DOWN: up once their HP is above 0.";
 			textShown = text.Length;
 			waitingShowsOthers = true;
 			return false;
@@ -408,7 +410,7 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>Our ITEM landed on a partner: the heal sparkles, sound and green number on them, here.</summary>
-		private void PlayAllyHealFx(int who, int amount)
+		private void PlayAllyHealFx(int who, int amount, bool maxed = false)
 		{
 			Sfx("heal");
 			int slot = SlotOf(who);
@@ -421,7 +423,7 @@ namespace MercyMode.Battle
 				var vel = new Vector2(2 - Main.rand.NextFloat(2f), -3 - Main.rand.NextFloat(2f));
 				AddEffect(new StarParticle(pos, vel, Vector2.Zero, 0.2f, -10f, new Color(0, 255, 0), 5));
 			}
-			AddEffect(new DamageNumber(feet.X - 30, feet.Y - 70, amount, new Color(0, 255, 0), -1, delay: 1));
+			AddEffect(new DamageNumber(feet.X - 30, feet.Y - 70, amount, new Color(0, 255, 0), maxed ? DamageNumber.MaxFrame : -1, delay: 1));
 		}
 
 		private void UpdatePartySelect()
@@ -446,6 +448,7 @@ namespace MercyMode.Battle
 			Sfx("select");
 			var (type, name, heal) = pickedItem;
 			int target = targets[listIndex].Who;
+			usedItemType = type;
 			Commit(FaceItem, () => UseItem(type, name, heal, target));
 		}
 
@@ -459,7 +462,7 @@ namespace MercyMode.Battle
 				BattleNet.SendHp(lastSentHp, lastSentHpMax);
 			}
 			if (BattleNet.InParty && !downed && phase is Phase.EnemyIntro or Phase.EnemyTurn && time % 2 == 0)
-				BattleNet.SendSoul(soul, (byte)soulMode);
+				BattleNet.SendSoul(soul, (byte)((byte)soulMode | (grazeTimer > 0 ? 0x80 : 0)));
 		}
 
 		/// <summary>Leaves the battle on this client only (multiplayer /mmbattle end).</summary>
@@ -473,8 +476,22 @@ namespace MercyMode.Battle
 		internal void OnNetMercy(NPC npc, float mercy)
 		{
 			foreach (BattleEnemy e in enemies)
-				if (e.E.Npc == npc)
-					e.E.SetMercyQuiet(mercy);
+			{
+				if (e.E.Npc != npc)
+					continue;
+				float before = e.E.Mercy;
+				e.E.SetMercyQuiet(mercy);
+				// Someone else's ACT raised it: the same yellow +X% and sound as ours (ours already showed, no change here)
+				if (mercy > before + 0.01f)
+					WithEnemy(e, () => ShowMercyGain(mercy - before));
+			}
+		}
+
+		/// <summary>An ally's HP went up (an ITEM, Heal Prayer, getting their HP back while down): the heal on them.</summary>
+		internal void OnAllyHealed(int who, int amount, bool maxed)
+		{
+			if (phase != Phase.None)
+				PlayAllyHealFx(who, amount, maxed);
 		}
 
 		/// <summary>Another party member spared this enemy.</summary>
@@ -541,11 +558,15 @@ namespace MercyMode.Battle
 			};
 		}
 
+		/// <summary>The item an ally picked with ITEM this round (0: none).</summary>
+		private static int AllyItem(Player p) =>
+			BattleNet.ReadyFaces.TryGetValue(p.whoAmI, out int face) && face == FaceItem && BattleNet.AllyWeapons.TryGetValue(p.whoAmI, out int t) ? t : 0;
+
 		/// <summary>An ally's weapon, for their poses: what they're holding, if it's a weapon.</summary>
 		private static Item AllyWeapon(Player p)
 		{
 			// The one they picked in their battle (what they hold in the world isn't kept up to date meanwhile)
-			if (BattleNet.AllyWeapons.TryGetValue(p.whoAmI, out int type) && type > 0)
+			if (BattleNet.AllyWeapons.TryGetValue(p.whoAmI, out int type) && type > 0 && AllyItem(p) == 0)
 				return Terraria.ID.ContentSamples.ItemsByType[type];
 			Item held = p.HeldItem;
 			return held != null && !held.IsAir && held.damage > 0 && !held.consumable ? held : null;
@@ -729,7 +750,7 @@ namespace MercyMode.Battle
 		{
 			if (!BattleNet.InParty || phase is not (Phase.EnemyIntro or Phase.EnemyTurn))
 				return;
-			foreach (var (who, (pos, _, tick)) in BattleNet.AllySouls)
+			foreach (var (who, (pos, mode, tick)) in BattleNet.AllySouls)
 			{
 				if (Main.GameUpdateCount - tick > 30 || who < 0 || who >= Main.maxPlayers || !Main.player[who].active || Main.player[who].dead)
 					continue;
@@ -738,6 +759,9 @@ namespace MercyMode.Battle
 					? Vector2.Lerp(was, pos, 0.5f) : pos;
 				allySoulDrawn[who] = shown;
 				Color c = PartyColors.Of(Main.player[who]);
+				// They grazed something: the graze outline on their SOUL too
+				if ((mode & 0x80) != 0 && !DrDraw.Sprite("spr_grazeappear", 0, shown.X + SoulSize / 2f, shown.Y + SoulSize / 2f, Color.White, 1f, 0f, 0.7f))
+					DrDraw.Outline(shown.X - 5, shown.Y - 5, SoulSize + 10, SoulSize + 10, Color.White * 0.7f, 2);
 				// The same SOUL sprite as ours, in their colour (a plain heart without Deltarune's)
 				if (WhiteHeart() is Texture2D white)
 					DrDraw.Sb.Draw(white, shown, null, c * 0.9f, 0f, DeltaruneAssets.Sprite("spr_dodgeheart").Origin, 1f, SpriteEffects.None, 0f);
