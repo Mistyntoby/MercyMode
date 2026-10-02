@@ -10,24 +10,15 @@ namespace MercyMode
 {
 	public class MercyMode : Mod
 	{
-		public static ModKeybind ActKey;
-		public static ModKeybind SpareKey;
-		public static ModKeybind HealPrayerKey;
 		public static ModKeybind JoinBattleKey;
 
 		public override void Load()
 		{
-			ActKey = KeybindLoader.RegisterKeybind(this, "Act", "F");
-			SpareKey = KeybindLoader.RegisterKeybind(this, "Spare", "G");
-			HealPrayerKey = KeybindLoader.RegisterKeybind(this, "HealPrayer", "V");
 			JoinBattleKey = KeybindLoader.RegisterKeybind(this, "JoinBattle", "J");
 		}
 
 		public override void Unload()
 		{
-			ActKey = null;
-			SpareKey = null;
-			HealPrayerKey = null;
 			JoinBattleKey = null;
 		}
 
@@ -54,25 +45,6 @@ namespace MercyMode
 			if (npc.realLife >= 0 && npc.realLife < Main.maxNPCs && Main.npc[npc.realLife].active)
 				return Main.npc[npc.realLife];
 			return npc;
-		}
-
-		/// <summary>Closest active boss (by its root NPC) within range of the player.</summary>
-		public static NPC FindTargetBoss(Player player, float range = 2000f)
-		{
-			NPC best = null;
-			float bestDist = range;
-			foreach (NPC npc in Main.ActiveNPCs)
-			{
-				if (!npc.boss || npc.friendly || npc.realLife >= 0 && npc.realLife != npc.whoAmI)
-					continue;
-				float d = Vector2.Distance(player.Center, npc.Center);
-				if (d < bestDist)
-				{
-					bestDist = d;
-					best = npc;
-				}
-			}
-			return best;
 		}
 
 		public static bool AnyBossAlive()
