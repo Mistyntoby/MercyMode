@@ -124,6 +124,9 @@ namespace MercyMode.Battle.Net
 
 		/// <summary>Other party members' SOULs in the box: position, SOUL mode, when last heard.</summary>
 		public static readonly Dictionary<int, (Vector2 Pos, byte Mode, uint Tick)> AllySouls = new();
+		/// <summary>The weapon each ally picked in their battle (item type; 0 = none), for drawing them with it.</summary>
+		public static readonly Dictionary<int, int> AllyWeapons = new();
+
 		/// <summary>Each ally's HP as they last reported it from their battle.</summary>
 		public static readonly Dictionary<int, (int Life, int Max)> AllyHp = new();
 
@@ -177,6 +180,7 @@ namespace MercyMode.Battle.Net
 			AllySouls.Clear();
 			AllyHitTick.Clear();
 			AllyHp.Clear();
+			AllyWeapons.Clear();
 			MyBattle = -1;
 			ActingNow.Clear();
 			FightingNow.Clear();
@@ -257,7 +261,7 @@ namespace MercyMode.Battle.Net
 			ToServer(p);
 		}
 
-		public static void SendReady(int face)
+		public static void SendReady(int face, int weapon)
 		{
 			if (!InParty)
 				return;
@@ -265,6 +269,7 @@ namespace MercyMode.Battle.Net
 			ModPacket p = Packet(Msg.Ready);
 			p.Write(MyBattle);
 			p.Write((byte)face);
+			p.Write(weapon);
 			ToServer(p);
 		}
 
@@ -462,8 +467,12 @@ namespace MercyMode.Battle.Net
 					int id = r.ReadInt32();
 					int player = r.ReadByte();
 					int face = r.ReadByte();
+					int weapon = r.ReadInt32();
 					if (id == MyBattle)
+					{
 						ReadyFaces[player] = face;
+						AllyWeapons[player] = weapon;
+					}
 					break;
 				}
 				case Msg.TurnOf:
@@ -617,7 +626,7 @@ namespace MercyMode.Battle.Net
 					ServerJoin(from, Main.npc[r.ReadInt16()]);
 					break;
 				case Msg.Ready:
-					ServerReady(from, r.ReadInt32(), r.ReadByte());
+					ServerReady(from, r.ReadInt32(), r.ReadByte(), r.ReadInt32());
 					break;
 				case Msg.ActionDone:
 					ServerActionDone(from, r.ReadInt32());
@@ -768,7 +777,7 @@ namespace MercyMode.Battle.Net
 			SendState(b);
 		}
 
-		internal static void ServerReady(int player, int id, int face)
+		internal static void ServerReady(int player, int id, int face, int weapon = 0)
 		{
 			NetBattle b = Find(id);
 			if (b == null || !b.Players.Contains(player) || b.Stage is Stage.Acting or Stage.Over)
@@ -782,6 +791,7 @@ namespace MercyMode.Battle.Net
 				p.Write(id);
 				p.Write((byte)player);
 				p.Write((byte)face);
+				p.Write(weapon);
 				return p;
 			}, Msg.ReadyState);
 			CheckReady(b);

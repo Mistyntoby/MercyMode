@@ -107,7 +107,7 @@ namespace MercyMode.Battle
 				FaceDefend => HeroPose.Defend,
 				_ => HeroPose.ActReady,
 			});
-			BattleNet.SendReady(face);
+			BattleNet.SendReady(face, CurrentWeapon().Item?.type ?? 0);
 			EnterWaiting();
 		}
 
@@ -360,6 +360,9 @@ namespace MercyMode.Battle
 		/// <summary>An ally's weapon, for their poses: what they're holding, if it's a weapon.</summary>
 		private static Item AllyWeapon(Player p)
 		{
+			// The one they picked in their battle (what they hold in the world isn't kept up to date meanwhile)
+			if (BattleNet.AllyWeapons.TryGetValue(p.whoAmI, out int type) && type > 0)
+				return ContentSamples.ItemsByType[type];
 			Item held = p.HeldItem;
 			return held != null && !held.IsAir && held.damage > 0 && !held.consumable ? held : null;
 		}
