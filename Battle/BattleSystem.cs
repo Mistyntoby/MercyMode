@@ -483,7 +483,8 @@ namespace MercyMode.Battle
 			// Enemies gone without us ending the battle (despawned, killed some other way)
 			foreach (BattleEnemy en in enemies)
 			{
-				if (!en.Out && !en.E.Alive && !(en == targetEnemy && phase is Phase.FightBar or Phase.FightResult))
+				// (Our own killing blow marks it in ResolveHit; in a party someone else's lands any time, even mid-bar)
+				if (!en.Out && !en.E.Alive && (Net.BattleNet.Online || !(en == targetEnemy && phase is Phase.FightBar or Phase.FightResult)))
 				{
 					en.Out = true;
 					// Multiplayer: another party member finished it off
