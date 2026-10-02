@@ -473,12 +473,14 @@ namespace MercyMode.Battle
 						break;
 					case HeroPose.ItemReady:
 					case HeroPose.Item:
-						if (!ally && usedItemType > 0 && (pose == HeroPose.ItemReady || timer <= ItemUseFrame) && shadow < 0.95f)
+						// Ours, or the item an ally picked (sent with their action)
+						int heldType = ally ? AllyItem(p) : usedItemType;
+						if (heldType > 0 && (pose == HeroPose.ItemReady || timer <= ItemUseFrame) && shadow < 0.95f)
 						{
 							// Arm raised, holding the item up; it's used up at ItemUseFrame
 							float armRot = MathHelper.Pi;
 							p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot);
-							manualItem = ContentSamples.ItemsByType[usedItemType];
+							manualItem = ContentSamples.ItemsByType[heldType];
 							manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot);
 							// Raise the potion briskly, then hold it overhead until the use pose ends.
 							float rise = 22f * (1f - (float)Math.Pow(1f - Math.Min(timer, ItemRiseFrames) / ItemRiseFrames, 2f));
