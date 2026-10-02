@@ -539,6 +539,9 @@ namespace MercyMode.Battle
 
 			// Hold the player in place, no falling or fall damage
 			Player.position = playerPosition;
+			// Multiplayer: facing the enemy, as the others see us
+			if (Net.BattleNet.Online && boss != null)
+				Player.direction = boss.Center.X >= Player.Center.X ? 1 : -1;
 			Player.velocity = Vector2.Zero;
 			Player.fallStart = (int)(Player.position.Y / 16f);
 			// Downed (multiplayer): the battle's HP is below zero, the character stays alive at 1

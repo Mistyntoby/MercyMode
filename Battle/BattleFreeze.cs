@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
@@ -21,6 +22,14 @@ namespace MercyMode.Battle
 				return true;
 			// AI is skipped, but Terraria still adds velocity to position afterwards
 			npc.velocity = Vector2.Zero;
+			// Multiplayer, seen from outside: it faces the players fighting it
+			if (!MercyMode.IsSingleplayer && Net.BattleNet.WorldBattles.TryGetValue(Net.BattleNet.BattleOf(npc), out var wb))
+			{
+				Player near = wb.Players.Where(i => i >= 0 && i < Main.maxPlayers && Main.player[i].active)
+					.Select(i => Main.player[i]).OrderBy(pl => pl.DistanceSQ(npc.Center)).FirstOrDefault();
+				if (near != null)
+					npc.direction = npc.spriteDirection = near.Center.X < npc.Center.X ? -1 : 1;
+			}
 			return false;
 		}
 
