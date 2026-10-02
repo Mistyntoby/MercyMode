@@ -29,6 +29,13 @@ namespace MercyMode.Battle
 	{
 		/// <summary>Turn length in ticks (global.turntimer).</summary>
 		public int Duration = BattleConstants.DefaultEnemyTurnTicks;
+		/// <summary>
+		/// The box opens up into an arena over the whole battle screen and everything else goes dark, like the
+		/// Roaring Knight's attacks. Patterns built on <see cref="BattleSystem.Box"/> fill the arena.
+		/// </summary>
+		public bool FullScreen;
+		/// <summary>How the SOUL moves during this attack (red: freely).</summary>
+		public SoulMode Soul;
 		public abstract void Update(BattleSystem battle, int tick);
 	}
 
@@ -41,6 +48,8 @@ namespace MercyMode.Battle
 	{
 		public NPC Npc;
 		public int Turn;
+		/// <summary>A boss's one-time all-out turn at low HP: announced, then used.</summary>
+		public bool DesperationAnnounced, DesperationUsed;
 		/// <summary>How many times each act has been used, by name.</summary>
 		public readonly Dictionary<string, int> ActUses = new();
 		private int lifeMax;
@@ -70,7 +79,7 @@ namespace MercyMode.Battle
 		public bool Alive => Members().Any(m => m.active && m.life > 0);
 
 		/// <summary>Members with their own health pool (worm segments share their head's).</summary>
-		private IEnumerable<NPC> HealthPools() => Members().Where(m => m.active && (m.realLife < 0 || m.realLife == m.whoAmI));
+		public IEnumerable<NPC> HealthPools() => Members().Where(m => m.active && (m.realLife < 0 || m.realLife == m.whoAmI));
 
 		public int Life => HealthPools().Sum(m => Math.Max(0, m.life));
 
@@ -98,6 +107,35 @@ namespace MercyMode.Battle
 			}
 		}
 
+		// ---- breakable parts ----
+
+		/// <summary>
+		/// FIGHT picks a part (Skeletron's hands or head, either Twin...) instead of the boss as a whole. Each part has
+		/// its own HP; breaking one takes it out of the fight, and breaking <see cref="CorePart"/> ends it.
+		/// </summary>
+		public virtual bool TargetableParts => false;
+		/// <summary>The part FIGHT is aimed at (null: <see cref="StrikeTarget"/> decides).</summary>
+		public NPC ChosenPart;
+		/// <summary>The part whose loss ends the fight (the rest go with it); null when every part has to go (the Twins).</summary>
+		public virtual NPC CorePart => Npc.active ? Npc : null;
+		public virtual string PartName(NPC part) => Lang.GetNPCNameValue(part.type).ToUpperInvariant();
+		/// <summary>Lets guarded parts be hit once what guards them is gone (the AI that would do it is paused).</summary>
+		public virtual void UnlockParts() { }
+
+		public static bool CanHit(NPC n) => n != null && n.active && n.life > 0 && !n.dontTakeDamage;
+
+		/// <summary>The parts FIGHT can choose from: the core first, then by name.</summary>
+		public List<NPC> TargetParts()
+		{
+			UnlockParts();
+			NPC core = CorePart;
+			return HealthPools().Where(m => m.life > 0).Distinct()
+				.OrderBy(m => m == core ? 0 : 1).ThenBy(PartName).ToList();
+		}
+
+		/// <summary>Left or right of the core, for naming paired parts.</summary>
+		protected string Side(NPC part) => part.Center.X < (CorePart ?? Npc).Center.X ? "LEFT" : "RIGHT";
+
 		/// <summary>The NPC that FIGHT hits. Skips invulnerable parts while something else can be hurt.</summary>
 		public virtual NPC StrikeTarget()
 		{
@@ -109,6 +147,39 @@ namespace MercyMode.Battle
 
 		/// <summary>The NPC drawn on the battle screen.</summary>
 		public virtual NPC DrawNpc => Npc.active ? Npc : Members().FirstOrDefault(m => m.active);
+
+		/// <summary>
+		/// Draw with Terraria's own NPC renderer, all of <see cref="DrawParts"/> together: for bosses made of several
+		/// NPCs or drawn by special code (wings, legs, arms), which a single sprite sheet would leave out.
+		/// </summary>
+		public virtual bool DrawWithTerraria => false;
+		/// <summary>The NPCs drawn together when <see cref="DrawWithTerraria"/> is on.</summary>
+		public virtual IEnumerable<NPC> DrawParts() => Members();
+		/// <summary>
+		/// Place the drawn NPC itself (its centre) on <see cref="DrawCenter"/> at the hero's scale, instead of fitting and
+		/// centring the whole group: a worm's head on its spot with the body trailing off the screen's right edge.
+		/// </summary>
+		public virtual bool LeadWithDrawNpc => false;
+		/// <summary>The scale <see cref="LeadWithDrawNpc"/> draws at (the hero's is 1.5).</summary>
+		public virtual float LeadScale => BattleConstants.BattleCharacterScale;
+		/// <summary>Each part floats on its own rhythm while idle, and the whole body breathes and bobs (off for worms: they hold still).</summary>
+		public virtual bool SwayParts => true;
+		/// <summary>Draw fully opaque even if the battle froze it mid fade-in (the Empress).</summary>
+		public virtual bool ForceOpaque => false;
+		/// <summary>
+		/// The least world area (pixels) the whole drawn boss covers, for scaling. Hitboxes and frames can be much smaller
+		/// than what Terraria draws (the Moon Lord's torso, the Empress's wings) or bunched up just after spawning.
+		/// </summary>
+		public virtual Vector2 CompositeSize => Vector2.Zero;
+		/// <summary>The battle-screen area the drawn boss is fitted into.</summary>
+		public virtual Vector2 CompositeArea => new(260f, 250f);
+
+		/// <summary>
+		/// Poses the parts for the battle screen (their AI is paused, so they'd stay however the world left them):
+		/// positions, rotations, frames. Only for the draw; everything is put back right after.
+		/// </summary>
+		/// <param name="attacking">0..1, how hard the enemy is attacking this moment.</param>
+		public virtual void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking) { }
 
 		/// <summary>Ends the fight peacefully: removes every other part, then drops the loot from one.</summary>
 		public virtual void Spare()
@@ -139,15 +210,29 @@ namespace MercyMode.Battle
 			}
 			set
 			{
+				float before = Mercy;
 				mercy = MathHelper.Clamp(value, 0f, 100f);
 				if (Npc.active)
 					Npc.GetGlobalNPC<MercyGlobalNPC>().Mercy = mercy;
+				// Multiplayer: the server adds it up for the whole party
+				Net.BattleNet.SendAddMercy(Npc, mercy - before);
 			}
 		}
+
+		/// <summary>MERCY as the server has it (multiplayer), without sending it back.</summary>
+		public void SetMercyQuiet(float value) => mercy = MathHelper.Clamp(value, 0f, 100f);
+
+		/// <summary>
+		/// Bosses' ACTs give this share of their listed MERCY, so sparing a boss takes about as many turns as beating it
+		/// (around 6-8 instead of 4).
+		/// </summary>
+		public const float BossMercyScale = 0.65f;
 
 		/// <summary>Adds MERCY, halving it each time the same act is repeated. Returns what was actually gained.</summary>
 		protected float GainMercy(string actName, float amount)
 		{
+			if (IsBoss)
+				amount *= BossMercyScale;
 			ActUses.TryGetValue(actName, out int uses);
 			ActUses[actName] = uses + 1;
 			float before = Mercy;
@@ -192,8 +277,8 @@ namespace MercyMode.Battle
 			TPCost = MercyPlayer.HealPrayerCost,
 			Run = b =>
 			{
+				// The heal sound plays with the green number (BattleSystem.PlayHealFx)
 				int healed = b.HealPlayer(Math.Max(20, b.Player.statLifeMax2 / 4));
-				Deltarune.DeltaruneAssets.Play("heal", SoundID.Item4);
 				return new List<string> { $"* {b.Player.name} cast HEAL PRAYER!\n* Recovered {healed} HP." };
 			},
 		};
@@ -205,20 +290,31 @@ namespace MercyMode.Battle
 
 		/// <summary>Where the enemy is drawn on the battle screen (its centre).</summary>
 		public virtual Vector2 DrawCenter => new(500, 190);
+		/// <summary>In a battle with several enemies: this one's spot and the size it must fit in.</summary>
+		public Vector2? Slot;
+		public Vector2? SlotArea;
+		/// <summary>Where it's actually drawn: its slot in a group, otherwise <see cref="DrawCenter"/>.</summary>
+		public Vector2 ScreenCenter => Slot ?? DrawCenter;
+
+		/// <summary>The opening line when it leads a group of several enemies.</summary>
+		public virtual string GroupEncounterText(int others) =>
+			others == 1 ? $"* {Name} and a friend drew near!" : $"* {Name} and {others} others drew near!";
 		/// <summary>Extra rotation for the sprite on the battle screen.</summary>
 		public virtual float DrawRotation(int time) => 0f;
 
-		/// <summary>Draws NPC art at its Terraria world size relative to the battle-screen player.</summary>
+		/// <summary>
+		/// Draws NPC art at the same scale as the battle-screen player (1.5x world size), so enemies keep their real
+		/// size next to you; only very big ones are shrunk to fit. (Sizing by hitbox made most enemies too small:
+		/// sprites are usually bigger than their hitboxes.)
+		/// </summary>
 		public virtual float DrawScale(Rectangle frame)
 		{
 			NPC npc = DrawNpc ?? Npc;
-			float desiredHeight = npc == null
-				? BattleConstants.BattleCharacterScale * Main.LocalPlayer.height
-				: npc.height * npc.scale * BattleConstants.BattleCharacterScale;
+			float worldScale = (npc?.scale ?? 1f) * BattleConstants.BattleCharacterScale;
 			float fitToBattleArea = Math.Min(
 				200f / Math.Max(1, frame.Height),
 				220f / Math.Max(1, frame.Width));
-			return Math.Min(desiredHeight / Math.Max(1, frame.Height), fitToBattleArea);
+			return Math.Min(worldScale, fitToBattleArea);
 		}
 
 		/// <summary>Tint used for the sprite (slimes and other recoloured enemies use npc.color).</summary>
@@ -246,6 +342,10 @@ namespace MercyMode.Battle
 		{
 			NPCID.EyeofCthulhu or NPCID.KingSlime or NPCID.BrainofCthulhu or NPCID.QueenBee or NPCID.SkeletronHead
 				or NPCID.Deerclops or NPCID.WallofFlesh => true,
+			// Hardmode
+			NPCID.QueenSlimeBoss or NPCID.Retinazer or NPCID.Spazmatism or NPCID.TheDestroyer or NPCID.SkeletronPrime
+				or NPCID.Plantera or NPCID.Golem or NPCID.DukeFishron or NPCID.HallowBoss or NPCID.CultistBoss
+				or NPCID.MoonLordCore => true,
 			_ => EaterTypes.Contains(type),
 		};
 
@@ -274,6 +374,46 @@ namespace MercyMode.Battle
 				case NPCID.Bee:
 				case NPCID.BeeSmall:
 					return Find(NPCID.QueenBee) ?? root;
+				// Hardmode bosses' parts and minions
+				case NPCID.QueenSlimeMinionBlue:
+				case NPCID.QueenSlimeMinionPink:
+				case NPCID.QueenSlimeMinionPurple:
+					return Find(NPCID.QueenSlimeBoss) ?? root;
+				case NPCID.Probe:
+					return Find(NPCID.TheDestroyer) ?? root;
+				case NPCID.PrimeCannon:
+				case NPCID.PrimeSaw:
+				case NPCID.PrimeVice:
+				case NPCID.PrimeLaser:
+					return Find(NPCID.SkeletronPrime) ?? root;
+				case NPCID.PlanterasHook:
+				case NPCID.PlanterasTentacle:
+				case NPCID.Spore:
+					return Find(NPCID.Plantera) ?? root;
+				case NPCID.GolemHead:
+				case NPCID.GolemHeadFree:
+				case NPCID.GolemFistLeft:
+				case NPCID.GolemFistRight:
+					return Find(NPCID.Golem) ?? root;
+				case NPCID.Sharkron:
+				case NPCID.Sharkron2:
+				case NPCID.DetonatingBubble:
+					return Find(NPCID.DukeFishron) ?? root;
+				case NPCID.CultistBossClone:
+				case NPCID.AncientLight:
+				case NPCID.AncientDoom:
+				case NPCID.CultistDragonHead:
+				case NPCID.CultistDragonBody1:
+				case NPCID.CultistDragonBody2:
+				case NPCID.CultistDragonBody3:
+				case NPCID.CultistDragonBody4:
+				case NPCID.CultistDragonTail:
+					return Find(NPCID.CultistBoss) ?? root;
+				case NPCID.MoonLordHead:
+				case NPCID.MoonLordHand:
+				case NPCID.MoonLordFreeEye:
+				case NPCID.MoonLordLeechBlob:
+					return Find(NPCID.MoonLordCore) ?? root;
 			}
 			return root;
 		}
@@ -288,16 +428,33 @@ namespace MercyMode.Battle
 
 		public static bool IsBossFight(NPC root) => root.boss || HasCustom(root.type);
 
+		/// <summary>An invasion, a Pumpkin or Frost Moon, an eclipse, the Old One's Army or the Lunar Events.</summary>
+		public static bool EventActive =>
+			Main.invasionType > 0 || Main.pumpkinMoon || Main.snowMoon || Main.eclipse
+			|| Terraria.GameContent.Events.DD2Event.Ongoing || NPC.LunarApocalypseIsUp;
+
 		/// <summary>Whether touching/hitting this (root) NPC starts a battle.</summary>
 		public static bool Eligible(NPC root)
 		{
 			if (!root.active || root.life <= 0 || root.friendly || root.townNPC || NPCID.Sets.ActsLikeTownNPC[root.type])
+				return false;
+			// The Dungeon Guardian stays vanilla: the unstoppable skull that guards the Dungeon before Skeletron falls
+			// (as a battle it was either instant death or a two-turn spare past the barrier)
+			if (root.type == NPCID.DungeonGuardian)
+				return false;
+			// The Moon Lord rises for a second before its head and hands exist (core ai[0] = -1)
+			if (root.type == NPCID.MoonLordCore && root.ai[0] < 0f)
 				return false;
 			if (IsBossFight(root))
 				return true;
 
 			var config = ModContent.GetInstance<MercyConfig>();
 			if (config != null && !config.BattlesWithEnemies)
+				return false;
+			if (Armies.NeverBattle(root.type))
+				return false;
+			// During an event, battles take on a squad of that army at a time (or none, if turned off)
+			if (EventActive && config?.EventBattles == false)
 				return false;
 			// A boss's fight already has its minions; leave the rest of the world alone during it
 			if (MercyMode.AnyBossAlive())
@@ -317,6 +474,16 @@ namespace MercyMode.Battle
 				NPCID.SkeletronHead => new Skeletron(),
 				NPCID.Deerclops => new Deerclops(),
 				NPCID.WallofFlesh => new WallOfFlesh(),
+				NPCID.QueenSlimeBoss => new QueenSlime(),
+				NPCID.Retinazer or NPCID.Spazmatism => new Twins(),
+				NPCID.TheDestroyer => new Destroyer(),
+				NPCID.SkeletronPrime => new SkeletronPrime(),
+				NPCID.Plantera => new Plantera(),
+				NPCID.Golem => new Golem(),
+				NPCID.DukeFishron => new DukeFishron(),
+				NPCID.HallowBoss => new EmpressOfLight(),
+				NPCID.CultistBoss => new LunaticCultist(),
+				NPCID.MoonLordCore => new MoonLord(),
 				_ when EaterTypes.Contains(root.type) => new EaterOfWorlds(),
 				_ when root.boss => new GenericBoss(),
 				_ => EnemyFamilies.For(root),

@@ -27,6 +27,17 @@ namespace MercyMode.Battle
 			Sb.Draw(TextureAssets.MagicPixel.Value, new Vector2(x, y), Pixel, color, 0f, Vector2.Zero, new Vector2(w, h), SpriteEffects.None, 0f);
 		}
 
+		/// <summary>A straight line of some thickness from a to b (beams, telegraphs).</summary>
+		public static void Line(Vector2 a, Vector2 b, float thickness, Color color)
+		{
+			Vector2 d = b - a;
+			float length = d.Length();
+			if (length <= 0f || thickness <= 0f)
+				return;
+			Sb.Draw(TextureAssets.MagicPixel.Value, a, Pixel, color, (float)Math.Atan2(d.Y, d.X), new Vector2(0f, 0.5f),
+				new Vector2(length, thickness), SpriteEffects.None, 0f);
+		}
+
 		/// <summary>GameMaker's draw_rectangle(..., outline = true) with a 1 px line, or thicker.</summary>
 		public static void Outline(float x, float y, float w, float h, Color color, float t = 1f)
 		{
@@ -105,7 +116,12 @@ namespace MercyMode.Battle
 		{
 			DrFont f = DeltaruneAssets.Font(font);
 			if (f == null)
+			{
+				// No fonts on a dedicated server (the headless lab): a fixed width per character
+				if (Main.dedServ)
+					return text.Length * (font == BigFont ? 16f : 8f);
 				return FontAssets.MouseText.Value.MeasureString(text).X * FallbackScale(font);
+			}
 			float w = 0;
 			foreach (char c in text)
 				if (f.Glyphs.TryGetValue(c, out var g))

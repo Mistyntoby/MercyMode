@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Terraria;
 using Terraria.DataStructures;
 using Terraria.ModLoader;
@@ -8,20 +9,29 @@ namespace MercyMode.Battle
 	/// <summary>Starts battles on contact or hit, and holds every NPC still while one is open.</summary>
 	public class BattleFreezeNPC : GlobalNPC
 	{
+		/// <summary>
+		/// Held still: in singleplayer everything is while a battle is open; in multiplayer only the enemies of a battle
+		/// (the rest of the world keeps going for everyone else).
+		/// </summary>
+		public static bool Frozen(NPC npc) => MercyMode.IsSingleplayer ? BattleSystem.Active : Net.BattleNet.IsFrozen(npc);
+
 		public override bool PreAI(NPC npc)
 		{
-			if (!BattleSystem.Active)
+			if (!Frozen(npc))
 				return true;
 			// AI is skipped, but Terraria still adds velocity to position afterwards
 			npc.velocity = Vector2.Zero;
 			return false;
 		}
 
-		public override bool CheckActive(NPC npc) => !BattleSystem.Active;
+		public override bool CheckActive(NPC npc) => !Frozen(npc);
 
 		public override bool CanHitPlayer(NPC npc, Player target, ref int cooldownSlot)
 		{
-			if (BattleSystem.Active)
+			if (BattleSystem.Active || Net.BattleNet.Online && Net.BattleNet.RequestPending)
+				return false;
+			// Multiplayer: another party's enemies are harmless (the join key brings you into their battle)
+			if (Net.BattleNet.IsFrozen(npc))
 				return false;
 			// Terraria asks this for every hostile NPC every tick, before checking that the hitboxes touch
 			if (npc.Hitbox.Intersects(target.Hitbox) && BattleSystem.CanStart(npc, target))
@@ -31,6 +41,11 @@ namespace MercyMode.Battle
 			}
 			return true;
 		}
+
+		// During a battle only FIGHT hurts enemies (SimpleStrikeNPC skips these): no leftover swing or shot in the world
+		public override bool? CanBeHitByItem(NPC npc, Player player, Item item) => Frozen(npc) || BattleSystem.Active ? false : null;
+
+		public override bool? CanBeHitByProjectile(NPC npc, Projectile projectile) => Frozen(npc) || BattleSystem.Active ? false : null;
 
 		public override void OnHitByItem(NPC npc, Player player, Item item, NPC.HitInfo hit, int damageDone)
 			=> BattleSystem.TryStart(npc, player, "hit by " + item.Name);
@@ -42,9 +57,26 @@ namespace MercyMode.Battle
 				BattleSystem.TryStart(npc, Main.player[projectile.owner], "hit by " + projectile.Name);
 		}
 
+		public override bool PreDraw(NPC npc, SpriteBatch spriteBatch, Vector2 screenPos, Color drawColor)
+			// The battle screen draws this one (gliding in and out of its world spot); the world copy stays hidden
+			=> BattleSystem.DrawingEnemy || !BattleSystem.IsBattleSprite(npc);
+
+		public override void DrawEffects(NPC npc, ref Color drawColor)
+		{
+			// On the battle screen: full-bright, or the world's light while gliding in or out
+			if (BattleSystem.DrawingEnemy)
+			{
+				drawColor = BattleSystem.Tint(Color.White, BattleSystem.EnemyLight);
+				// Picking a part: the others dim, so the one under the cursor stands out
+				if (BattleSystem.FlashPart >= 0 && npc.whoAmI != BattleSystem.FlashPart)
+					drawColor = BattleSystem.Tint(drawColor, new Color(110, 110, 120));
+			}
+		}
+
 		public override void EditSpawnRate(Player player, ref int spawnRate, ref int maxSpawns)
 		{
-			if (BattleSystem.Active)
+			// Multiplayer: the server spawns enemies, so it checks who's in a battle
+			if (MercyMode.IsSingleplayer ? BattleSystem.Active : Net.BattleNet.InBattle(player.whoAmI))
 				maxSpawns = 0;
 		}
 	}
@@ -53,7 +85,8 @@ namespace MercyMode.Battle
 	{
 		public override bool PreAI(Projectile projectile)
 		{
-			if (!BattleSystem.Active)
+			// Multiplayer: projectiles belong to their owners and the server; the world keeps going
+			if (!BattleSystem.Active || !MercyMode.IsSingleplayer)
 				return true;
 			projectile.velocity = Vector2.Zero;
 			projectile.timeLeft++; // don't expire while frozen
@@ -73,10 +106,23 @@ namespace MercyMode.Battle
 			Player.controlLeft = Player.controlRight = Player.controlUp = Player.controlDown = false;
 			Player.controlJump = Player.controlUseItem = Player.controlUseTile = Player.controlThrow = false;
 			Player.controlHook = Player.controlMount = Player.controlQuickHeal = Player.controlQuickMana = false;
-			Player.controlSmart = Player.controlTorch = Player.controlInv = Player.controlMap = false;
+			// The inventory key (Esc) opens the pause menu instead: BattleSystem.PostUpdateInput
+			Player.controlSmart = Player.controlTorch = Player.controlMap = Player.controlInv = false;
 		}
 
 		public override bool CanUseItem(Item item) => !BattleSystem.Active;
+
+		public override void HideDrawLayers(PlayerDrawSet drawInfo)
+		{
+			// The battle screen draws the character (gliding in and out of this spot); hide the world copy until it lands
+			// headOnlyRender: the nameplate portrait and map icons draw through here too; keep those
+			// Party members too (multiplayer): the battle screen glides them in from their spots as well
+			int who = drawInfo.drawPlayer.whoAmI;
+			if (!BattleSystem.Active || BattleSystem.DrawingHero || drawInfo.headOnlyRender || who != Main.myPlayer && !Net.BattleNet.Party.Contains(who))
+				return;
+			foreach (PlayerDrawLayer layer in PlayerDrawLayerLoader.Layers)
+				layer.Hide();
+		}
 
 		public override bool CanBeHitByNPC(NPC npc, ref int cooldownSlot) => !BattleSystem.Active;
 
@@ -84,6 +130,15 @@ namespace MercyMode.Battle
 
 		public override bool ImmuneTo(PlayerDeathReason damageSource, int cooldownCounter, bool dodgeable)
 			=> BattleSystem.Active && !BattleSystem.HurtingPlayer;
+
+		public override bool PreKill(double damage, int hitDirection, bool pvp, ref bool playSound, ref bool genDust, ref PlayerDeathReason damageSource)
+		{
+			// A lethal hit in a battle: the SOUL breaks on the battle screen first, then the battle kills the player
+			if (!BattleSystem.Active || Player.whoAmI != Main.myPlayer)
+				return true;
+			BattleSystem.Instance.RequestSoulDeath(damageSource, damage);
+			return false;
+		}
 
 		public override void ModifyDrawInfo(ref PlayerDrawSet drawInfo)
 		{
@@ -107,6 +162,28 @@ namespace MercyMode.Battle
 			drawInfo.colorMount = Color.White;
 			drawInfo.colorDisplayDollSkin = Color.White;
 			drawInfo.floatingTubeColor = Color.White;
+
+			// While gliding to or from the world, match the world's lighting at the player's spot
+			Color light = BattleSystem.HeroLight;
+			if (light != Color.White)
+			{
+				drawInfo.colorHair = BattleSystem.Tint(drawInfo.colorHair, light);
+				drawInfo.colorEyeWhites = BattleSystem.Tint(drawInfo.colorEyeWhites, light);
+				drawInfo.colorEyes = BattleSystem.Tint(drawInfo.colorEyes, light);
+				drawInfo.colorHead = BattleSystem.Tint(drawInfo.colorHead, light);
+				drawInfo.colorBodySkin = BattleSystem.Tint(drawInfo.colorBodySkin, light);
+				drawInfo.colorLegs = BattleSystem.Tint(drawInfo.colorLegs, light);
+				drawInfo.colorShirt = BattleSystem.Tint(drawInfo.colorShirt, light);
+				drawInfo.colorUnderShirt = BattleSystem.Tint(drawInfo.colorUnderShirt, light);
+				drawInfo.colorPants = BattleSystem.Tint(drawInfo.colorPants, light);
+				drawInfo.colorShoes = BattleSystem.Tint(drawInfo.colorShoes, light);
+				drawInfo.colorArmorHead = BattleSystem.Tint(drawInfo.colorArmorHead, light);
+				drawInfo.colorArmorBody = BattleSystem.Tint(drawInfo.colorArmorBody, light);
+				drawInfo.colorArmorLegs = BattleSystem.Tint(drawInfo.colorArmorLegs, light);
+				drawInfo.colorMount = BattleSystem.Tint(drawInfo.colorMount, light);
+				drawInfo.colorDisplayDollSkin = BattleSystem.Tint(drawInfo.colorDisplayDollSkin, light);
+				drawInfo.floatingTubeColor = BattleSystem.Tint(drawInfo.floatingTubeColor, light);
+			}
 
 			// Afterimages are drawn with a "shadow" amount; keep them see-through like Terraria does
 			if (drawInfo.shadow > 0f)
@@ -140,10 +217,14 @@ namespace MercyMode.Battle
 	}
 
 	/// <summary>Silences Terraria's music while Rude Buster plays.</summary>
+	/// <summary>
+	/// Silences Terraria's music while Rude Buster plays. In boss battles it stays off, so Terraria picks the boss's
+	/// own track as usual (vanilla, modded, Otherworldly).
+	/// </summary>
 	public class BattleMusicScene : ModSceneEffect
 	{
-		public override int Music => Deltarune.DeltaruneAssets.BattleMusic != null ? 0 : -1;
+		public override int Music => 0;
 		public override SceneEffectPriority Priority => SceneEffectPriority.BossHigh;
-		public override bool IsSceneEffectActive(Player player) => BattleSystem.Active;
+		public override bool IsSceneEffectActive(Player player) => BattleSystem.SilenceTerrariaMusic;
 	}
 }

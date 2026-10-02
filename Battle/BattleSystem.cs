@@ -6,6 +6,7 @@ using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
+using Terraria.GameInput;
 using Terraria.DataStructures;
 using Terraria.GameContent;
 using Terraria.ID;
@@ -24,7 +25,7 @@ namespace MercyMode.Battle
 	/// </summary>
 	public partial class BattleSystem : ModSystem
 	{
-		public enum Phase { None, Intro, Menu, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro }
+		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting }
 		private enum Choice { Fight, Act, Item, Spare, Defend }
 
 		public static BattleSystem Instance => ModContent.GetInstance<BattleSystem>();
@@ -32,6 +33,11 @@ namespace MercyMode.Battle
 		/// <summary>True while the battle itself is hurting the player, so other damage stays blocked.</summary>
 		public static bool HurtingPlayer;
 		public static bool Defending => Active && Instance.defending;
+		/// <summary>
+		/// True while Terraria's music should be silent: Rude Buster is playing, or the SOUL is breaking (Deltarune cuts
+		/// the music then, boss tracks included).
+		/// </summary>
+		public static bool SilenceTerrariaMusic => Active && (Instance.music != null || Instance.phase == Phase.Death);
 
 		// ---- state ----
 		private Phase phase = Phase.None;
@@ -68,6 +74,8 @@ namespace MercyMode.Battle
 
 		// enemy turn
 		public readonly List<Bullet> Bullets = new();
+		private readonly List<Bullet> spawnedDuringUpdate = new();
+		private bool updatingBullets;
 		private EnemyAttack attack;
 		private float turnTimer;
 		private Vector2 soul; // top-left of spr_dodgeheart, like obj_heart's x/y
@@ -79,19 +87,14 @@ namespace MercyMode.Battle
 		private struct BoxAfterimage
 		{
 			public float Scale, Rotation, Alpha;
-			public int Age;
+			public float Age; // frames
 		}
 		private readonly List<BoxAfterimage> boxAfterimages = new();
 
 		// fight
 		private float boltX; // frames since the bar appeared (boltx)
-		private bool boltAlive;
-		private int boltPoints = -1;
-		private Vector2 burstPos;
-		private int burstTimer;
 		private float fightFade;
 		private int slashTimer = -1;
-		private int enemyShake;
 		private float enemyAttackEnergy;
 		private Vector2 enemyAttackDirection;
 		private int patternSoundCooldown;
@@ -108,11 +111,19 @@ namespace MercyMode.Battle
 		/// <summary>Only the battle changes HP: no natural regen, potions' regen or debuffs while it's open.</summary>
 		private int battleLife;
 		private int lastHeal = -1;
-		private int attackPending = -1;
 		private float soulAlpha = 1f;
 		private float partyLift;
 		private float musicVolumeCurrent;
 		private PlayerHeadDrawRenderTargetContent playerHeadPortrait;
+		/// <summary>
+		/// global.faceaction: the nameplate shows an icon for the chosen command instead of the head (a frame of
+		/// spr_headkris) from the moment it's chosen until the next player turn.
+		/// </summary>
+		private int faceAction;
+		private const int FaceNone = 0, FaceFight = 1, FaceItem = 3, FaceDefend = 4, FaceAct = 6, FaceSpare = 10;
+
+		/// <summary>Sets the HP the battle holds the player at (test command).</summary>
+		public void SetBattleLife(int life) => battleLife = life;
 
 		/// <summary>Heals the player during the battle. Returns how much HP was actually restored.</summary>
 		public int HealPlayer(int amount)
@@ -128,12 +139,15 @@ namespace MercyMode.Battle
 
 		public static bool CanStart(NPC npc, Player player, bool ignoreGrace = false)
 		{
-			if (Active || !MercyMode.IsSingleplayer || player.whoAmI != Main.myPlayer || player.dead)
+			if (Active || !(MercyMode.IsSingleplayer || Net.BattleNet.Online) || player.whoAmI != Main.myPlayer || player.dead)
 				return false;
 			var config = ModContent.GetInstance<MercyConfig>();
 			if (config != null && !config.TurnBasedBattles)
 				return false;
 			if (!ignoreGrace && Main.GameUpdateCount - Instance.lastEndTick < GraceTicks && Instance.lastEndTick != 0)
+				return false;
+			// Just came into the world (back after leaving mid-battle, say): a moment before anything starts a battle
+			if (!ignoreGrace && Instance.enterGrace > 0)
 				return false;
 			return EncounterRegistry.Eligible(EncounterRegistry.ResolveRoot(npc));
 		}
@@ -141,14 +155,40 @@ namespace MercyMode.Battle
 		public static void TryStart(NPC npc, Player player, string reason = "")
 		{
 			bool command = reason == "command";
-			if (CanStart(npc, player, command))
-				Instance.Start(EncounterRegistry.ResolveRoot(npc), reason);
+			if (!CanStart(npc, player, command))
+				return;
+			NPC root = EncounterRegistry.ResolveRoot(npc);
+			// Multiplayer: the server sets the battle up (and pulls nearby players in), then tells us to start
+			if (Net.BattleNet.Online)
+			{
+				Net.BattleNet.RequestBattle(root, Instance.GatherEnemies(root));
+				return;
+			}
+			Instance.Start(root, reason);
 		}
 
-		private void Start(NPC root, string reason)
+		/// <summary>Multiplayer: the server put this player in a battle with these enemies. False if it can't start.</summary>
+		internal bool StartNet(List<(NPC Npc, float Mercy)> roots, bool spectate)
+		{
+			if (Player.dead || ModContent.GetInstance<MercyConfig>()?.TurnBasedBattles == false)
+				return false;
+			Start(roots[0].Npc, spectate ? "joined" : "multiplayer", roots.Select(r => r.Npc).ToList());
+			spectating = spectate;
+			foreach (BattleEnemy e in enemies)
+			{
+				var r = roots.FirstOrDefault(x => x.Npc == e.E.Npc);
+				if (r.Npc != null)
+					e.E.SetMercyQuiet(r.Mercy);
+			}
+			return true;
+		}
+
+		private void Start(NPC root, string reason, List<NPC> given = null)
 		{
 			boss = root;
-			encounter = EncounterRegistry.Create(root);
+			// The enemy, plus nearby ones (a squad, during an event) for regular fights; the first is the target
+			SetUpEnemies(root, given);
+			ResetNet();
 			time = 0;
 			battleOver = false;
 			defending = false;
@@ -157,59 +197,84 @@ namespace MercyMode.Battle
 			boxAfterimages.Clear();
 			messages.Clear();
 			effects.Clear();
-			enemyOverride = null;
-			enemySnap = default;
 			SetHeroPose(HeroPose.Idle);
 			hurtTimer = -1;
 			shake = 0;
 			pendingHealFx = -1;
 			usedItemType = 0;
-			attackPending = -1;
+			faceAction = FaceNone;
+			fightWeaponSlot = -1;
+			fightWeapon = null;
+			heroRecoil = 0f;
+			partScreen.Clear();
+			slashPart = -1;
 			// The party and the enemy fly in from where they stood in the world
-			CaptureWorldPositions(root);
-			enemyWorldRotation = root.rotation;
+			CaptureWorldPositions();
 			tpBarX = -40f;
-			tpBarSpeed = 0f;
+			tpBarIn = -1f;
 			panel = 0;
 			selectedBarPhase = 0f;
 			partyLift = 0f;
 			panelDir = 0;
 			screenFade = 0;
+			arenaBlend = 0f;
 			slashTimer = -1;
-			enemyShake = 0;
 			enemyAttackEnergy = 0f;
 			enemyAttackDirection = Vector2.Zero;
 			patternSoundCooldown = 0;
 			musicVolumeCurrent = 0f;
 			musicStarted = false;
+			deathPending = false;
+			deathReason = null;
+			soulShards.Clear();
 			var mp = Player.GetModPlayer<MercyPlayer>();
 			tpApparent = tpCurrent = mp.TP / TensionToTP;
 
-			npcVelocities.Clear();
-			foreach (NPC n in Main.ActiveNPCs)
-				npcVelocities[n.whoAmI] = (n.type, n.velocity);
-			projVelocities.Clear();
+			// The swing or shot that started the battle stops here: no frozen mid-swing pose, no hits in the background
+			Player.itemAnimation = 0;
+			Player.itemTime = 0;
+			Player.channel = false;
 			foreach (Projectile p in Main.ActiveProjectiles)
-				projVelocities[p.whoAmI] = (p.type, p.velocity);
+				if (p.owner == Player.whoAmI && p.friendly && !p.npcProj && !p.minion && !p.sentry)
+					p.Kill();
+
+			npcVelocities.Clear();
+			projVelocities.Clear();
+			// In multiplayer the server holds (and later releases) the battle's enemies; nothing else stops
+			if (!Net.BattleNet.Online)
+			{
+				foreach (NPC n in Main.ActiveNPCs)
+					npcVelocities[n.whoAmI] = (n.type, n.velocity);
+				foreach (Projectile p in Main.ActiveProjectiles)
+					projVelocities[p.whoAmI] = (p.type, p.velocity);
+			}
 			playerPosition = Player.position;
 			battleLife = Player.statLife;
 			CreatePlayerHeadPortrait();
 
-			if (DeltaruneAssets.BattleMusic != null)
+			// Bosses keep their own Terraria music (BattleMusicScene steps aside); other battles get Rude Buster
+			bool bossMusic = encounter.IsBoss && (ModContent.GetInstance<MercyConfig>()?.BossBattleMusic ?? true);
+			if (DeltaruneAssets.BattleMusic != null && !bossMusic)
 			{
 				music = DeltaruneAssets.BattleMusic.CreateInstance();
 				music.IsLooped = true;
 				music.Volume = 0f;
 			}
 
-			SetText(encounter.EncounterText);
+			// No owls or wind over the battle; Terraria's ambience comes back when it ends
+			AmbienceMute.Mute();
+			// The boss's own track, turned up to sit level with the battle's sounds
+			if (bossMusic)
+				AmbienceMute.BoostMusic(ModContent.GetInstance<MercyConfig>()?.BossMusicBoost ?? 1.6f);
+
+			SetText(OpeningText());
 			SetPhase(Phase.Intro);
 			Mod.Logger.Info($"Battle started with {boss.FullName} as {encounter.GetType().Name} ({encounter.Life}/{encounter.LifeMax} HP) by {reason}");
 		}
 
-		private void End()
+		private void End(bool killPlayer = false)
 		{
-			Mod.Logger.Info($"Battle ended (enemy alive: {encounter?.Alive}, player dead: {Player.dead})");
+			Mod.Logger.Info($"Battle ended (enemy alive: {encounter?.Alive}, player dead: {Player.dead}, killed by the battle: {killPlayer})");
 			lastEndTick = (uint)Main.GameUpdateCount;
 			// Put everything back in motion where it was
 			foreach (var (i, (type, vel)) in npcVelocities)
@@ -226,15 +291,30 @@ namespace MercyMode.Battle
 			}
 			npcVelocities.Clear();
 			projVelocities.Clear();
+			Net.BattleNet.LeaveBattle();
 
 			music?.Stop();
 			music?.Dispose();
 			music = null;
+			StopChargeLoop();
+			AmbienceMute.Restore();
 			ReleasePlayerHeadPortrait();
 			Bullets.Clear();
 			phase = Phase.None;
 			encounter = null;
 			boss = null;
+			enemies.Clear();
+			SetTarget(null);
+
+			if (killPlayer)
+			{
+				// The SOUL has shattered: now the player really dies, in the world, with Terraria's own death
+				PlayerDeathReason reason = deathReason ?? PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral($"{Player.name} was defeated."));
+				deathReason = null;
+				Player.statLife = 0;
+				Player.KillMe(reason, Math.Max(1.0, deathDamage), 0);
+				return;
+			}
 
 			// A moment of mercy so the boss can't hit you the instant the world unfreezes
 			if (!Player.dead)
@@ -273,15 +353,24 @@ namespace MercyMode.Battle
 				music?.Stop();
 				music?.Dispose();
 				music = null;
+				StopChargeLoop();
 				phase = Phase.None;
 				encounter = null;
 				boss = null;
+				enemies.Clear();
+				SetTarget(null);
 				Bullets.Clear();
 			}
 		}
 
 		private void SetPhase(Phase p)
 		{
+			// The yellow SOUL's charge hum only lasts as long as the turn
+			if (p != Phase.EnemyTurn)
+			{
+				StopChargeLoop();
+				zHold = 0;
+			}
 			phase = p;
 			phaseTicks = 0;
 			Mod.Logger.Debug($"Battle phase {p} (turn {encounter?.Turn}, boss {encounter?.Life}/{encounter?.LifeMax}, mercy {encounter?.Mercy:0}, TP {Player.GetModPlayer<MercyPlayer>().TP:0.0}, HP {Player.statLife})");
@@ -289,6 +378,10 @@ namespace MercyMode.Battle
 
 		private void SetText(string s)
 		{
+			messageTicks = 0;
+			// Multiplayer: the others watch this player's turn in their own text box
+			if (executing)
+				Net.BattleNet.SendPartyText(s);
 			text = DrDraw.Wrap(s, 570f);
 			textShown = 0;
 			textSoundedThrough = 0;
@@ -313,6 +406,7 @@ namespace MercyMode.Battle
 		// ================================================================== update
 
 		private int queuedNpc = -1;
+		private const int QueueRetryTicks = 300;
 		private int queuedTicks;
 
 		/// <summary>Starts a battle with this NPC after a few ticks (test command).</summary>
@@ -322,14 +416,37 @@ namespace MercyMode.Battle
 			Instance.queuedTicks = ticks;
 		}
 
+		/// <summary>Ticks after entering a world during which touching an enemy doesn't start a battle.</summary>
+		private int enterGrace;
+		private const int EnterGraceTicks = 5 * 60;
+
+		/// <summary>Entering a world: everything about battles starts fresh, with a moment's grace.</summary>
+		public void OnEnterWorld()
+		{
+			if (phase != Phase.None)
+				End();
+			enterGrace = EnterGraceTicks;
+			queuedNpc = -1;
+		}
+
 		public override void PostUpdateEverything()
 		{
+			if (enterGrace > 0)
+				enterGrace--;
 			if (queuedNpc >= 0 && --queuedTicks <= 0)
 			{
 				NPC q = Main.npc[queuedNpc];
-				queuedNpc = -1;
-				if (q.active)
+				// Some bosses aren't ready right away (the Moon Lord spends a second rising before its head and
+				// hands exist): keep trying for a few seconds
+				if (q.active && CanStart(EncounterRegistry.ResolveRoot(q), Player, ignoreGrace: true))
+				{
+					queuedNpc = -1;
 					TryStart(q, Player, "command");
+				}
+				else if (!q.active || queuedTicks < -QueueRetryTicks)
+				{
+					queuedNpc = -1;
+				}
 			}
 			if (phase == Phase.None)
 				return;
@@ -340,18 +457,41 @@ namespace MercyMode.Battle
 				End();
 				return;
 			}
-			// Enemy gone without us ending the battle (despawned, killed some other way)
-			if (!encounter.Alive && phase != Phase.Outro && phase != Phase.Message && phase != Phase.FightResult)
+			// Enemies gone without us ending the battle (despawned, killed some other way)
+			foreach (BattleEnemy en in enemies)
+			{
+				if (!en.Out && !en.E.Alive && !(en == targetEnemy && phase is Phase.FightBar or Phase.FightResult))
+				{
+					en.Out = true;
+					// Multiplayer: another party member finished it off
+					if (Net.BattleNet.Online && en.Override == null)
+						WithEnemy(en, PlayEnemyDeath);
+				}
+			}
+			if (LivingEnemies.Count == 0 && phase != Phase.Outro && phase != Phase.Message && phase != Phase.FightBar && phase != Phase.FightResult && phase != Phase.Death)
 			{
 				battleOver = true;
-				StartOutro();
+				// Multiplayer: someone else won it; this player gets the same YOU WON! before the battle closes
+				if (Net.BattleNet.InParty)
+				{
+					SetHeroPose(HeroPose.Victory);
+					string how = enemies.All(e => e.Override is SpareAnimation) ? "* Everyone was spared." :
+						enemies.Count == 1 ? $"* {enemies[0].E.Name} was defeated." : "* Every enemy was defeated.";
+					ShowMessages(new[] { "* YOU WON!\n" + how }, StartOutro);
+				}
+				else
+					StartOutro();
 			}
 
 			time++;
 			phaseTicks++;
-			if (music != null && musicStarted && phase != Phase.Outro)
+			// A lethal hit (or drowning, poison...) held back by BattlePlayer.PreKill: break the SOUL first
+			if (deathPending)
+				BeginSoulDeath();
+			// Full volume from the first beat; only the end of the battle fades it (and the volume setting still applies live)
+			if (music != null && musicStarted && phase != Phase.Outro && phase != Phase.Death)
 			{
-				musicVolumeCurrent = MathHelper.Lerp(musicVolumeCurrent, DeltaruneAssets.BattleMusicVolume, 0.08f);
+				musicVolumeCurrent = DeltaruneAssets.BattleMusicVolume;
 				music.Volume = musicVolumeCurrent;
 			}
 
@@ -362,11 +502,10 @@ namespace MercyMode.Battle
 			Player.statLife = Math.Min(battleLife, Player.statLifeMax2);
 			Player.lifeRegenCount = 0;
 
-			if (time % TicksPerFrame == 0)
-			{
-				UpdateHudFrame();
-				UpdateHeroFrame();
-			}
+			// Every tick (60 fps), stepped in half Deltarune frames
+			UpdateHudFrame();
+			UpdateHeroFrame();
+			UpdateArena();
 			if (textShown < text.Length)
 			{
 				int visibleBefore = (int)textShown;
@@ -377,12 +516,11 @@ namespace MercyMode.Battle
 			}
 			if (grazeTimer > 0)
 				grazeTimer--;
-			if (enemyShake > 0)
-				enemyShake--;
+			foreach (BattleEnemy en in enemies)
+				if (en.Shake > 0)
+					en.Shake--;
 			if (patternSoundCooldown > 0)
 				patternSoundCooldown--;
-			if (burstTimer > 0)
-				burstTimer--;
 			if (slashTimer >= 0 && ++slashTimer > 20)
 				slashTimer = -1;
 
@@ -390,6 +528,7 @@ namespace MercyMode.Battle
 			{
 				case Phase.Intro: UpdateIntro(); break;
 				case Phase.Menu: UpdateMenu(); break;
+				case Phase.WeaponSelect: UpdateWeaponSelect(); break;
 				case Phase.EnemySelect: UpdateEnemySelect(); break;
 				case Phase.ActSelect: UpdateActSelect(); break;
 				case Phase.ItemSelect: UpdateItemSelect(); break;
@@ -400,59 +539,66 @@ namespace MercyMode.Battle
 				case Phase.EnemyTurn: UpdateEnemyTurn(); break;
 				case Phase.EnemyOutro: UpdateEnemyOutro(); break;
 				case Phase.Outro: UpdateOutro(); break;
+				case Phase.Death: UpdateSoulDeath(); break;
+				case Phase.Waiting: UpdateWaiting(); break;
 			}
+			SendSoul();
 		}
 
 		/// <summary>The parts of obj_battlecontroller / obj_tensionbar that count in Deltarune frames.</summary>
-		private float tpBarX = -40f, tpBarSpeed;
-		private float enemyWorldRotation;
+		private float tpBarX = -40f;
+		/// <summary>Frames since the TP bar started sliding in, or -1 before it does.</summary>
+		private float tpBarIn = -1f;
 
+		/// <summary>Every tick: Deltarune's per-frame HUD motion, stepped in half frames so it moves at 60 fps.</summary>
 		private void UpdateHudFrame()
 		{
-			// obj_tensionbar: x = -40, hspeed 13, friction 1 -> stops at 38. Slides back out at the end.
+			const float dt = FrameStep;
+			// obj_tensionbar: x = -40, hspeed 13, friction 1 -> stops at 38 after 12 frames. After n frames that's
+			// -40 + 13n - n(n+1)/2, which also gives the in-between positions. Slides back out at the end.
 			if (panelDir < 0)
 			{
-				tpBarX = Math.Max(-40f, tpBarX - 13f);
+				tpBarX = Math.Max(-40f, tpBarX - 13f * dt);
 			}
-			else if (tpBarSpeed > 0f)
+			else if (tpBarIn >= 0f)
 			{
-				tpBarSpeed = Math.Max(0f, tpBarSpeed - 1f);
-				tpBarX += tpBarSpeed;
+				tpBarIn = Math.Min(12f, tpBarIn + dt);
+				tpBarX = -40f + 13f * tpBarIn - tpBarIn * (tpBarIn + 1f) / 2f;
 			}
 			// Damp the panel toward its target instead of stepping 30 pixels per frame.
 			float panelTarget = panelDir > 0 ? PanelHeight : panelDir < 0 ? 0f : panel;
 			float panelEase = panelDir < 0 ? 0.68f : 0.5f;
-			panel = MathHelper.Lerp(panel, panelTarget, panelEase);
+			panel = MathHelper.Lerp(panel, panelTarget, EasePerTick(panelEase));
 			if (Math.Abs(panelTarget - panel) < 0.75f)
 				panel = panelTarget;
 			panel = MathHelper.Clamp(panel, 0f, PanelHeight);
-			float liftTarget = phase is Phase.Menu or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect ? 32f : 0f;
-			partyLift = MathHelper.Lerp(partyLift, liftTarget, liftTarget == 0f ? 0.68f : 0.5f);
+			float liftTarget = phase is Phase.Menu or Phase.WeaponSelect or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect ? 32f : 0f;
+			partyLift = MathHelper.Lerp(partyLift, liftTarget, EasePerTick(liftTarget == 0f ? 0.68f : 0.5f));
 			if (Math.Abs(liftTarget - partyLift) < 0.5f)
 				partyLift = liftTarget;
-			selectedBarPhase += 2f;
+			selectedBarPhase += 2f * dt;
 
-			// TP bar: apparent jumps 20 at a time, current catches up after a short delay
+			// TP bar: apparent moves 20 a frame, current catches up after a short delay
 			float tension = Player.GetModPlayer<MercyPlayer>().TP / TensionToTP;
-			if (Math.Abs(tpApparent - tension) < 20)
+			if (Math.Abs(tpApparent - tension) < 20 * dt)
 				tpApparent = tension;
 			else
-				tpApparent += tpApparent < tension ? 20 : -20;
+				tpApparent += (tpApparent < tension ? 20 : -20) * dt;
 			float d = tpApparent - tpCurrent;
 			if (d != 0)
 			{
 				float step = 2 + (Math.Abs(d) > 10 ? 2 : 0) + (Math.Abs(d) > 25 ? 3 : 0) + (Math.Abs(d) > 50 ? 4 : 0) + (Math.Abs(d) > 100 ? 5 : 0);
-				tpCurrent += Math.Sign(d) * step;
-				if (Math.Abs(tpApparent - tpCurrent) < 3)
+				tpCurrent += Math.Sign(d) * step * dt;
+				if (Math.Abs(tpApparent - tpCurrent) < 3 * dt)
 					tpCurrent = tpApparent;
 			}
 
 			// Step toward the target without overshooting (stepping past it made the veil and enemy flicker 0.9/1.0)
 			float fadeTarget = phase == Phase.Outro ? 0f : 1f;
 			if (screenFade < fadeTarget)
-				screenFade = Math.Min(fadeTarget, screenFade + 0.1f);
+				screenFade = Math.Min(fadeTarget, screenFade + 0.1f * dt);
 			else if (screenFade > fadeTarget)
-				screenFade = Math.Max(fadeTarget, screenFade - 0.1f);
+				screenFade = Math.Max(fadeTarget, screenFade - 0.1f * dt);
 		}
 
 		private void PlayTextSoundThrough(int visibleCharacters)
@@ -473,8 +619,27 @@ namespace MercyMode.Battle
 		// ---- input ----
 
 		private static bool InputBlocked => Main.drawingPlayerChat || Main.editSign || Main.editChest || Main.gameMenu || Main.ingameOptionsWindow || !Main.hasFocus;
-		private static bool Pressed(Keys k) => !InputBlocked && Main.keyState.IsKeyDown(k) && !Main.oldKeyState.IsKeyDown(k);
-		private static bool Held(Keys k) => !InputBlocked && Main.keyState.IsKeyDown(k);
+		// The battle's keys are written as Deltarune's (Z, X, arrows) and mapped to whatever the player bound in
+		// Settings > Controls (MercyMode.BattleKeys)
+		private static bool Pressed(Keys k)
+		{
+			if (InputBlocked)
+				return false;
+			foreach (Keys b in MercyMode.BoundKeys(k))
+				if (Main.keyState.IsKeyDown(b) && !Main.oldKeyState.IsKeyDown(b))
+					return true;
+			return false;
+		}
+
+		private static bool Held(Keys k)
+		{
+			if (InputBlocked)
+				return false;
+			foreach (Keys b in MercyMode.BoundKeys(k))
+				if (Main.keyState.IsKeyDown(b))
+					return true;
+			return false;
+		}
 		private static bool Confirm => Pressed(Keys.Z);
 		private static bool Cancel => Pressed(Keys.X);
 
@@ -511,25 +676,42 @@ namespace MercyMode.Battle
 			if (phaseTicks == IntroPanelAt)
 			{
 				panelDir = 1;
-				tpBarSpeed = 13f;
+				tpBarIn = 0f;
 				SetHeroPose(HeroPose.Idle);
 				if (music != null)
 				{
+					musicVolumeCurrent = DeltaruneAssets.BattleMusicVolume;
+					music.Volume = musicVolumeCurrent;
 					music.Play();
 					musicStarted = true;
 				}
 			}
 			textShown = 0; // the encounter text types out once the panel is up
 			if (panel >= PanelHeight && phaseTicks > IntroPanelAt)
-				BeginPlayerTurn(keepText: true);
+			{
+				// Multiplayer: the party's bullet box already started, or joined mid-battle and watching for now
+				if (enemyTurnQueued)
+				{
+					enemyTurnQueued = false;
+					enemyTurnGranted = true;
+					StartEnemyTurn();
+				}
+				else if (spectating)
+					EnterWaiting();
+				else
+					BeginPlayerTurn(keepText: true);
+			}
 		}
 
 		private void BeginPlayerTurn(bool keepText = false)
 		{
 			defending = false;
+			enemyTurnGranted = false;
+			faceAction = FaceNone;
 			if (heroPose == HeroPose.Defend)
 				SetHeroPose(HeroPose.Idle);
 			tpPreview = 0;
+			RetargetIfNeeded();
 			if (!keepText)
 				SetText(encounter.FlavorText());
 			SetPhase(Phase.Menu);
@@ -553,12 +735,16 @@ namespace MercyMode.Battle
 			switch (menuChoice)
 			{
 				case Choice.Fight:
+					// Pick the weapon first, then the enemy
+					Sfx("select");
+					pendingChoice = menuChoice;
+					OpenWeaponSelect();
+					break;
 				case Choice.Act:
 				case Choice.Spare:
 					Sfx("select");
 					pendingChoice = menuChoice;
-					listIndex = 0;
-					SetPhase(Phase.EnemySelect);
+					OpenEnemySelect();
 					break;
 				case Choice.Item:
 					if (HealingItems().Count == 0)
@@ -572,32 +758,117 @@ namespace MercyMode.Battle
 					break;
 				case Choice.Defend:
 					Sfx("select");
-					DoDefend();
+					Commit(FaceDefend, DoDefend);
 					break;
 			}
 		}
 
+		/// <summary>The enemy list, with the cursor on the current target.</summary>
+		/// <summary>One row of the enemy list: an enemy, or one part of a boss when FIGHT can pick parts.</summary>
+		private readonly struct TargetRow
+		{
+			public readonly BattleEnemy Enemy;
+			public readonly NPC Part;
+
+			public TargetRow(BattleEnemy enemy, NPC part)
+			{
+				Enemy = enemy;
+				Part = part;
+			}
+
+			public bool Locked => Part != null && !Encounter.CanHit(Part);
+		}
+
+		/// <summary>The rows for the current command: parts of breakable bosses for FIGHT, whole enemies otherwise.</summary>
+		private List<TargetRow> TargetRows()
+		{
+			var rows = new List<TargetRow>();
+			foreach (BattleEnemy en in LivingEnemies)
+			{
+				if (pendingChoice == Choice.Fight && en.E.TargetableParts)
+				{
+					List<NPC> parts = en.E.TargetParts();
+					if (parts.Count > 0)
+					{
+						foreach (NPC p in parts)
+							rows.Add(new TargetRow(en, p));
+						continue;
+					}
+				}
+				rows.Add(new TargetRow(en, null));
+			}
+			return rows;
+		}
+
+		/// <summary>The enemy list, with the cursor on the current target (and part).</summary>
+		private void OpenEnemySelect()
+		{
+			RetargetIfNeeded();
+			List<TargetRow> rows = TargetRows();
+			int at = rows.FindIndex(r => r.Enemy == targetEnemy && (r.Part == null || r.Part == targetEnemy.E.ChosenPart));
+			if (at < 0)
+				at = Math.Max(0, rows.FindIndex(r => r.Enemy == targetEnemy && !r.Locked));
+			listIndex = Math.Max(0, at);
+			ApplyRow(rows);
+			SetPhase(Phase.EnemySelect);
+		}
+
+		private void ApplyRow(List<TargetRow> rows)
+		{
+			if (rows.Count == 0)
+				return;
+			listIndex = Math.Clamp(listIndex, 0, rows.Count - 1);
+			TargetRow row = rows[listIndex];
+			SetTarget(row.Enemy);
+			row.Enemy.E.ChosenPart = row.Part;
+		}
+
 		private void UpdateEnemySelect()
 		{
+			List<TargetRow> rows = TargetRows();
+			if (rows.Count > 1)
+			{
+				int before = listIndex;
+				if (Pressed(Keys.Down))
+					listIndex = (listIndex + 1) % rows.Count;
+				if (Pressed(Keys.Up))
+					listIndex = (listIndex + rows.Count - 1) % rows.Count;
+				if (listIndex != before)
+					Sfx("menumove");
+			}
+			ApplyRow(rows);
 			if (Cancel)
 			{
-				SetPhase(Phase.Menu);
+				if (pendingChoice == Choice.Fight)
+					OpenWeaponSelect();
+				else
+					SetPhase(Phase.Menu);
 				return;
 			}
 			if (!Confirm)
 				return;
+			// A guarded part (Golem's body behind its head, the Moon Lord's heart behind its eyes) can't be picked yet
+			if (rows.Count > 0 && rows[Math.Clamp(listIndex, 0, rows.Count - 1)].Locked)
+			{
+				Sfx("cantselect");
+				return;
+			}
 			Sfx("select");
 			switch (pendingChoice)
 			{
 				case Choice.Fight:
-					StartFightBar();
+					Commit(FaceFight, () =>
+					{
+						faceAction = FaceFight;
+						StartFightBar();
+					});
 					break;
 				case Choice.Act:
 					listIndex = 0;
 					SetPhase(Phase.ActSelect);
 					break;
 				case Choice.Spare:
-					DoSpare();
+					Commit(FaceSpare, DoSpare);
 					break;
 			}
 		}
@@ -617,7 +888,7 @@ namespace MercyMode.Battle
 			if (Cancel)
 			{
 				tpPreview = 0;
-				SetPhase(Phase.EnemySelect);
+				OpenEnemySelect();
 				return;
 			}
 			if (!Confirm)
@@ -631,13 +902,18 @@ namespace MercyMode.Battle
 			}
 			Sfx("select");
 			tpPreview = 0;
-			mp.TP -= act.TPCost;
-			lastHeal = -1;
-			List<string> lines = act.Run(this);
-			SetHeroPose(HeroPose.Act);
-			if (lastHeal >= 0)
-				QueueHealFx(lastHeal, 8);
-			ShowMessages(lines, StartEnemyTurn);
+			Commit(FaceAct, () =>
+			{
+				faceAction = FaceAct;
+				// TP may have gone since it was picked (multiplayer): the act still happens, as far as TP goes
+				mp.TP = Math.Max(0f, mp.TP - act.TPCost);
+				lastHeal = -1;
+				List<string> lines = act.Run(this);
+				SetHeroPose(HeroPose.Act);
+				if (lastHeal >= 0)
+					QueueHealFx(lastHeal, ActHealFrame);
+				ShowMessages(lines, StartEnemyTurn);
+			});
 		}
 
 		/// <summary>Two-column list navigation like Deltarune's ACT and ITEM menus.</summary>
@@ -706,6 +982,11 @@ namespace MercyMode.Battle
 				return;
 
 			var (type, _, name, heal) = items[listIndex];
+			Commit(FaceItem, () => UseItem(type, name, heal));
+		}
+
+		private void UseItem(int type, string name, int heal)
+		{
 			for (int i = 0; i < 50; i++)
 			{
 				Item item = Player.inventory[i];
@@ -719,11 +1000,11 @@ namespace MercyMode.Battle
 			}
 
 			int healed = HealPlayer(heal);
-			Sfx("heal");
-			// obj_heroparent state 4: the item is used 15 frames into the animation
+			// The heal sound plays with the sparkles and the green number (PlayHealFx), not on the key press
 			usedItemType = type;
+			faceAction = FaceItem;
 			SetHeroPose(HeroPose.Item);
-			QueueHealFx(healed, 15);
+			QueueHealFx(healed, ItemUseFrame);
 
 			string result = Player.statLife >= Player.statLifeMax2 ? "* Your HP was maxed out." : $"* You recovered {healed} HP!";
 			ShowMessages(new[] { $"* {Player.name} used the {name}!\n{result}" }, StartEnemyTurn);
@@ -733,14 +1014,30 @@ namespace MercyMode.Battle
 
 		private void DoSpare()
 		{
+			faceAction = FaceSpare;
 			string spared = $"* {Player.name} spared {encounter.Name}!";
 			if (encounter.Mercy >= 100f)
 			{
-				battleOver = true;
+				BattleEnemy who = targetEnemy;
+				who.Out = true;
 				PlayEnemySpared();
-				encounter.Spare();
-				SetHeroPose(HeroPose.Victory);
-				ShowMessages(new[] { spared }, StartOutro);
+				// Multiplayer: the server spares it for real (the loot drops there) and tells the party
+				if (Net.BattleNet.Online)
+					Net.BattleNet.SendSpare(encounter.Npc);
+				else
+					encounter.Spare();
+				if (LivingEnemies.Count == 0)
+				{
+					battleOver = true;
+					SetHeroPose(HeroPose.Victory);
+					ShowMessages(new[] { spared }, StartOutro);
+					return;
+				}
+				// Others are still fighting: the squad reacts, then it's their turn
+				string squad = OnEnemySpared(who);
+				RetargetIfNeeded();
+				SetHeroPose(HeroPose.Act);
+				ShowMessages(squad != null ? new[] { spared, squad } : new[] { spared }, StartEnemyTurn);
 				return;
 			}
 			SetHeroPose(HeroPose.Act);
@@ -749,6 +1046,7 @@ namespace MercyMode.Battle
 
 		private void DoDefend()
 		{
+			faceAction = FaceDefend;
 			defending = true;
 			SetHeroPose(HeroPose.Defend);
 			var mp = Player.GetModPlayer<MercyPlayer>();
@@ -759,136 +1057,20 @@ namespace MercyMode.Battle
 
 		// ---- FIGHT ----
 
-		private void StartFightBar()
-		{
-			boltX = 0;
-			boltAlive = true;
-			boltPoints = -1;
-			fightFade = 0;
-			SetPhase(Phase.FightBar);
-		}
-
-		private void UpdateFightBar()
-		{
-			boltX += 1f / TicksPerFrame;
-			// Deltarune checks presses once per frame, so score on the frame this tick belongs to
-			int close = BoltStartFrame - (int)Math.Floor(boltX);
-
-			if (boltAlive && Confirm && close < BoltWindowEarly && close > -BoltWindowLate)
-			{
-				boltAlive = false;
-				boltPoints = BoltPoints(close);
-				burstPos = new Vector2(FightBarX + 80 + (BoltStartFrame - boltX) * BoltSpeed, FightBarY);
-				burstTimer = 20;
-				StartHeroAttack();
-				return;
-			}
-			if (boltAlive && BoltStartFrame - boltX < -BoltWindowLate)
-			{
-				boltAlive = false;
-				boltPoints = 0;
-				StartHeroAttack();
-			}
-		}
-
-		/// <summary>Weapon damage stands in for Kris's AT: the held weapon, or the best one in the hotbar.</summary>
-		public int AttackStat()
-		{
-			Item held = Player.HeldItem;
-			if (!held.IsAir && held.damage > 0 && held.useStyle != ItemUseStyleID.None && !held.accessory)
-				return Math.Max(1, Player.GetWeaponDamage(held));
-			int best = 0;
-			for (int i = 0; i < 10; i++)
-			{
-				Item it = Player.inventory[i];
-				if (!it.IsAir && it.damage > 0 && !it.accessory && it.ammo == AmmoID.None)
-					best = Math.Max(best, Player.GetWeaponDamage(it));
-			}
-			return Math.Max(5, best);
-		}
-
-		/// <summary>obj_heroparent state 1: the swing starts now, the hit lands 10 frames later (alarm[1] = 10).</summary>
-		private void StartHeroAttack()
-		{
-			SetHeroPose(HeroPose.Attack);
-			attackPending = 10 * TicksPerFrame;
-			Sfx("slash");
-			if (boltPoints == 150)
-			{
-				Sfx("crit");
-				for (int i = 0; i < 3; i++)
-					AddEffect(new CritSparkle(new Vector2(HeroX + 68 + Main.rand.NextFloat(50f), HeroY + 30 + Main.rand.NextFloat(30f))));
-			}
-			SetPhase(Phase.FightResult);
-		}
-
-		/// <summary>The colour of damage the hero deals: merge_color(c_aqua, c_white, 0.5).</summary>
-		private static readonly Color HeroDamageColor = new(128, 255, 255);
-
-		private void ResolveAttack()
-		{
-			if (boltPoints <= 0)
-			{
-				EnemyNumber(0, HeroDamageColor, DamageNumber.MissFrame);
-				return;
-			}
-
-			var config = ModContent.GetInstance<MercyConfig>();
-			float mult = config?.FightDamageMultiplier ?? 1f;
-			int raw = (int)Math.Round(AttackStat() * boltPoints / DamagePointsDivisor * mult);
-			NPC target = encounter.StrikeTarget();
-			int dealt = target.SimpleStrikeNPC(raw, Player.direction, crit: false, knockBack: 0f);
-
-			Sfx("damage");
-			slashTimer = 0;
-			enemyShake = 18;
-			if (dealt > 0)
-				EnemyNumber(dealt, HeroDamageColor);
-			else
-				EnemyNumber(0, HeroDamageColor, DamageNumber.MissFrame);
-
-			// A killing blow: the enemy breaks apart right away (obj_deathanim), from how it looked a moment ago
-			if (!encounter.Alive)
-				PlayEnemyDeath();
-
-			if (dealt > 0)
-			{
-				var mp = Player.GetModPlayer<MercyPlayer>();
-				mp.TP = Math.Min(100f, mp.TP + (float)Math.Round(boltPoints / HitTensionDivisor) * TensionToTP);
-			}
-		}
-
-		private void UpdateFightResult()
-		{
-			if (attackPending > 0 && --attackPending == 0)
-			{
-				attackPending = -1;
-				ResolveAttack();
-			}
-			if (attackPending > 0)
-				return;
-			if (phaseTicks > FightPostTicks)
-				fightFade += FightFadePerTick;
-			if (fightFade < 1f)
-				return;
-
-			if (!encounter.Alive)
-			{
-				battleOver = true;
-				SetHeroPose(HeroPose.Victory);
-				ShowMessages(new[] { $"* YOU WON!\n* {encounter.Name} was defeated." }, StartOutro);
-				return;
-			}
-			StartEnemyTurn();
-		}
-
 		// ---- text boxes ----
+
+		/// <summary>Ticks the current text box has been up.</summary>
+		private int messageTicks;
+		/// <summary>Once the battle is won, its last text boxes move on by themselves after this long.</summary>
+		private const int WonAutoContinueTicks = 5 * 60;
 
 		private void UpdateMessage()
 		{
-			if (Cancel)
+			messageTicks++;
+			bool auto = battleOver && messageTicks >= WonAutoContinueTicks;
+			if (Cancel || auto)
 				textShown = text.Length;
-			if (textShown < text.Length || !Confirm)
+			if (textShown < text.Length || !(Confirm || auto))
 				return;
 			if (messages.Count > 0)
 			{
@@ -902,17 +1084,56 @@ namespace MercyMode.Battle
 
 		private void StartEnemyTurn()
 		{
-			if (battleOver)
+			// Nobody left (another party member finished the last one while this player read a message)
+			if (battleOver || LivingEnemies.Count == 0)
 			{
+				battleOver = true;
 				StartOutro();
 				return;
+			}
+			// Multiplayer: this player's action is over; the bullet box starts for everyone at once, from the server
+			if (Net.BattleNet.InParty && !enemyTurnGranted)
+			{
+				if (executing)
+				{
+					executing = false;
+					Net.BattleNet.SendActionDone();
+				}
+				if (!enemyTurnQueued)
+				{
+					EnterWaiting();
+					return;
+				}
+				enemyTurnQueued = false;
+				enemyTurnGranted = true;
+			}
+			executing = false;
+			// A boss at the end of its rope says so, then goes all out (in a party there's no stopping for it: the box
+			// opens for everyone together)
+			if (DesperateBoss() is BattleEnemy desperate && !desperate.E.DesperationAnnounced)
+			{
+				desperate.E.DesperationAnnounced = true;
+				ShakeScreen(3);
+				if (!Net.BattleNet.InParty)
+				{
+					ShowMessages(new[] { $"* {desperate.E.Name} is fighting with everything it has left!" }, StartEnemyTurn);
+					return;
+				}
 			}
 			Bullets.Clear();
 			boxAfterimages.Clear();
 			enemyAttackEnergy = 0f;
 			enemyAttackDirection = Vector2.Zero;
-			attack = encounter.NextAttack(this);
-			encounter.Turn++;
+			RetargetIfNeeded();
+			// Multiplayer: the same attack on every screen (shared seed; turn counters from the server's round)
+			if (Net.BattleNet.InParty)
+				foreach (BattleEnemy en in enemies)
+					en.E.Turn = netRound;
+			WithNetRand(() =>
+			{
+				attack = BuildEnemyTurn();
+				BeginSoulMode(attack.Soul);
+			});
 			turnTimer = attack.Duration;
 			boxTimer = 0;
 			text = "";
@@ -925,11 +1146,44 @@ namespace MercyMode.Battle
 			SetPhase(Phase.EnemyIntro);
 		}
 
-		public Rectangle Box => new((int)(BoxCenterX - BoxSize / 2f), (int)(BoxCenterY - BoxSize / 2f), BoxSize, BoxSize);
+		/// <summary>The bullet box: the normal square, opening into <see cref="FullScreenArena"/> for full-screen attacks.</summary>
+		public Rectangle Box
+		{
+			get
+			{
+				var small = new Rectangle((int)(BoxCenterX - BoxSize / 2f), (int)(BoxCenterY - BoxSize / 2f), BoxSize, BoxSize);
+				if (arenaBlend <= 0f)
+					return small;
+				Rectangle big = FullScreenArena;
+				float t = arenaBlend;
+				int left = (int)MathHelper.Lerp(small.Left, big.Left, t), top = (int)MathHelper.Lerp(small.Top, big.Top, t);
+				int right = (int)MathHelper.Lerp(small.Right, big.Right, t), bottom = (int)MathHelper.Lerp(small.Bottom, big.Bottom, t);
+				return new Rectangle(left, top, right - left, bottom - top);
+			}
+		}
+
+		/// <summary>0 = the normal box, 1 = a full-screen arena (eased while it opens and closes).</summary>
+		private float arenaBlend;
+
+		private void UpdateArena()
+		{
+			bool open = phase == Phase.EnemyTurn && attack != null && attack.FullScreen;
+			float target = open ? 1f : 0f;
+			arenaBlend = MathHelper.Lerp(arenaBlend, target, EasePerTick(ArenaEase));
+			if (Math.Abs(arenaBlend - target) < 0.002f)
+				arenaBlend = target;
+		}
 		public Vector2 SoulCenter => soul + new Vector2(SoulSize / 2f);
 		public void Spawn(Bullet b)
 		{
-			Bullets.Add(b);
+			b.Owner ??= spawnOwner;
+			b.DamageMult *= spawnDamageScale;
+			// Bullets can spawn others from their OnUpdate (a slam's shockwave, a firework's burst) while the
+			// bullet list is being walked; those join after the walk
+			if (updatingBullets)
+				spawnedDuringUpdate.Add(b);
+			else
+				Bullets.Add(b);
 			Vector2 motion = b.Velocity;
 			if (motion.LengthSquared() < 0.01f)
 				motion = b.Position - Box.Center.ToVector2();
@@ -938,7 +1192,7 @@ namespace MercyMode.Battle
 			enemyAttackEnergy = Math.Min(1.5f, enemyAttackEnergy + 0.22f);
 
 			// Pattern volleys can create many projectiles in one tick; throttle the cue so it reads as attack rhythm.
-			if (b.OnDraw == null && patternSoundCooldown <= 0)
+			if ((b.OnDraw == null || b.SoundOnSpawn) && patternSoundCooldown <= 0)
 			{
 				Sfx("attack");
 				patternSoundCooldown = 12;
@@ -968,7 +1222,13 @@ namespace MercyMode.Battle
 			boxTimer = Math.Min(BoxGrowTicks, boxTimer + 1);
 			CaptureBoxAfterimage();
 			// obj_moveheart: flytime 8 frames, image_alpha += 0.334 per frame
-			soul = Vector2.Lerp(soulFrom, SoulRestPosition, Math.Min(1f, phaseTicks / (8f * TicksPerFrame)));
+			soul = Vector2.Lerp(soulFrom, SoulStart, Math.Min(1f, phaseTicks / (8f * TicksPerFrame)));
+			// A SOUL mode other than red announces itself as the SOUL lands: a ring in its colour and a chime
+			if (soulMode != SoulMode.Red && phaseTicks == 8 * TicksPerFrame)
+			{
+				AddEffect(new Shockwave(SoulStart + new Vector2(SoulSize / 2f), soulMode.Color(), 34f));
+				DeltaruneAssets.Play("soulchange", Terraria.ID.SoundID.Item35 with { Volume = 0.5f, Pitch = 0.4f });
+			}
 			soulAlpha = Math.Min(1f, phaseTicks / (float)TicksPerFrame * 0.334f);
 			if (boxTimer >= BoxGrowTicks)
 				SetPhase(Phase.EnemyTurn);
@@ -976,8 +1236,9 @@ namespace MercyMode.Battle
 
 		private void UpdateEnemyTurn()
 		{
-			attack.Update(this, phaseTicks);
+			WithNetRand(() => attack.Update(this, phaseTicks));
 			MoveSoul();
+			UpdateYellowShots();
 
 			// obj_heart: global.inv -= 1 every frame
 			inv--;
@@ -986,23 +1247,34 @@ namespace MercyMode.Battle
 			Rectangle grazeBox = new((int)(c.X - GrazeSize / 2f), (int)(c.Y - GrazeSize / 2f), GrazeSize, GrazeSize);
 			var mp = Player.GetModPlayer<MercyPlayer>();
 
+			updatingBullets = true;
 			foreach (Bullet b in Bullets)
 			{
 				b.Update();
-				if (b.Dead || !b.Harmful)
+				// Bullets still waiting to appear (StartDelay) are invisible, so they can't hurt or be grazed yet
+				if (b.Dead || !b.Harmful || b.Waiting)
 					continue;
-				Rectangle hb = b.Hitbox;
-
-				if (inv < 0 && hb.Intersects(soulHit))
+				if (ShieldBlocks(b))
+					continue;
+				if (inv < 0 && b.Touches(soulHit))
 				{
 					HitSoul(b);
-					b.Dead = true; // obj_collidebullet destroys itself on hit
+					if (b.DestroyOnHit)
+						b.Dead = true; // obj_collidebullet destroys itself on hit
 					continue;
 				}
-				if (inv < 0 && hb.Intersects(grazeBox))
+				if (inv < 0 && b.Touches(grazeBox))
 					Graze(b, mp);
 			}
+			updatingBullets = false;
+			Bullets.AddRange(spawnedDuringUpdate);
+			spawnedDuringUpdate.Clear();
 			Bullets.RemoveAll(b => b.Dead);
+			if (deathPending)
+			{
+				BeginSoulDeath();
+				return;
+			}
 
 			turnTimer--;
 			if (turnTimer <= 0 && !Player.dead)
@@ -1016,6 +1288,8 @@ namespace MercyMode.Battle
 		/// <summary>obj_heart Step: 4 px per frame, half while X is held, kept inside the box.</summary>
 		private void MoveSoul()
 		{
+			if (MoveSoulMode())
+				return;
 			float px = 0, py = 0;
 			float speed = SoulSpeed;
 			if (Held(Keys.Right)) px = speed;
@@ -1043,14 +1317,15 @@ namespace MercyMode.Battle
 
 		private void HitSoul(Bullet b)
 		{
-			int damage = Math.Max(1, (int)Math.Round(encounter.Damage * b.DamageMult));
+			Encounter by = b.Owner ?? encounter;
+			int damage = Math.Max(1, (int)Math.Round((b.Owner?.Damage ?? turnDamage) * b.DamageMult));
 			Player.immune = false;
 			Player.immuneTime = 0;
 			HurtingPlayer = true;
 			double dealt;
 			try
 			{
-				dealt = Player.Hurt(PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral($"{Player.name} was defeated by {boss.GivenOrTypeName}.")),
+				dealt = Player.Hurt(PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral($"{Player.name} was defeated by {by.Name}.")),
 					damage, 0, knockback: 0f);
 			}
 			finally
@@ -1098,6 +1373,16 @@ namespace MercyMode.Battle
 
 		private void UpdateEnemyOutro()
 		{
+			// A full-screen arena closes back into the box first, carrying the SOUL in with it
+			if (arenaBlend > 0.01f)
+			{
+				Rectangle box = Box;
+				soul.X = MathHelper.Clamp(soul.X, box.Left + BoxClampLow, box.Right - BoxClampHigh);
+				soul.Y = MathHelper.Clamp(soul.Y, box.Top + BoxClampLow, box.Bottom - BoxClampHigh);
+				soulFrom = soul;
+				phaseTicks = 0;
+				return;
+			}
 			boxTimer = Math.Max(0, boxTimer - 1);
 			CaptureBoxAfterimage();
 			// obj_returnheart: back to the hero in 8 frames, then a burst; the next turn starts 15 frames after the end
@@ -1125,7 +1410,8 @@ namespace MercyMode.Battle
 		{
 			if (music != null)
 				music.Volume *= 0.9f;
-			if (panel <= 0 && screenFade <= 0f && phaseTicks >= GlideTicks)
+			// Wait for the last afterimages to fade on their own, so the trail never just vanishes
+			if (panel <= 0 && screenFade <= 0f && phaseTicks >= GlideTicks && trail.Count == 0 && enemies.All(e => e.Trail.Count == 0))
 				End();
 		}
 
@@ -1136,7 +1422,6 @@ namespace MercyMode.Battle
 		private const float FightBarY = 365;
 		private static readonly Color PanelLine = MergeColor(MergeColor(new Color(128, 0, 128), Color.Black, 0.7f), new Color(64, 64, 64), 0.5f);
 		private static readonly Color Orange = new(255, 160, 64);
-		private static readonly Color KrisCyan = new(0, 255, 255);
 		private static readonly Color BoxGreen = MergeColor(new Color(0, 128, 0), new Color(0, 255, 0), 0.5f);
 
 		private static Color MergeColor(Color a, Color b, float t) => Color.Lerp(a, b, t);
@@ -1147,8 +1432,39 @@ namespace MercyMode.Battle
 			get
 			{
 				int top = (int)(ScreenHeight - panel - partyLift);
-				return new Rectangle(214, top, 212, 36);
+				return new Rectangle(PartyBoxX(Net.BattleNet.MyPartyIndex), top, 212, 36);
 			}
+		}
+
+
+		/// <summary>
+		/// While a battle runs: the scroll wheel and hotbar keys don't switch items underneath it, and Esc (the
+		/// inventory key, locked during battles) opens the pause menu instead, so Save & Exit is still there.
+		/// </summary>
+		public override void PostUpdateInput()
+		{
+			if (phase == Phase.None || Main.gameMenu)
+				return;
+			PlayerInput.ScrollWheelDelta = 0;
+			PlayerInput.ScrollWheelDeltaForUI = 0;
+			foreach (TriggersSet set in new[] { PlayerInput.Triggers.Current, PlayerInput.Triggers.JustPressed })
+				foreach (string key in set.KeyStatus.Keys.Where(k => k.StartsWith("Hotbar") || k.StartsWith("DpadRadial")).ToList())
+					set.KeyStatus[key] = false;
+			// Esc opens and closes the pause menu, handled here entirely: Terraria's own inventory toggle would close
+			// the menu on the same press (while paused it reads the key directly), so it never sees a held Esc
+			if (PlayerInput.Triggers.Current.Inventory)
+				Main.LocalPlayer.releaseInventory = false;
+			if (PlayerInput.Triggers.JustPressed.Inventory && !Main.drawingPlayerChat)
+			{
+				if (Main.ingameOptionsWindow)
+					IngameOptions.Close();
+				else
+					IngameOptions.Open();
+			}
+			// Closing the pause menu (Esc or its button) opens the inventory, which the battle hides; with auto-pause on
+			// that paused the game for good. There's no inventory in a battle
+			if (!Main.ingameOptionsWindow)
+				Main.playerInventory = false;
 		}
 
 		public override void ModifyInterfaceLayers(List<GameInterfaceLayer> layers)
@@ -1165,9 +1481,10 @@ namespace MercyMode.Battle
 				l.Active = false;
 			}
 
-			int index = layers.FindIndex(l => l.Name.Contains("Player Chat"));
+			// Under the pause menu (so Save & Exit shows over the battle), and so under chat too
+			int index = layers.FindIndex(l => l.Name.Contains("Ingame Options"));
 			if (index < 0)
-				index = layers.FindIndex(l => l.Name.Contains("Ingame Options"));
+				index = layers.FindIndex(l => l.Name.Contains("Player Chat"));
 			if (index < 0)
 				index = layers.Count;
 			layers.Insert(index, new LegacyGameInterfaceLayer("MercyMode: Battle", () =>
@@ -1191,12 +1508,27 @@ namespace MercyMode.Battle
 				float left = -ox / scale, top = -oy / scale, width = Main.screenWidth / scale, height = Main.screenHeight / scale;
 				DrawBackground(left - BackgroundBleed, top - BackgroundBleed,
 					width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
-				DrawEnemy();
+				DrawEnemy(sb, m);
+				DrawAllies(sb, m);
 				DrawHero(sb, m);
 				DrawEffects();
-				DrawBox();
-				DrawTPBar();
-				DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f);
+				if (arenaBlend > 0f)
+				{
+					// A full-screen attack: everything, the HUD included, goes black; only the arena's border,
+					// the SOUL and the attacks are left
+					DrawTPBar();
+					DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f, top + height + BackgroundBleed);
+					DrDraw.Rect(left - BackgroundBleed, top - BackgroundBleed, width + BackgroundBleed * 2f, height + BackgroundBleed * 2f,
+						Color.Black * arenaBlend);
+					DrawBox();
+				}
+				else
+				{
+					DrawBox();
+					DrawTPBar();
+					DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f, top + height + BackgroundBleed);
+				}
+				DrawSoulDeath(left - BackgroundBleed, top - BackgroundBleed, width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
 			}
 			finally
 			{
@@ -1235,12 +1567,28 @@ namespace MercyMode.Battle
 			tiled((float)Math.Round(-200 - siner2), (float)Math.Round(-210 - siner2), screenFade);
 		}
 
-		private void DrawEnemy()
+		/// <summary>Every enemy in the battle, each at its own spot (back row first, so the front one overlaps).</summary>
+		private void DrawEnemy(SpriteBatch sb, Matrix m)
+		{
+			foreach (BattleEnemy en in enemies.OrderBy(e => e.E.ScreenCenter.Y))
+			{
+				if (!en.Living && en.Override == null)
+					continue; // spared or defeated, and its animation is over
+				WithEnemy(en, () => DrawOneEnemy(sb, m));
+			}
+		}
+
+		private void DrawOneEnemy(SpriteBatch sb, Matrix m)
 		{
 			if (enemyOverride != null)
 			{
 				enemyOverride.Draw();
 				DrawSlash(enemySnap.Position);
+				return;
+			}
+			if (encounter != null && encounter.DrawWithTerraria)
+			{
+				DrawEnemyComposite(sb, m);
 				return;
 			}
 			NPC npc = encounter?.DrawNpc;
@@ -1269,12 +1617,14 @@ namespace MercyMode.Battle
 			float attackMotion = phase == Phase.EnemyTurn ? MathHelper.Clamp(enemyAttackEnergy, 0f, 1f) : 0f;
 			float rotation = MathHelper.Lerp(enemyWorldRotation, encounter.DrawRotation(time), glide)
 				- enemyAttackDirection.X * attackMotion * 0.055f;
-			Color baseColor = encounter.DrawColor(npc);
+			// Lit like the world while gliding in or out, so it turns into the real NPC without a jump in brightness
+			Color worldLight = WorldLightTint(npc.Center);
+			Color baseColor = Tint(encounter.DrawColor(npc), worldLight);
 			// Afterimages left behind while gliding, fading out
-			foreach (var t in trail)
+			foreach (EnemyTrail t in focus.Trail)
 			{
-				float a = 0.5f * (1f - t.Age / (float)TrailLife);
-				DrDraw.Sb.Draw(tex, t.EnemyPos, frame, baseColor * a, rotation, frame.Size() / 2f, t.EnemyScale, SpriteEffects.None, 0f);
+				float a = 0.5f * (1f - t.Age / TrailLife);
+				DrDraw.Sb.Draw(tex, t.Pos, frame, baseColor * a, rotation, frame.Size() / 2f, t.Scale, SpriteEffects.None, 0f);
 			}
 			Vector2 pos = EnemyPosNow + new Vector2(0, (float)Math.Sin(time / 20f) * 4f * glide);
 			pos -= enemyAttackDirection * (attackMotion * 3f);
@@ -1283,8 +1633,9 @@ namespace MercyMode.Battle
 			if (enemyShake > 0)
 				pos.X += (enemyShake % 4 < 2 ? 1 : -1) * enemyShake / 2f;
 			float alpha = 1f;
-			bool selecting = phase == Phase.EnemySelect || phase == Phase.ActSelect;
-			Color color = encounter.DrawColor(npc) * alpha;
+			// Only the enemy being targeted flashes
+			bool selecting = (phase == Phase.EnemySelect || phase == Phase.ActSelect) && focus == targetEnemy;
+			Color color = Tint(encounter.DrawColor(npc), worldLight) * alpha;
 			DrDraw.Sb.Draw(tex, pos, frame, color, rotation, frame.Size() / 2f, spriteScale, SpriteEffects.None, 0f);
 			enemySnap = new EnemySnapshot
 			{
@@ -1305,10 +1656,11 @@ namespace MercyMode.Battle
 		/// <summary>obj_basicattack: the slash over the enemy (2.5x for a perfect hit).</summary>
 		private void DrawSlash(Vector2 pos)
 		{
-			if (slashTimer < 0)
+			// Only on the enemy that was hit (every enemy in a group is drawn through here)
+			if (slashTimer < 0 || focus != targetEnemy)
 				return;
 			int f = Math.Min(4, slashTimer / 4); // image_speed 0.5: two frames per sprite frame
-			float s = boltPoints == 150 ? 2.5f : 2f;
+			float s = bestPoints == 150 ? 2.5f : 2f;
 			if (!DrDraw.Sprite("spr_attack_cut1", f, pos.X, pos.Y, Color.White, s))
 				DrDraw.Rect(pos.X - 30 + slashTimer * 3, pos.Y - 30 + slashTimer * 3, 8, 8, Color.White);
 		}
@@ -1325,24 +1677,29 @@ namespace MercyMode.Battle
 			float alpha = 0.5f + t * 0.5f;
 			foreach (BoxAfterimage image in boxAfterimages)
 			{
+				if (arenaBlend > 0.01f)
+					break; // the spinning afterimages belong to the small box
 				float ghostAlpha = Math.Max(0f, image.Alpha - image.Age * 0.04f);
 				if (ghostAlpha > 0f)
 					DrawBoxShape(image.Scale, image.Rotation, ghostAlpha);
 			}
 			DrawBoxShape(s, angle, alpha);
 
+			DrawPurpleStrings();
 			foreach (Bullet b in Bullets)
 				b.Draw();
+			DrawBulletEffects();
 
 			// SOUL (spr_dodgeheart flips frames while invincible) and the graze flash
 			int frame = inv > 0 ? (inv / SoulBlinkTicks) % 2 : 0;
 			// Once the SOUL is back with the hero it isn't drawn in the box any more
 			bool soulHome = phase == Phase.EnemyOutro && phaseTicks >= 8 * TicksPerFrame;
+			DrawAllySouls();
 			if (soulHome)
 			{
 			}
-			else if (!DrDraw.Sprite("spr_dodgeheart", frame, soul.X, soul.Y, Color.White, 1f, 0f, phase == Phase.EnemyIntro ? soulAlpha : 1f))
-				DrDraw.HeartShapeAt(soul.X + 2, soul.Y + 2, 16, frame == 1 ? new Color(128, 0, 0) : Color.Red);
+			else
+				DrawSoulMode(frame, phase == Phase.EnemyIntro ? soulAlpha : 1f);
 
 			if (grazeTimer > 0)
 			{
@@ -1357,6 +1714,15 @@ namespace MercyMode.Battle
 
 		private void DrawBoxShape(float scale, float angle, float alpha)
 		{
+			// Opening into (or out of) a full-screen arena: a plain rectangle that follows Box. Its border fades out
+			// as it opens, so a full-screen attack is just black; the arena's edges still stop the SOUL
+			if (arenaBlend > 0.01f)
+			{
+				Rectangle box = Box;
+				DrDraw.Rect(box.X, box.Y, box.Width, box.Height, Color.Black * alpha);
+				DrDraw.Outline(box.X, box.Y, box.Width, box.Height, BoxGreen * (alpha * (1f - arenaBlend)), 3);
+				return;
+			}
 			float centerX = BoxCenterX, centerY = BoxCenterY;
 			bool first = DrDraw.Sprite("spr_battlebg_0", 1, centerX, centerY, BoxGreen, scale, angle, alpha);
 			bool second = DrDraw.Sprite("spr_battlebg_0", 0, centerX, centerY, BoxGreen, scale, angle, alpha);
@@ -1428,10 +1794,12 @@ namespace MercyMode.Battle
 			}
 		}
 
-		private void DrawPanel(float left, float width)
+		/// <param name="bottom">The bottom of the window in battle coordinates: the black panel reaches it even when the
+		/// window is taller than 4:3 (or the scale is rounded down and leaves a margin).</param>
+		private void DrawPanel(float left, float width, float bottom)
 		{
 			float top = ScreenHeight - panel;
-			DrDraw.Rect(left, top, width, panel + BackgroundBleed + 1, Color.Black);
+			DrDraw.Rect(left, top, width, Math.Max(panel + BackgroundBleed + 1, bottom - top), Color.Black);
 			DrDraw.Rect(left, top + 34, width, 2, PanelLine);
 			if (panel <= 0)
 			{
@@ -1439,9 +1807,10 @@ namespace MercyMode.Battle
 				return;
 			}
 
-			DrawPartyBox();
-			// Draw this background separator after the moving nameplate so its purple edge stays continuous.
+			// The purple separator goes under the party box so the raised nameplate covers it.
 			DrDraw.Rect(left, top - 2, width, 2, PanelLine);
+			DrawAllyBoxes(top);
+			DrawPartyBox();
 
 			float textY = top + 48; // 376 when the panel is fully up
 			switch (phase)
@@ -1449,7 +1818,11 @@ namespace MercyMode.Battle
 				case Phase.Intro:
 				case Phase.Menu:
 				case Phase.Message:
+				case Phase.Waiting:
 					DrDraw.Text(text.Substring(0, Math.Min(text.Length, (int)textShown)), 30, textY, Color.White);
+					break;
+				case Phase.WeaponSelect:
+					DrawWeaponSelect(textY);
 					break;
 				case Phase.EnemySelect:
 					DrawEnemyList(textY);
@@ -1471,17 +1844,18 @@ namespace MercyMode.Battle
 			}
 		}
 
+		private static readonly Color ManaBlue = new(70, 120, 255);
+
 		private void DrawPartyBox()
 		{
 			Rectangle r = PartyBox;
-			bool choosing = phase == Phase.Menu || phase == Phase.EnemySelect || phase == Phase.ActSelect || phase == Phase.ItemSelect;
+			bool choosing = phase == Phase.Menu || phase == Phase.WeaponSelect || phase == Phase.EnemySelect || phase == Phase.ActSelect || phase == Phase.ItemSelect;
 			float buttonsY = ScreenHeight - panel + 5f;
 			float selectionAlpha = choosing ? 1f : MathHelper.Clamp(partyLift / 32f, 0f, 1f);
 
 			if (selectionAlpha > 0.01f)
 			{
-				// scr_selectionmatrix: cyan divider sits below the nameplate, above the button row.
-				DrDraw.Rect(r.X, buttonsY - 1f, r.Width, 3f, KrisCyan * selectionAlpha);
+				// scr_selectionmatrix: sine-eased cyan columns around the button row.
 				for (int i = 0; i < 12; i++)
 				{
 					float angle = selectedBarPhase + i * 10f * MathHelper.Pi;
@@ -1493,8 +1867,8 @@ namespace MercyMode.Battle
 					{
 						float leftX = r.X + 30f - wave * 30f;
 						float rightX = r.Right - 32f + wave * 30f;
-						DrDraw.Rect(leftX, buttonsY - 1f, 2f, 29f, KrisCyan * alpha);
-						DrDraw.Rect(rightX, buttonsY - 1f, 2f, 29f, KrisCyan * alpha);
+						DrDraw.Rect(leftX, buttonsY - 3f, 2f, 31f, KrisCyan * alpha);
+						DrDraw.Rect(rightX, buttonsY - 3f, 2f, 31f, KrisCyan * alpha);
 					}
 				}
 			}
@@ -1515,43 +1889,69 @@ namespace MercyMode.Battle
 						DrDraw.Outline(bx, buttonsY, 31, 32, selected ? new Color(255, 255, 0) : Orange, 2);
 						DrDraw.Text(labels[i].Substring(0, 1), bx + 10, buttonsY + 8, selected ? new Color(255, 255, 0) : Orange, DrDraw.SmallFont);
 					}
-					if (i == (int)Choice.Spare && encounter.Mercy >= 100f)
+					if (i == (int)Choice.Spare && LivingEnemies.Any(e => e.E.Mercy >= 100f))
 						DrDraw.Sprite(names[i], 2, bx, buttonsY, Color.White, 1f, 0f, 0.4f + (float)Math.Sin(time / 12f) * 0.4f);
 				}
 			}
 
-			// The original outer frame tracks the nameplate; black fill is exactly 34 px tall,
-			// so its lower edge covers the button row only as the box drops into the bullet phase.
-			DrDraw.Rect(r.X, r.Y - 3f, r.Width, 3f, KrisCyan * selectionAlpha);
-			DrDraw.Rect(r.X, r.Y - 2f, 1f, r.Height, KrisCyan * selectionAlpha);
-			DrDraw.Rect(r.Right - 1f, r.Y - 2f, 1f, r.Height, KrisCyan * selectionAlpha);
-			DrDraw.Rect(r.X + 1f, r.Y, r.Width - 2f, 34f, Color.Black);
+			// The outer frame tracks the nameplate. Every edge uses the same 2 px as the button-row columns,
+			// and the divider is the nameplate's bottom edge, so it covers the button row as the box drops.
+			const float edge = 2f;
+			Color frame = KrisCyan * selectionAlpha;
+			DrDraw.Rect(r.X, r.Y, r.Width, 34f, Color.Black);
+			DrDraw.Rect(r.X, r.Y - edge, r.Width, edge, frame);
+			DrDraw.Rect(r.X, r.Y - edge, edge, 34f + edge, frame);
+			DrDraw.Rect(r.Right - edge, r.Y - edge, edge, 34f + edge, frame);
+			DrDraw.Rect(r.X, r.Y + 34f - edge, r.Width, edge, frame);
 
-			// The player's own head, enlarged and shifted left to leave clear space before the name.
-			if (playerHeadPortrait?.IsReady == true)
-			{
-				DrDraw.Sb.Draw(playerHeadPortrait.GetTarget(), new Vector2(r.X + 16, r.Y + 15), null,
-					new Color(110, 220, 255), 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
-			}
-			else
-			{
-				DrDraw.HeartShapeAt(r.X + 10, r.Y + 5, 17, new Color(64, 220, 255));
-			}
-			DrDraw.Text(Player.name.ToUpperInvariant(), r.X + 40, r.Y + 7, Color.White, DrDraw.BigFont, 0.68f);
-			if (!DrDraw.Sprite("spr_hpname", 0, r.X + 112, r.Y + 22, Color.White))
-				DrDraw.Text("HP", r.X + 108, r.Y + 19, Color.White, DrDraw.SmallFont);
+			// The chosen command's icon (spr_headkris frames: sword, ACT waves, bag, shield, X), centred where
+			// the head sits; otherwise the player's own head, enlarged and shifted left to clear the name.
+			if (faceAction == FaceNone || !DrDraw.Sprite("spr_headkris", faceAction, r.X + 3, r.Y + 4, Color.White))
+				DrawPlayerHead(new Vector2(r.X + 16, r.Y + 15), 1f);
+			// Long names shrink to fit before the HP label (and are cut short if even that isn't enough)
+			const float nameScale = 0.68f, nameMinScale = 0.4f, nameRoom = 64f;
+			string name = Player.name.ToUpperInvariant();
+			float nameWidth = Math.Max(1f, DrDraw.Measure(name, DrDraw.BigFont));
+			float scale = MathHelper.Clamp(nameRoom / nameWidth, nameMinScale, nameScale);
+			while (name.Length > 1 && DrDraw.Measure(name, DrDraw.BigFont) * scale > nameRoom)
+				name = name.Substring(0, name.Length - 1);
+			float nameY = r.Y + 7 + DrDraw.LineHeight(DrDraw.BigFont) * (nameScale - scale) / 2f;
+			DrDraw.Text(name, r.X + 40, nameY, Color.White, DrDraw.BigFont, scale);
+			// Two rows, HP and MP: label, bar, then the numbers to the right of the bar in one shared size (as big as
+			// fits the end of the nameplate)
+			const int labelX = 112, barX = 130, barWidth = 28, numberX = barX + barWidth + 3, numberRoom = 208 - numberX;
+			const int hpBarY = 6, hpBarHeight = 12;
+			// Right under the HP bar
+			const int manaBarY = hpBarY + hpBarHeight + 3, manaBarHeight = 6;
+			// The small font at (nearly) its own pixel size reads better here than the big one shrunk down
+			const float maxNumberScale = 1f;
+			bool hasMana = Player.statManaMax2 > 0;
+
 			float ratio = MathHelper.Clamp(Player.statLife / (float)Player.statLifeMax2, 0f, 1f);
-			const int hpBarX = 130;
-			const int hpBarWidth = 74;
-			DrDraw.Rect(r.X + hpBarX, r.Y + 19, hpBarWidth, 8, new Color(128, 0, 0));
-			DrDraw.Rect(r.X + hpBarX, r.Y + 19, (float)Math.Ceiling(ratio * hpBarWidth), 8, KrisCyan);
 			string hp = $"{Player.statLife}/{Player.statLifeMax2}";
-			Color hpColor = ratio <= 0.25f ? new Color(255, 255, 0) : Color.White;
-			const float hpNumberScale = 0.55f;
-			float hpTextWidth = DrDraw.Measure(hp, DrDraw.BigFont) * hpNumberScale;
-			DrDraw.Text(hp, r.X + hpBarX + (hpBarWidth - hpTextWidth) / 2f, r.Y - 1f,
-				hpColor, DrDraw.BigFont, hpNumberScale);
+			string mp = $"{Player.statMana}/{Player.statManaMax2}";
+			float widest = Math.Max(DrDraw.Measure(hp, DrDraw.SmallFont), hasMana ? DrDraw.Measure(mp, DrDraw.SmallFont) : 0f);
+			float numberScale = Math.Min(maxNumberScale, numberRoom / Math.Max(1f, widest));
+			float numberHeight = DrDraw.LineHeight(DrDraw.SmallFont) * numberScale;
 
+			if (!DrDraw.Sprite("spr_hpname", 0, r.X + labelX, r.Y + hpBarY + 2, Color.White))
+				DrDraw.Text("HP", r.X + labelX - 4, r.Y + hpBarY - 3, Color.White, DrDraw.SmallFont);
+			DrDraw.Rect(r.X + barX, r.Y + hpBarY, barWidth, hpBarHeight, new Color(128, 0, 0));
+			DrDraw.Rect(r.X + barX, r.Y + hpBarY, (float)Math.Ceiling(ratio * barWidth), hpBarHeight, KrisCyan);
+			Color hpColor = ratio <= 0.25f ? new Color(255, 255, 0) : Color.White;
+			DrDraw.Text(hp, r.X + numberX, r.Y + hpBarY + hpBarHeight / 2f - numberHeight / 2f, hpColor, DrDraw.SmallFont, numberScale);
+
+			// Mana (magic weapons spend it per hit), blue like Terraria's
+			if (hasMana)
+			{
+				float mana = MathHelper.Clamp(Player.statMana / (float)Player.statManaMax2, 0f, 1f);
+				const float mpLabelScale = 0.8f;
+				float mpLabelHeight = DrDraw.LineHeight(DrDraw.SmallFont) * mpLabelScale;
+				DrDraw.Text("MP", r.X + labelX + 1, r.Y + manaBarY + manaBarHeight / 2f - mpLabelHeight / 2f, ManaBlue, DrDraw.SmallFont, mpLabelScale);
+				DrDraw.Rect(r.X + barX, r.Y + manaBarY, barWidth, manaBarHeight, new Color(20, 28, 90));
+				DrDraw.Rect(r.X + barX, r.Y + manaBarY, (float)Math.Ceiling(mana * barWidth), manaBarHeight, ManaBlue);
+				DrDraw.Text(mp, r.X + numberX, r.Y + manaBarY + manaBarHeight / 2f - numberHeight / 2f, ManaBlue, DrDraw.SmallFont, numberScale);
+			}
 		}
 
 		private void DrawHeartCursor(float x, float y)
@@ -1560,25 +1960,44 @@ namespace MercyMode.Battle
 				DrDraw.HeartShapeAt(x, y, 16, Color.Red);
 		}
 
+		/// <summary>Rows of the enemy list shown at once; longer lists (a boss's parts) scroll.</summary>
+		private const int EnemyListRows = 3;
+
 		private void DrawEnemyList(float y)
 		{
-			DrawHeartCursor(55, y + 10);
-			bool spareable = encounter.Mercy >= 100f;
-			DrDraw.Text(encounter.Name, 80, y, spareable ? new Color(255, 255, 0) : Color.White);
+			List<TargetRow> rows = TargetRows();
+			int cursor = Math.Clamp(listIndex, 0, Math.Max(0, rows.Count - 1));
+			int first = Math.Clamp(cursor - EnemyListRows + 1, 0, Math.Max(0, rows.Count - EnemyListRows));
+			DrawHeartCursor(55, y + 10 + (cursor - first) * 30);
 
-			// HP and MERCY columns like Deltarune's enemy list
-			Color headerGray = new(128, 128, 128);
+			// HP and MERCY columns like Deltarune's enemy list, one row per enemy (or per part)
 			DrDraw.Text("HP", 424, y - 14, Color.White, DrDraw.SmallFont);
 			DrDraw.Text("MERCY", 524, y - 14, Color.White, DrDraw.SmallFont);
-			float hp = MathHelper.Clamp(encounter.LifeRatio, 0f, 1f);
-			DrDraw.Rect(420, y + 5, 81, 16, new Color(128, 0, 0));
-			DrDraw.Rect(420, y + 5, (float)Math.Ceiling(hp * 81), 16, new Color(0, 255, 0));
-			DrDraw.Text($"{(int)Math.Ceiling(hp * 100)}%", 424, y + 5, Color.White, DrDraw.SmallFont);
-			float mercy = MathHelper.Clamp(encounter.Mercy / 100f, 0f, 1f);
-			DrDraw.Rect(520, y + 5, 81, 16, new Color(255, 80, 32));
-			DrDraw.Rect(520, y + 5, (float)Math.Ceiling(mercy * 81), 16, new Color(255, 255, 0));
-			DrDraw.Text($"{(int)encounter.Mercy}%", 524, y + 5, new Color(128, 0, 0), DrDraw.SmallFont);
-			_ = headerGray;
+			for (int i = first; i < Math.Min(rows.Count, first + EnemyListRows); i++)
+			{
+				TargetRow row = rows[i];
+				Encounter e = row.Enemy.E;
+				float rowY = y + (i - first) * 30;
+				bool spareable = e.Mercy >= 100f;
+				string name = row.Part != null ? e.PartName(row.Part) : e.Name;
+				Color nameColor = row.Locked ? new Color(128, 128, 128) : spareable ? new Color(255, 255, 0) : Color.White;
+				DrDraw.Text(name, 80, rowY, nameColor);
+				float hp = row.Part != null
+					? MathHelper.Clamp(row.Part.life / (float)Math.Max(1, row.Part.lifeMax), 0f, 1f)
+					: MathHelper.Clamp(e.LifeRatio, 0f, 1f);
+				DrDraw.Rect(420, rowY + 5, 81, 16, new Color(128, 0, 0));
+				DrDraw.Rect(420, rowY + 5, (float)Math.Ceiling(hp * 81), 16, row.Locked ? new Color(110, 110, 110) : new Color(0, 255, 0));
+				DrDraw.Text(row.Locked ? "GUARDED" : $"{(int)Math.Ceiling(hp * 100)}%", 424, rowY + 5, Color.White, DrDraw.SmallFont);
+				float mercy = MathHelper.Clamp(e.Mercy / 100f, 0f, 1f);
+				DrDraw.Rect(520, rowY + 5, 81, 16, new Color(255, 80, 32));
+				DrDraw.Rect(520, rowY + 5, (float)Math.Ceiling(mercy * 81), 16, new Color(255, 255, 0));
+				DrDraw.Text($"{(int)e.Mercy}%", 524, rowY + 5, new Color(128, 0, 0), DrDraw.SmallFont);
+			}
+			// More rows above or below
+			if (first > 0)
+				DrDraw.Text("^", 60, y - 14, Color.White, DrDraw.SmallFont);
+			if (first + EnemyListRows < rows.Count)
+				DrDraw.Text("v", 60, y + EnemyListRows * 30 - 6, Color.White, DrDraw.SmallFont);
 		}
 
 		private void DrawGrid(float y, List<(string name, bool greyed)> entries)
@@ -1621,38 +2040,68 @@ namespace MercyMode.Battle
 				DrDraw.Text($"{(int)act.TPCost}% TP", 500, y + 60, Orange);
 		}
 
+
+		/// <summary>The player's head portrait centred on a point (a cyan heart until it's rendered).</summary>
+		private void DrawPlayerHead(Vector2 center, float alpha)
+		{
+			if (playerHeadPortrait?.IsReady == true)
+			{
+				DrDraw.Sb.Draw(playerHeadPortrait.GetTarget(), center, null,
+					new Color(110, 220, 255) * alpha, 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
+			}
+			else
+			{
+				DrDraw.HeartShapeAt(center.X - 6f, center.Y - 10f, 17, new Color(64, 220, 255) * alpha);
+			}
+		}
+
 		private void DrawFightBar()
 		{
 			float x = FightBarX, y = FightBarY;
 			float alpha = 1f - MathHelper.Clamp(fightFade, 0f, 1f);
 			Color blue = new Color(0, 0, 255) * alpha;
-			if (!DrDraw.Sprite("spr_pressfront", 0, x, y, Color.White, 1f, 0f, alpha))
-				DrDraw.Text(Player.name.Length > 0 ? Player.name.Substring(0, 1) : "*", x + 20, y + 4, Color.White * alpha);
+			// spr_pressfront is Kris's head + "Z" (75x38): keep the Z, put the player's own head where Kris's was
+			// Always the Z: some chapters' spr_pressfront says PRESS instead (chapter 5 has none, so it came from an older one)
+			DrDraw.Text("Z", x + 50, y + 4, KrisCyan * alpha);
+			DrawPlayerHead(new Vector2(x + 19, y + 20), alpha);
 			DrDraw.Outline(x + 78, y, FightBoxWidth + 3, 37, blue);
 			DrDraw.Outline(x + 79, y + 1, FightBoxWidth + 1, 35, blue);
 			if (!DrDraw.Sprite("spr_pressspot", 0, x + 80, y, Color.White, 1f, 0f, alpha))
 				DrDraw.Rect(x + 80, y, 10, 38, new Color(0, 0, 255) * alpha);
 
-			if (boltAlive)
+			// The ghosts the bolts left behind (they stay where they were left and fade)
+			foreach (BoltGhost g in boltGhosts)
 			{
-				float bx = x + 80 + (BoltStartFrame - boltX) * BoltSpeed;
-				float boltAlpha = BoltStartFrame - boltX < 0 ? 1f + (BoltStartFrame - boltX) / 3f : 1f;
-				// Afterimages every other frame, fading
-				for (int k = 2; k >= 1; k--)
-					if (!DrDraw.Sprite("spr_attackspot", 0, bx + k * BoltSpeed, y, Color.White, 1f, 0f, 0.4f / k * boltAlpha))
-						DrDraw.Rect(bx + k * BoltSpeed + 2, y, 6, 38, Color.White * (0.4f / k * boltAlpha));
+				float gx = x + 80 + g.Ahead * BoltSpeed;
+				if (gx > x + 80 + FightBoxWidth + 4)
+					continue;
+				float a = g.Alpha * alpha;
+				if (!DrDraw.Sprite("spr_attackspot", 0, gx, y, Color.White, 1f, 0f, a))
+					DrDraw.Rect(gx + 2, y, 6, 38, Color.White * a);
+			}
+			foreach (FightBolt bolt in bolts)
+			{
+				if (!bolt.Alive)
+					continue;
+				float ahead = bolt.Frame - boltX;
+				float bx = x + 80 + ahead * BoltSpeed;
+				// Bolts further back start off the right of the bar; only draw them once they're on it
+				if (bx > x + 80 + FightBoxWidth + 4)
+					continue;
+				// Fades with the bar (bolts still on it when the last enemy falls go with it)
+				float boltAlpha = (ahead < 0 ? 1f + ahead / 3f : 1f) * alpha;
 				if (!DrDraw.Sprite("spr_attackspot", 0, bx, y, Color.White, 1f, 0f, boltAlpha))
 					DrDraw.Rect(bx + 2, y, 6, 38, Color.White * boltAlpha);
 			}
 
-			if (burstTimer > 0)
+			foreach (BoltBurst burst in boltBursts)
 			{
 				// obj_burstbolt: grows and fades; yellow for a perfect hit
-				float t = 1f - burstTimer / 20f;
-				Color c = boltPoints == 150 ? new Color(255, 255, 0) : MergeColor(KrisCyan, Color.White, 0.5f);
+				float t = 1f - burst.Timer / 20f;
+				Color c = burst.Perfect ? new Color(255, 255, 0) : MergeColor(KrisCyan, Color.White, 0.5f);
 				Vector2 sc = new(1f + t * 2f, 1f + t * 0.5f);
-				if (!DrDraw.Sprite("spr_attackspot", 0, burstPos.X - 5 * (sc.X - 1), burstPos.Y - 19 * (sc.Y - 1), c, sc, 0f, 1f - t))
-					DrDraw.Rect(burstPos.X, burstPos.Y, 10 * sc.X, 38 * sc.Y, c * (1f - t));
+				if (!DrDraw.Sprite("spr_attackspot", 0, burst.Position.X - 5 * (sc.X - 1), burst.Position.Y - 19 * (sc.Y - 1), c, sc, 0f, (1f - t) * alpha))
+					DrDraw.Rect(burst.Position.X, burst.Position.Y, 10 * sc.X, 38 * sc.Y, c * ((1f - t) * alpha));
 			}
 		}
 	}

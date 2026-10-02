@@ -18,6 +18,19 @@ namespace MercyMode
 		Silent,
 	}
 
+	/// <summary>Your colour in multiplayer battles (your battle UI, and your box and SOUL on the others' screens).</summary>
+	public enum PartyColorChoice
+	{
+		Automatic,
+		Cyan,
+		Magenta,
+		Green,
+		Yellow,
+		Orange,
+		Blue,
+		White,
+	}
+
 	public class MercyConfig : ModConfig
 	{
 		public override ConfigScope Mode => ConfigScope.ClientSide;
@@ -27,6 +40,27 @@ namespace MercyMode
 
 		[DefaultValue(true)]
 		public bool BattlesWithEnemies;
+
+		/// <summary>Automatic: by the order players joined the server (the first is Kris cyan).</summary>
+		[DefaultValue(PartyColorChoice.Automatic)]
+		public PartyColorChoice PartyColor;
+
+		/// <summary>
+		/// Enemies start battles during invasions, moon events, eclipses and the Old One's Army: a squad of that army at a
+		/// time. (Renamed from BattlesDuringEvents, which defaulted to off, so saved configs pick up the new default.)
+		/// </summary>
+		[DefaultValue(true)]
+		public bool EventBattles;
+
+		/// <summary>Boss battles play the boss's own Terraria music; off = Rude Buster for every battle.</summary>
+		[DefaultValue(true)]
+		public bool BossBattleMusic;
+
+		/// <summary>How much louder the boss's music plays during its battle (capped at full volume).</summary>
+		[Range(1f, 3f)]
+		[Increment(0.1f)]
+		[DefaultValue(1.6f)]
+		public float BossMusicBoost;
 
 		[Range(0.1f, 10f)]
 		[Increment(0.1f)]
@@ -45,12 +79,12 @@ namespace MercyMode
 
 		[Range(0f, 1.5f)]
 		[Increment(0.05f)]
-		[DefaultValue(0.65f)]
+		[DefaultValue(0.45f)]
 		public float BattleSoundVolume;
 
 		[Range(0f, 1.5f)]
 		[Increment(0.05f)]
-		[DefaultValue(0.45f)]
+		[DefaultValue(0.25f)]
 		public float BattleMusicVolume;
 
 		[DefaultValue(MercySoundRedirect.Deltarune)]
