@@ -351,6 +351,12 @@ namespace MercyMode.Battle
 			gunTimer = GunWindowTicks;
 			gunCooldown = 0;
 			gunShots = 0;
+			gunShotTime = -100;
+			if (gunMode)
+			{
+				AddEffect(new Shockwave(HeroFeetNow + (HeroHeart - HeroFeet) + new Vector2(SoulSize / 2f), SoulMode.Yellow.Color(), 30f));
+				DeltaruneAssets.Play("soulchange", SoundID.Item35 with { Volume = 0.5f, Pitch = 0.4f });
+			}
 			bolts.Clear();
 			boltGhosts.Clear();
 			pendingHits.Clear();
@@ -368,7 +374,7 @@ namespace MercyMode.Battle
 		// ---- guns: SPAM Z TO SHOOT ----
 
 		private bool gunMode;
-		private int gunTimer, gunCooldown, gunShots;
+		private int gunTimer, gunCooldown, gunShots, gunShotTime = -100;
 		private const int GunWindowTicks = 150;
 		/// <summary>Most shots one turn: twice the bolts the gun's speed would get, between 3 and 8.</summary>
 		private int MaxGunShots => Math.Clamp(fightWeapon.Bolts * 2, 3, 8);
@@ -389,6 +395,7 @@ namespace MercyMode.Battle
 				bolts.Add(shot);
 				PressBolt(shot, 2);
 				gunShots++;
+				gunShotTime = time;
 				gunCooldown = Math.Max(5, (fightWeapon.Item?.useTime ?? 10) / 2);
 				if (gunShots >= MaxGunShots)
 					gunTimer = Math.Min(gunTimer, 12);
@@ -427,8 +434,15 @@ namespace MercyMode.Battle
 			{
 				// Just shown, not shooting: the yellow SOUL glows in the player's chest while they fire
 				Vector2 heart = HeroFeetNow + (HeroHeart - HeroFeet);
-				if (!DrDraw.Sprite("spr_yellowheart", 0, heart.X, heart.Y, Color.White, 1f, 0f, alpha))
-					DrDraw.HeartShapeAt(heart.X + 2, heart.Y + 2, 16, yellow * alpha);
+				// It pops in (shrinking from big and see-through, with a ring), and kicks back with every shot
+				float appear = MathHelper.Clamp(phaseTicks / 12f, 0f, 1f);
+				float kick = MathHelper.Clamp(1f - (time - gunShotTime) / 8f, 0f, 1f);
+				heart.X -= kick * kick * 7f;
+				heart.Y -= kick * 2f;
+				float size = 1f + (1f - appear) * 1.2f;
+				heart -= new Vector2(SoulSize / 2f) * (size - 1f);
+				if (!DrDraw.Sprite("spr_yellowheart", 0, heart.X, heart.Y, Color.White, size, 0f, alpha * appear))
+					DrDraw.HeartShapeAt(heart.X + 2, heart.Y + 2, 16 * size, yellow * (alpha * appear));
 			}
 		}
 
@@ -504,7 +518,7 @@ namespace MercyMode.Battle
 			bestPoints = Math.Max(bestPoints, points);
 			boltBursts.Add(new BoltBurst
 			{
-				Position = new Vector2(FightBarX + 80 + (bolt.Frame - boltX) * BoltSpeed, FightBarY),
+				Position = new Vector2(FightBarX + 80 + (bolt.Frame - boltX) * BoltSpeed, BarY),
 				Perfect = points == 150,
 			});
 
