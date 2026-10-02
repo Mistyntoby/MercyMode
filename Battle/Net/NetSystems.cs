@@ -153,9 +153,13 @@ namespace MercyMode.Battle.Net
 			{
 				if (wb.Players.Count >= BattleNet.MaxParty || wb.Players.Contains(me.whoAmI))
 					continue;
+				// Close to one of its enemies, or to one of the players fighting it
 				foreach (NPC n in BattleNet.NpcsOf(id))
 				{
 					float d = n.DistanceSQ(me.Center);
+					foreach (int f in wb.Players)
+						if (f >= 0 && f < Main.maxPlayers && Main.player[f].active)
+							d = Math.Min(d, Main.player[f].DistanceSQ(me.Center));
 					if (d < best)
 					{
 						best = d;

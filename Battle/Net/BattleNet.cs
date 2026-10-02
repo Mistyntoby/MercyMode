@@ -53,10 +53,10 @@ namespace MercyMode.Battle.Net
 		public enum Stage : byte { Choosing, Acting, EnemyTurn }
 
 		public const int MaxParty = 3;
-		/// <summary>How close (pixels) players must be to the one starting it, or to the enemy, to be pulled in.</summary>
-		public const float JoinRange = 50 * 16;
-		/// <summary>How close the join prompt shows up.</summary>
-		public const float PromptRange = 70 * 16;
+		/// <summary>How close (pixels) players must be to the one starting the battle to be pulled in with them.</summary>
+		public const float JoinRange = 20 * 16;
+		/// <summary>How close to a battle's enemy or fighter the join prompt shows up.</summary>
+		public const float PromptRange = 25 * 16;
 		/// <summary>Picking an action / carrying it out: after this long the party goes on without them.</summary>
 		public const int ChooseTimeoutTicks = 60 * 60, ActTimeoutTicks = 45 * 60;
 
@@ -400,6 +400,9 @@ namespace MercyMode.Battle.Net
 					var pending = ReadPlayers(r);
 					if (id != MyBattle)
 						return;
+					// Whoever is gone leaves the battle screen (walking off, or with us if the battle is ending)
+					foreach (int gone in Party.Where(k => k != Main.myPlayer && !players.Contains(k) && !pending.Contains(k)).ToList())
+						battle.OnAllyLeft(gone);
 					Party.Clear();
 					Party.AddRange(players);
 					Party.AddRange(pending);
@@ -665,7 +668,7 @@ namespace MercyMode.Battle.Net
 
 		private static NetBattle Find(int id) => battles.FirstOrDefault(x => x.Id == id);
 
-		/// <summary>Server: a battle with these enemies. Pulls in players near the one starting it or near the enemies.</summary>
+		/// <summary>Server: a battle with these enemies. Pulls in players close to the one starting it.</summary>
 		internal static int ServerStartBattle(int requester, List<NPC> roots)
 		{
 			roots = roots.Where(n => n.active && n.life > 0 && !IsFrozen(n)).Distinct().ToList();
@@ -676,7 +679,7 @@ namespace MercyMode.Battle.Net
 			b.Roots.AddRange(roots.Select(n => n.whoAmI));
 			b.Players.Add(requester);
 			Player leader = Main.player[requester];
-			bool Near(Player p) => p.DistanceSQ(leader.Center) <= JoinRange * JoinRange || roots.Any(n => p.DistanceSQ(n.Center) <= JoinRange * JoinRange);
+			bool Near(Player p) => p.DistanceSQ(leader.Center) <= JoinRange * JoinRange;
 			foreach (Player p in Main.player.Where(p => p.active).OrderBy(p => p.DistanceSQ(leader.Center)).ToList())
 			{
 				if (b.Players.Count >= MaxParty)

@@ -36,6 +36,14 @@ namespace MercyMode.Battle
 		private readonly Dictionary<int, Vector2> allySoulDrawn = new();
 		/// <summary>When each ally first showed up on this screen (0: there from the start, gliding in with us).</summary>
 		private readonly Dictionary<int, uint> allySeen = new();
+		/// <summary>Each ally's spot (0 above, 1 below), kept so nobody jumps when someone else leaves.</summary>
+		private readonly Dictionary<int, int> allySlot = new();
+		/// <summary>Where each ally was last drawn, for walking off from there.</summary>
+		private readonly Dictionary<int, Vector2> allyLastFeet = new();
+		/// <summary>Allies who left mid-battle, walking off to the left: when they turned around.</summary>
+		private readonly Dictionary<int, uint> allyWalkingOff = new();
+		/// <summary>Allies who left as the battle ended: still drawn, gliding back out with us.</summary>
+		private readonly HashSet<int> allyStaying = new();
 		/// <summary>spr_dodgeheart turned white, so it can take each player's colour.</summary>
 		private static Texture2D whiteHeart;
 		private static Texture2D whiteHeartFrom;
@@ -57,6 +65,21 @@ namespace MercyMode.Battle
 			waitingShowsOthers = false;
 			allySoulDrawn.Clear();
 			allySeen.Clear();
+			allySlot.Clear();
+			allyLastFeet.Clear();
+			allyWalkingOff.Clear();
+			allyStaying.Clear();
+		}
+
+		/// <summary>An ally left the party: they walk off, or (the battle's ending anyway) stay to glide out with us.</summary>
+		internal void OnAllyLeft(int who)
+		{
+			if (phase == Phase.None || who < 0 || who >= Main.maxPlayers)
+				return;
+			if (battleOver || phase is Phase.Outro)
+				allyStaying.Add(who);
+			else if (!Main.player[who].dead && allyLastFeet.ContainsKey(who))
+				allyWalkingOff[who] = Main.GameUpdateCount;
 		}
 
 		/// <summary>
@@ -248,6 +271,9 @@ namespace MercyMode.Battle
 		private (HeroPose Pose, float Timer) AllyPose(Player p)
 		{
 			float since = (Main.GameUpdateCount - actingSince) / (float)TicksPerFrame;
+			// Won: everyone cheers with the player
+			if (battleOver && heroPose == HeroPose.Victory)
+				return (HeroPose.Victory, heroTimer);
 			bool hitRecently = BattleNet.AllyHitTick.TryGetValue(p.whoAmI, out uint hit) && Main.GameUpdateCount - hit < 30;
 			if (hitRecently)
 				return (HeroPose.Attack, (Main.GameUpdateCount - hit) / (float)TicksPerFrame);
@@ -287,33 +313,71 @@ namespace MercyMode.Battle
 			return Math.Min(FlyProgress(), own);
 		}
 
+		/// <summary>The spot an ally stands in: the first free one, kept for as long as they're around.</summary>
+		private int SlotOf(int who)
+		{
+			if (allySlot.TryGetValue(who, out int slot))
+				return slot;
+			for (slot = 0; slot < AllyFeet.Length; slot++)
+				if (!allySlot.ContainsValue(slot))
+					break;
+			return allySlot[who] = slot;
+		}
+
+		/// <summary>Walking pace off the screen, in battle pixels per tick.</summary>
+		private const float WalkOffSpeed = 2.2f;
+
 		private void DrawAllies(SpriteBatch sb, Matrix m)
 		{
-			if (!BattleNet.InParty)
+			if (!BattleNet.InParty && allyStaying.Count == 0 && allyWalkingOff.Count == 0)
 				return;
-			int slot = 0;
-			foreach (Player p in BattleNet.Allies)
+			var drawn = BattleNet.Allies.Select(p => p.whoAmI).Concat(allyStaying).Distinct().ToList();
+			foreach (int who in drawn)
 			{
-				if (slot >= AllyFeet.Length)
-					break;
-				Vector2 spot = AllyFeet[slot++];
-				if (p.dead)
+				Player p = Main.player[who];
+				if (!p.active || p.dead || allyWalkingOff.ContainsKey(who))
 					continue;
+				int slot = SlotOf(who);
+				if (slot >= AllyFeet.Length)
+					continue;
+				Vector2 spot = AllyFeet[slot];
 				// Like the player: from where they stand in the world to their spot, growing to battle size, lit by the
 				// world at the start of the glide and full bright once there
 				float fly = AllyFly(p);
 				Vector2 feet = Vector2.Lerp(WorldToBattle(p.Bottom), spot, fly);
 				float scale = MathHelper.Lerp(WorldPixelScale(), HeroScale, fly);
 				var (pose, timer) = AllyPose(p);
-				float bob = pose == HeroPose.Idle ? (float)Math.Round(Math.Sin((time + slot * 25) / 20f)) : 0f;
-				if (pose == HeroPose.Act)
-					bob = -(float)Math.Sin(Math.Min(1f, timer / 14f) * Math.PI) * 10f;
+				float bob = pose switch
+				{
+					HeroPose.Idle => (float)Math.Round(Math.Sin((time + slot * 25) / 20f)),
+					HeroPose.Act => -(float)Math.Sin(Math.Min(1f, timer / 14f) * Math.PI) * 10f,
+					HeroPose.Victory => -(float)Math.Abs(Math.Sin(Math.Min(1f, timer / 27f) * Math.PI * 2)) * 8f,
+					_ => 0f,
+				};
 				Color light = fly >= 1f ? Color.White : Color.Lerp(Lighting.GetColor(p.Center.ToTileCoordinates()), Color.White, fly);
 				// Watchers stand a little see-through until they jump in
-				float shadow = BattleNet.Joining.Contains(p.whoAmI) ? 0.5f : 0f;
+				float shadow = BattleNet.Joining.Contains(who) ? 0.5f : 0f;
+				allyLastFeet[who] = spot;
 				HeroLight = light;
 				DrawPlayerPose(sb, m, p, feet + new Vector2(0f, bob * fly), scale, fly >= 1f ? pose : HeroPose.Idle, timer, shadow, ally: true);
 				HeroLight = Color.White;
+			}
+
+			// Left mid-battle: they turn around and walk off the left side of the screen
+			foreach (var (who, since) in allyWalkingOff.ToList())
+			{
+				Player p = Main.player[who];
+				float t = Main.GameUpdateCount - since;
+				Vector2 feet = allyLastFeet[who] - new Vector2(Math.Max(0f, t - 10f) * WalkOffSpeed, 0f);
+				if (!p.active || feet.X < -60f)
+				{
+					allyWalkingOff.Remove(who);
+					allySlot.Remove(who);
+					continue;
+				}
+				// A beat to turn around, then Terraria's walk cycle (frames 7-19)
+				int walk = t < 10f ? -1 : 7 + (int)((t - 10f) / 4f) % 13;
+				DrawPlayerPose(sb, m, p, feet, HeroScale, HeroPose.Idle, 0f, 0f, ally: true, facing: -1, walkFrame: walk);
 			}
 		}
 
