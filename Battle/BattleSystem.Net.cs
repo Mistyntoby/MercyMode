@@ -303,14 +303,16 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>Another party member's FIGHT hit landed: show it here too.</summary>
-		internal void OnNetHit(NPC npc, int damage, bool crit)
+		internal void OnNetHit(int attacker, NPC npc, int damage, bool crit)
 		{
 			BattleEnemy e = enemies.FirstOrDefault(x => x.E.Npc == npc || x.E.Members().Contains(npc));
 			if (e == null || phase == Phase.None)
 				return;
 			WithEnemy(e, () =>
 			{
-				EnemyNumber(damage, crit ? HeroCritColor : HeroDamageColor, damage > 0 ? -1 : DamageNumber.MissFrame, at: PartSpot(npc));
+				// In the attacker's colour, the way ours are in ours
+				Color theirs = Color.Lerp(PartyColors.Of(Main.player[attacker]), Color.White, 0.5f);
+				EnemyNumber(damage, crit ? HeroCritColor : theirs, damage > 0 ? -1 : DamageNumber.MissFrame, at: PartSpot(npc));
 				enemyShake = 18;
 			});
 			Sfx("damage");
