@@ -193,15 +193,25 @@ namespace MercyMode.Battle
 				string name = p.name.ToUpperInvariant();
 				if (name.Length > 6)
 					name = name.Substring(0, 6);
+				// Built like our own bar: head, Z, a double border and the see-through press spot, all in their colour
 				DrawAllyHead(p, new Vector2(x + 19, y + 20), 1f);
-				DrDraw.Text(name, x + 40, y + 12, c, DrDraw.SmallFont, 0.7f);
-				DrDraw.Outline(x + 78, y, FightBoxWidth + 3, 37, c * 0.8f);
-				DrDraw.Rect(x + 80, y, 10, 38, c * 0.6f);
+				DrDraw.Text("Z", x + 50, y + 4, c);
+				DrDraw.Rect(x + 79, y + 1, FightBoxWidth + 1, 35, Color.Black * 0.6f);
+				DrDraw.Outline(x + 78, y, FightBoxWidth + 3, 37, c);
+				DrDraw.Outline(x + 79, y + 1, FightBoxWidth + 1, 35, c * 0.6f);
+				// The see-through press spot, like ours
+				if (!DrDraw.Sprite("spr_pressspot", 0, x + 80, y, c, 1f, 0f, 0.55f))
+					DrDraw.Rect(x + 80, y, 10, 38, c * 0.35f);
+				// Their name, small, inside the bar
+				DrDraw.Text(name, x + 98, y + 12, c * 0.8f, DrDraw.SmallFont, 0.7f);
 				if (BattleNet.AllyHitTick.TryGetValue(who, out uint hit) && Main.GameUpdateCount - hit < 20)
 				{
 					float t = (Main.GameUpdateCount - hit) / 20f;
 					Vector2 sc = new(1f + t * 2f, 1f + t * 0.5f);
-					DrDraw.Rect(x + 80 - 5 * (sc.X - 1), y - 19 * (sc.Y - 1), 10 * sc.X, 38 * sc.Y, Color.Lerp(c, Color.White, 0.5f) * (1f - t));
+					// Their hit flashes like ours (obj_burstbolt: grows and fades)
+					Color flash = Color.Lerp(c, Color.White, 0.5f);
+					if (!DrDraw.Sprite("spr_attackspot", 0, x + 80 - 5 * (sc.X - 1), y - 19 * (sc.Y - 1), flash, sc, 0f, 1f - t))
+						DrDraw.Rect(x + 80 - 5 * (sc.X - 1), y - 19 * (sc.Y - 1), 10 * sc.X, 38 * sc.Y, flash * (1f - t));
 				}
 			}
 		}
