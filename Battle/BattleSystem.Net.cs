@@ -393,17 +393,35 @@ namespace MercyMode.Battle
 				bool me = p.whoAmI == Player.whoAmI;
 				var (life, max) = me ? (ShownLife, Player.statLifeMax2)
 					: BattleNet.AllyHp.TryGetValue(p.whoAmI, out var hp) ? hp : (p.statLife, p.statLifeMax2);
-				float ry = y + i * 32;
+				float ry = y + i * 30;
 				if (i == listIndex)
-					DrDraw.HeartShapeAt(28, ry + 8, 16, Color.Red);
-				DrDraw.Text(p.name, 60, ry, Color.White, DrDraw.BigFont, 0.8f);
-				const float barX = 260, barW = 120, barH = 14;
+					DrawHeartCursor(55, ry + 10);
+				DrDraw.Text(p.name, 80, ry, Color.White);
+				// Right after the name: an HP bar in their colour and the numbers (red below zero)
+				float barX = 80 + Math.Max(120f, DrDraw.Measure(p.name, DrDraw.BigFont) + 24f), barW = 100, barH = 12;
 				float ratio = max > 0 ? MathHelper.Clamp(life / (float)max, 0f, 1f) : 0f;
-				DrDraw.Rect(barX, ry + 8, barW, barH, new Color(128, 0, 0));
-				DrDraw.Rect(barX, ry + 8, (float)Math.Ceiling(ratio * barW), barH, PartyColors.Of(p));
-				if (life <= 0)
-					DrDraw.Text("DOWN", barX + barW + 12, ry + 6, new Color(255, 40, 40), DrDraw.SmallFont);
+				DrDraw.Rect(barX, ry + 9, barW, barH, new Color(128, 0, 0));
+				DrDraw.Rect(barX, ry + 9, (float)Math.Ceiling(ratio * barW), barH, PartyColors.Of(p));
+				DrDraw.Text($"{life}/{max}" + (life <= 0 ? "  DOWN" : ""), barX + barW + 10, ry + 6,
+					life <= 0 ? new Color(255, 40, 40) : Color.White, DrDraw.SmallFont);
 			}
+		}
+
+		/// <summary>Our ITEM landed on a partner: the heal sparkles, sound and green number on them, here.</summary>
+		private void PlayAllyHealFx(int who, int amount)
+		{
+			Sfx("heal");
+			int slot = SlotOf(who);
+			if (slot >= AllyFeet.Length)
+				return;
+			Vector2 feet = AllyFeet[slot];
+			for (int i = 0; i < 10; i++)
+			{
+				var pos = new Vector2(Main.rand.NextFloat(feet.X - 34, feet.X + 34), Main.rand.NextFloat(feet.Y - 74, feet.Y));
+				var vel = new Vector2(2 - Main.rand.NextFloat(2f), -3 - Main.rand.NextFloat(2f));
+				AddEffect(new StarParticle(pos, vel, Vector2.Zero, 0.2f, -10f, new Color(0, 255, 0), 5));
+			}
+			AddEffect(new DamageNumber(feet.X - 30, feet.Y - 70, amount, new Color(0, 255, 0), -1, delay: 1));
 		}
 
 		private void UpdatePartySelect()
