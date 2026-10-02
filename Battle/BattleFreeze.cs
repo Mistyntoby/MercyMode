@@ -226,7 +226,18 @@ namespace MercyMode.Battle
 		}
 	}
 
-	/// <summary>Silences Terraria's music while Rude Buster plays.</summary>
+	/// <summary>
+	/// The battle screen isn't in the world: Terraria lights the held weapon by the tile at the spot it's drawn, which made
+	/// weapons dark on the battle screen. While the battle draws a character, that light is the battle's own.
+	/// </summary>
+	public class BattleLighting : ModSystem
+	{
+		public override void Load()
+		{
+			Terraria.On_Lighting.GetColor_int_int += (orig, x, y) => BattleSystem.DrawingHero ? BattleSystem.HeroLight : orig(x, y);
+		}
+	}
+
 	/// <summary>
 	/// Silences Terraria's music while Rude Buster plays. In boss battles it stays off, so Terraria picks the boss's
 	/// own track as usual (vanilla, modded, Otherworldly).

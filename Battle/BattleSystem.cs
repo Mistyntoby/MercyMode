@@ -1511,6 +1511,7 @@ namespace MercyMode.Battle
 				DrawEnemy(sb, m);
 				DrawAllies(sb, m);
 				DrawHero(sb, m);
+				DrawSwingSlash();
 				DrawMinions();
 				DrawEffects();
 				if (arenaBlend > 0f)
@@ -2070,9 +2071,13 @@ namespace MercyMode.Battle
 			if (!DrDraw.Sprite("spr_pressspot", 0, x + 80, y, Color.White, 1f, 0f, alpha))
 				DrDraw.Rect(x + 80, y, 10, 38, new Color(0, 0, 255) * alpha);
 
+			if (gunMode)
+				DrawGunBar(x, y, alpha);
 			// The ghosts the bolts left behind (they stay where they were left and fade)
 			foreach (BoltGhost g in boltGhosts)
 			{
+				if (gunMode)
+					break;
 				float gx = x + 80 + g.Ahead * BoltSpeed;
 				if (gx > x + 80 + FightBoxWidth + 4)
 					continue;
@@ -2082,6 +2087,8 @@ namespace MercyMode.Battle
 			}
 			foreach (FightBolt bolt in bolts)
 			{
+				if (gunMode)
+					break;
 				if (!bolt.Alive)
 					continue;
 				float ahead = bolt.Frame - boltX;
