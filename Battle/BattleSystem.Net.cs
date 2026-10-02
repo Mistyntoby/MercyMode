@@ -423,7 +423,9 @@ namespace MercyMode.Battle
 				var vel = new Vector2(2 - Main.rand.NextFloat(2f), -3 - Main.rand.NextFloat(2f));
 				AddEffect(new StarParticle(pos, vel, Vector2.Zero, 0.2f, -10f, new Color(0, 255, 0), 5));
 			}
-			AddEffect(new DamageNumber(feet.X - 30, feet.Y - 70, amount, new Color(0, 255, 0), maxed ? DamageNumber.MaxFrame : -1, delay: 1));
+			// Placed like ours (scr_dmgwriter_selfchar): low on the body, clear of the face
+			float nx = feet.X - (HeroFeet.X - HeroX), ny = feet.Y - (HeroFeet.Y - HeroY) + HeroHeight - 24;
+			AddEffect(new DamageNumber(nx, ny, amount, new Color(0, 255, 0), maxed ? DamageNumber.MaxFrame : -1, delay: 1));
 		}
 
 		private void UpdatePartySelect()
