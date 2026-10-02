@@ -37,6 +37,7 @@ namespace MercyMode.Battle
 		private readonly Dictionary<int, Vector2> allySoulDrawn = new();
 		/// <summary>Each ally's graze flash, counting down like ours (grazeTimer).</summary>
 		private readonly Dictionary<int, int> allyGraze = new();
+		private readonly HashSet<int> allyGrazing = new();
 		/// <summary>How many of each ally's hit numbers are up this turn (they stack).</summary>
 		private readonly Dictionary<int, int> allyHitsShown = new();
 		/// <summary>When each ally first showed up on this screen (0: there from the start, gliding in with us).</summary>
@@ -765,10 +766,16 @@ namespace MercyMode.Battle
 				allySoulDrawn[who] = shown;
 				Color c = PartyColors.Of(Main.player[who]);
 				// They grazed something: the graze outline on their SOUL, fading out like ours
-				if ((mode & 0x80) != 0)
+				// Starts when their graze starts (the flag is on for as long as their own flash), then counts down like ours
+				bool grazing = (mode & 0x80) != 0;
+				if (grazing && !allyGrazing.Contains(who))
 					allyGraze[who] = GrazeFlashTicks;
 				else if (allyGraze.TryGetValue(who, out int g) && g > 0)
 					allyGraze[who] = g - 1;
+				if (grazing)
+					allyGrazing.Add(who);
+				else
+					allyGrazing.Remove(who);
 				if (allyGraze.TryGetValue(who, out int graze) && graze > 0)
 				{
 					float a = graze / (float)TicksPerFrame / 6f;

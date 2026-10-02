@@ -1174,6 +1174,8 @@ namespace MercyMode.Battle
 					return;
 				}
 			}
+			// The box opens: the party boxes go back to showing heads (not the command just used)
+			faceAction = FaceNone;
 			Bullets.Clear();
 			boxAfterimages.Clear();
 			enemyAttackEnergy = 0f;

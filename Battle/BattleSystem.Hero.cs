@@ -361,7 +361,6 @@ namespace MercyMode.Battle
 		{
 			HeroPose.AttackReady => 0.5f,
 			HeroPose.Attack => Math.Min(1f, timer / WeaponSwingFrames),
-			HeroPose.Defend => 0.12f,
 			_ => -1f,
 		};
 
@@ -467,6 +466,10 @@ namespace MercyMode.Battle
 				{
 					case HeroPose.ActReady:
 						bodyFrame = 2;
+						break;
+					case HeroPose.Defend:
+						// DEFEND: empty hand raised up in front, nothing held
+						p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, MathHelper.Pi * 0.75f);
 						break;
 					case HeroPose.Act:
 						bodyFrame = legFrame = Math.Min(1f, timer / 14f) < 1f ? 5 : 0;
