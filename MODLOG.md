@@ -376,8 +376,8 @@ Resolution 640x480. All sizes below in those pixels.
 ## Multiplayer party battles (2026-10-01, untested with real clients)
 - `Battle/Net/BattleNet.cs` (packets + server round), `Battle/Net/NetSystems.cs` (colours, join prompt, outside view),
   `Battle/BattleSystem.Net.cs` (battle-screen side). Each client runs its own battle screen; the server runs the round.
-- Starting: touching/hitting an enemy sends `RequestBattle`. The server pulls in up to 2 more players within 50 tiles of
-  the starter OR of the enemies (party of 3), freezes ONLY that battle's NPCs (roots + `Members()`, velocity restored
+- Starting: touching/hitting an enemy sends `RequestBattle`. The server pulls in up to 2 more players within 20 tiles of
+  the starter (party of 3), freezes ONLY that battle's NPCs (roots + `Members()`, velocity restored
   after), and sends `JoinBattle` + `Party`. Touching a frozen enemy does nothing (no contact damage).
 - Joining later: near a battle with room, outsiders see "Press J to join the battle!" (keybind "Join Battle"). They
   open the battle screen as watchers (`Pending`), see everything, and jump in at the next bullet box.
@@ -413,3 +413,4 @@ Resolution 640x480. All sizes below in those pixels.
 - 2026-10-01: breakable boss parts as FIGHT targets; shortsword stab; purple string and yellow charge animations.
 - 2026-10-01: multiplayer party battles (server bookkeeping lab-tested; clients untested).
 - 2026-10-02 (0.6): removed the outside-battle ACT/SPARE/Heal Prayer keybinds, the world TP gauge/SOUL overlay (MercyUI) and world grazing; TP is only built in battles now.
+- 2026-10-02 (0.9): allies glide in/out, cheer on a win, walk off left when leaving mid-battle; party pull-in 20 tiles from the starter, join prompt 25 tiles from the battle; buildIgnore keeps notes/scripts out of the .tmod; Workshop description refreshed.

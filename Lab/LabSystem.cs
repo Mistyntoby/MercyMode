@@ -755,11 +755,8 @@ namespace MercyMode.Lab
 
 				// A frozen enemy gets its velocity back when the battle ends
 				int id2 = BattleNet.ServerStartBattle(3, new List<NPC> { z2 });
-				// Player 3 is far from the others, but they stand by the enemy: near the enemy counts too
-				var party2 = BattleNet.LabPlayers(id2);
-				Check(party2.Count == 3 && party2[0] == 3, $"party {string.Join(",", party2)}: expected 3 plus two players standing by the enemy");
-				foreach (int pl in party2.Skip(1))
-					BattleNet.ServerLeave(pl, id2);
+				// Player 3 is far from everyone: only close players come along, even if others stand by the enemy
+				Check(BattleNet.LabPlayers(id2).SequenceEqual(new[] { 3 }), $"party {string.Join(",", BattleNet.LabPlayers(id2))}: players far from the starter were pulled in");
 				Check(z2.velocity == Vector2.Zero && BattleNet.IsFrozen(z2), "z2 didn't freeze");
 				BattleNet.ServerLeave(3, id2);
 				Check(z2.velocity == new Vector2(-2f, 1f), $"z2's velocity came back as {z2.velocity}");

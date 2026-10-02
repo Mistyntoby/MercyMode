@@ -1,20 +1,19 @@
 Spare bosses instead of killing them. A Deltarune-inspired fan mod.
 
-Turn-based battles: touch or hit a boss or an enemy and the world freezes into a Deltarune-style battle.
-Custom battles for the Eye of Cthulhu, King Slime, Eater of Worlds, Brain of Cthulhu, Queen Bee, Skeletron, Deerclops and the Wall of Flesh; every other boss (modded too) gets a generic one. Regular enemies get battles by type: slimes, walkers like zombies and skeletons, fliers, casters, worms and everything else (can be turned off in the config).
-- FIGHT: press Z as the bolt crosses the line. The closer, the harder you hit.
-- ACT: boss-specific actions that raise MERCY. Heal Prayer costs 32% TP.
+Turn-based battles: touch or hit a boss or an enemy and it turns into a Deltarune-style battle.
+Custom battles for the Eye of Cthulhu, King Slime, Eater of Worlds, Brain of Cthulhu, Queen Bee, Skeletron, Deerclops, Wall of Flesh, Queen Slime, the Twins, the Destroyer, Skeletron Prime, Plantera, Golem, Duke Fishron, the Empress of Light, the Lunatic Cultist and the Moon Lord; every other boss (modded too) gets a generic one. Bosses with parts (Skeletron's hands, the Twins, Prime's arms, Golem, the Moon Lord) let you pick which part to hit.
+Regular enemies fight in squads of up to three, and event armies (goblins, pirates, the moons, Martians...) come as squads of their army. Enemy battles can be turned off in the config.
+
+- FIGHT: pick a weapon from your inventory, then press Z as the bolt crosses the line. Magic weapons use mana, guns and bows use ammo.
+- ACT: enemy-specific actions that raise MERCY. Heal Prayer costs 32% TP.
 - ITEM: drink healing potions from your inventory.
-- SPARE: works once MERCY reaches 100%. You still get the loot.
-- DEFEND: take 2/3 damage this turn and gain 16% TP.
-On the enemy turn, dodge with the arrow keys (hold X to move slower). Bullets hit your real health; grazing them gives TP.
-Arrow keys move, Z confirms, X goes back. The battle can be turned off in the config.
+- SPARE: works once MERCY reaches 100%. Bosses still drop their loot.
+- DEFEND: take 2/3 damage this turn and gain TP.
+On the enemy turn, dodge with the arrow keys (hold X to move slower). Bullets hit your real health; grazing them gives TP. Some enemies change your SOUL: blue (gravity), green (shield), purple (strings) and yellow (shoot with Z).
 
-Outside battles: ACT (F) to raise a boss's MERCY. Hitting the boss makes it lose trust.
-SPARE (G) once MERCY hits 100% to end the fight peacefully (you still get the loot).
-Graze enemy attacks to build TP, then spend 32% TP on Heal Prayer (V).
+Multiplayer: players close together enter a battle as a party of up to three. Everyone picks an action, then the party acts one at a time, and everyone dodges in the same bullet box. Others can press Join Battle (J) near a battle to jump in at its next attack. Pick your party colour in the config.
 
-Keys can be rebound in Settings > Controls. Singleplayer only for now.
+Arrow keys move, Z confirms, X goes back, Esc opens the pause menu. Battles can be turned off in the config.
 
 If you own Deltarune on Steam, Mercy Mode reads the real SOUL, battle sprites, fonts, sound effects and battle music from your own install at startup. Nothing from Deltarune is included in this mod. Type /drassets in chat to see what loaded.
 

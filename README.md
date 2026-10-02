@@ -1,6 +1,6 @@
 # MercyMode
 
-MercyMode is a single-player tModLoader mod that turns Terraria boss and optional regular-enemy encounters into Deltarune-inspired turn-based battles. Outside battle, build MERCY with ACT, spare a boss at 100%, graze attacks to gain TP, and spend TP on Heal Prayer.
+MercyMode is a tModLoader mod that turns Terraria boss and optional regular-enemy encounters into Deltarune-inspired turn-based battles, alone or as a multiplayer party of up to three.
 
 Battles pause the Terraria world and offer FIGHT, ACT, ITEM, SPARE, and DEFEND turns. On enemy turns, dodge bullets with the SOUL; bullets can hurt the player's real health, while grazing them builds TP. Spared bosses still drop loot.
 
@@ -10,7 +10,7 @@ Battles pause the Terraria world and offer FIGHT, ACT, ITEM, SPARE, and DEFEND t
 - Generic encounters for other bosses and configurable encounters for regular enemies.
 - Boss-specific ACTs, healing items, timed FIGHT attacks, DEFEND, and loot-preserving SPARE.
 - Optional local Deltarune sprites, fonts, sounds, and music, with fallbacks when those assets are unavailable.
-- Single-player only; multiplayer is not supported.
+- Multiplayer party battles (up to three players; still being tested).
 
 ## Build
 
