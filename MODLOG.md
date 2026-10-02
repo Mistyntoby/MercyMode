@@ -400,8 +400,7 @@ Resolution 640x480. All sizes below in those pixels.
 - Outside view: `BattleState` goes to every client. Outsiders see fighters swing at the enemy when a hit lands (only
   their local copy of the remote player animates; nothing is hit), harmless dust "bullets" from the enemies at the
   fighters during the bullet box, and "IN BATTLE" over fighters. Frozen enemies can't be hit; fighters are immune.
-- In multiplayer only the battle's NPCs freeze; projectiles and time keep going. Outside-battle ACT/SPARE hotkeys are
-  still singleplayer-only. `/mmbattle end` leaves the battle.
+- In multiplayer only the battle's NPCs freeze; projectiles and time keep going. `/mmbattle end` leaves the battle.
 - Lab `mp-server`: party pick-up (near starter or enemy) and the 3 cap, freezing, choose barrier, turn order and that
   only the acting player can pass it, watcher queued then promoted at the bullet box, acting player leaving, both
   timeouts, MERCY cap, spare + bag credit, KillMembers scope, unfreeze. The client side has NOT been run.
@@ -413,3 +412,4 @@ Resolution 640x480. All sizes below in those pixels.
 - 2026-10-01: SOUL modes (Deltarune yellow; Undertale blue/green/purple), new patterns and effects, boss desperation; lab sweeps of every attack.
 - 2026-10-01: breakable boss parts as FIGHT targets; shortsword stab; purple string and yellow charge animations.
 - 2026-10-01: multiplayer party battles (server bookkeeping lab-tested; clients untested).
+- 2026-10-02 (0.6): removed the outside-battle ACT/SPARE/Heal Prayer keybinds, the world TP gauge/SOUL overlay (MercyUI) and world grazing; TP is only built in battles now.

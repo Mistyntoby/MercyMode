@@ -2,7 +2,7 @@
 
 ## 1. What MercyMode is and what it is supposed to do
 
-MercyMode is a single-player tModLoader mod for Terraria that turns boss and (optionally) regular-enemy encounters into Deltarune-inspired turn-based battles. Outside battle, players can build MERCY with ACT, spare a boss at 100%, build TP by grazing, and spend TP on Heal Prayer. Battles pause the Terraria world, offer FIGHT / ACT / ITEM / SPARE / DEFEND turns, and use a dodge-bullet phase where bullets can damage the player's real health. Bosses still drop loot when spared.
+MercyMode is a single-player tModLoader mod for Terraria that turns boss and (optionally) regular-enemy encounters into Deltarune-inspired turn-based battles. Everything happens in the battle (the old outside-battle ACT/SPARE/Heal Prayer keys and world TP bar were removed in 0.6). Battles pause the Terraria world, offer FIGHT / ACT / ITEM / SPARE / DEFEND turns, and use a dodge-bullet phase where bullets can damage the player's real health. Bosses still drop loot when spared.
 
 If the player owns Deltarune, the mod can read sprites, fonts, sounds, and music from that local installation at startup. No Deltarune assets are shipped with this mod. Without those assets, the mod uses fallbacks. Multiplayer battles exist (party of up to 3, see MODLOG "Multiplayer party battles") but have only been tested on the server side in the headless lab.
 
@@ -41,9 +41,8 @@ dotnet tModLoader.dll -tmlsavedirectory "C:\Users\Nico\tml-lab" -skipselect "nic
 - `build.txt`, `description.txt`, `icon.png` — tModLoader mod metadata, player-facing description, and icon.
 - `MercyMode.cs` — mod lifecycle, keybind registration, colors, boss lookup, and shared helpers.
 - `MercyConfig.cs` — client-side settings for battles, enemy battles, FIGHT damage multiplier, and Deltarune asset loading/selection.
-- `MercyPlayer.cs` — outside-battle MERCY/TP mechanics, ACT/SPARE/Heal Prayer key handling, and graze handling.
+- `MercyPlayer.cs` — the player's TP (built and spent in battles).
 - `MercyGlobalNPC.cs` — boss MERCY state, trust loss after damage, overhead MERCY display, and loot-preserving spare behavior.
-- `MercyUI.cs` — outside-battle TP gauge and SOUL display.
 - `ActLines.cs` — flavor ACT text keyed by Terraria NPC type.
 - `Battle/` — battle state, UI and drawing, hero animation, world freeze/control lock, projectiles/bullets, attack patterns, and test chat command.
   - `BattleSystem.cs` — battle lifecycle, phases, input, combat, battle UI, and music.
@@ -101,7 +100,7 @@ This plan is not present in the actual current source: `Deltarune/DeltaruneAsset
 ## 7. Known bugs, errors, or TODOs
 
 - FIGHT balance (2026-10-01): a perfect turn deals about 8 seconds of the weapon's Terraria DPS (`TurnSeconds` in `Battle/BattleSystem.Fight.cs`); `MercyConfig.FightDamageMultiplier` (default `1.0`) scales it. `MODLOG.md` lists estimated turns-to-kill; needs in-game playtesting.
-- Multiplayer battles are untested with real clients; outside-battle ACT/SPARE/Heal Prayer hotkeys are still single-player only.
+- Multiplayer battles are untested with real clients.
 - The MERCY popup and the planned sound-redirection/volume controls from the final transcript are not implemented in the current source.
 - No automated tests are present; rely on the isolated in-game test loop and release build.
 - `MercyMode.txt` is the full local transcript and is ignored; do not stage or commit it.

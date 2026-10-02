@@ -1,7 +1,4 @@
 Keybinds: {
-	Act.DisplayName: ACT
-	Spare.DisplayName: SPARE
-	HealPrayer.DisplayName: Heal Prayer (32% TP)
 	JoinBattle.DisplayName: Join Battle
 }
 
