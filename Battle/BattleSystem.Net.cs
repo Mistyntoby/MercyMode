@@ -186,20 +186,37 @@ namespace MercyMode.Battle
 		/// The other players fighting at the same time: their bars under (or over) ours, in their colour, flashing as their
 		/// hits land. Their bolts aren't sent over the network (it would lag), only their hits.
 		/// </summary>
+		/// <summary>The fighters the rows were last drawn for, and how visible the rows are (they fade out after the step).</summary>
+		private readonly List<int> rowFighters = new();
+		private float rowAlpha;
+		internal bool AllyRowsVisible => BattleNet.FightingNow.Count > 0 || rowAlpha > 0.01f;
+
 		private void DrawAllyFightRows()
 		{
-			for (int i = 0; i < BattleNet.FightingNow.Count; i++)
+			if (BattleNet.FightingNow.Count > 0)
 			{
-				int who = BattleNet.FightingNow[i];
+				rowFighters.Clear();
+				rowFighters.AddRange(BattleNet.FightingNow);
+				rowAlpha = Math.Min(1f, rowAlpha + 0.15f);
+			}
+			else
+				rowAlpha = Math.Max(0f, rowAlpha - 0.06f);
+			// Fading with our own bar while it fades
+			float fade = rowAlpha * (phase is Phase.FightBar or Phase.FightResult ? 1f - MathHelper.Clamp(fightFade, 0f, 1f) : 1f);
+			if (fade <= 0.01f)
+				return;
+			for (int i = 0; i < rowFighters.Count; i++)
+			{
+				int who = rowFighters[i];
 				if (who == Main.myPlayer || who < 0 || who >= Main.maxPlayers || !Main.player[who].active)
 					continue;
 				Player p = Main.player[who];
-				Color c = PartyColors.Of(p);
+				Color c = PartyColors.Of(p) * fade;
 				float x = FightBarX, y = FightBarY + i * FightRowSpacing;
 				// Built like our own bar: head, Z, a double border and the see-through press spot, all in their colour
-				DrawAllyHead(p, new Vector2(x + 19, y + 20), 1f);
+				DrawAllyHead(p, new Vector2(x + 19, y + 20), fade);
 				DrDraw.Text("Z", x + 50, y + 4, c);
-				DrDraw.Rect(x + 79, y + 1, FightBoxWidth + 1, 35, Color.Black * 0.6f);
+				DrDraw.Rect(x + 79, y + 1, FightBoxWidth + 1, 35, Color.Black * (0.6f * fade));
 				DrDraw.Outline(x + 78, y, FightBoxWidth + 3, 37, c);
 				DrDraw.Outline(x + 79, y + 1, FightBoxWidth + 1, 35, c * 0.6f);
 				// The see-through press spot, like ours
@@ -304,17 +321,21 @@ namespace MercyMode.Battle
 		/// <summary>Each turn while downed, 1/8 of max HP comes back; above zero, they're up again. False: still down.</summary>
 		private bool RecoverDowned()
 		{
-			battleLife += (int)Math.Ceiling(Player.statLifeMax2 / 8f);
+			int gain = (int)Math.Ceiling(Player.statLifeMax2 / 8f);
+			battleLife += gain;
+			// Like an ITEM: the heal sparkles, sound and green number
+			QueueHealFx(gain, 1);
 			if (battleLife > 0)
 			{
 				downed = false;
 				Player.statLife = battleLife;
-				SetText($"* {Player.name} got back up!");
+				SetText($"* {Player.name} recovered {gain} HP and got back up!");
 				return true;
 			}
 			// Skip the turn: nothing to pick
 			Commit(FaceNone, StartEnemyTurn);
-			text = "* You're DOWN.\n* You'll get up once your HP is above 0.";
+			SetHeroPose(HeroPose.Idle);
+			text = $"* {Player.name} recovered {gain} HP.\n* Still DOWN: up once your HP is above 0.";
 			textShown = text.Length;
 			waitingShowsOthers = true;
 			return false;
@@ -343,6 +364,11 @@ namespace MercyMode.Battle
 			if (!downed)
 				Player.statLife = battleLife;
 			QueueHealFx(amount, 1);
+			if (phase == Phase.Waiting)
+			{
+				waitingShowsOthers = true;
+				SetText($"* {Main.player[from].name} healed {Player.name} for {amount} HP!" + (downed ? "" : battleLife == amount ? "" : ""));
+			}
 		}
 
 		/// <summary>Who an ITEM can go to: this player, then the partners fighting (downed ones included).</summary>
@@ -355,6 +381,29 @@ namespace MercyMode.Battle
 				list.Add((a.whoAmI, $"{a.name}  {life}/{max}" + (life <= 0 ? "  DOWN" : "")));
 			}
 			return list;
+		}
+
+		/// <summary>Who to use the ITEM on: name, then an HP bar in their colour (red below zero), like the party boxes.</summary>
+		private void DrawHealTargets(float y)
+		{
+			var targets = HealTargets();
+			for (int i = 0; i < targets.Count; i++)
+			{
+				Player p = Main.player[targets[i].Who];
+				bool me = p.whoAmI == Player.whoAmI;
+				var (life, max) = me ? (ShownLife, Player.statLifeMax2)
+					: BattleNet.AllyHp.TryGetValue(p.whoAmI, out var hp) ? hp : (p.statLife, p.statLifeMax2);
+				float ry = y + i * 32;
+				if (i == listIndex)
+					DrDraw.HeartShapeAt(28, ry + 8, 16, Color.Red);
+				DrDraw.Text(p.name, 60, ry, Color.White, DrDraw.BigFont, 0.8f);
+				const float barX = 260, barW = 120, barH = 14;
+				float ratio = max > 0 ? MathHelper.Clamp(life / (float)max, 0f, 1f) : 0f;
+				DrDraw.Rect(barX, ry + 8, barW, barH, new Color(128, 0, 0));
+				DrDraw.Rect(barX, ry + 8, (float)Math.Ceiling(ratio * barW), barH, PartyColors.Of(p));
+				if (life <= 0)
+					DrDraw.Text("DOWN", barX + barW + 12, ry + 6, new Color(255, 40, 40), DrDraw.SmallFont);
+			}
 		}
 
 		private void UpdatePartySelect()
@@ -460,7 +509,9 @@ namespace MercyMode.Battle
 			bool hitRecently = BattleNet.AllyHitTick.TryGetValue(p.whoAmI, out uint hit) && Main.GameUpdateCount - hit < 30;
 			if (hitRecently)
 				return (HeroPose.Attack, (Main.GameUpdateCount - hit) / (float)TicksPerFrame);
-			if (!BattleNet.ReadyFaces.TryGetValue(p.whoAmI, out int face))
+			// Down, or skipping the turn: standing (no raised arm)
+			bool down = BattleNet.AllyHp.TryGetValue(p.whoAmI, out var hp) && hp.Life <= 0;
+			if (down || !BattleNet.ReadyFaces.TryGetValue(p.whoAmI, out int face) || face == FaceNone)
 				return (HeroPose.Idle, 0f);
 			bool acting = BattleNet.ActingNow.Contains(p.whoAmI);
 			return face switch
@@ -614,7 +665,7 @@ namespace MercyMode.Battle
 				DrDraw.Text("HP", r.X + labelX - 4, r.Y + barY - 3, Color.White, DrDraw.SmallFont);
 				DrDraw.Rect(r.X + barX, r.Y + barY, barWidth, barHeight, new Color(128, 0, 0));
 				DrDraw.Rect(r.X + barX, r.Y + barY, (float)Math.Ceiling(ratio * barWidth), barHeight, color);
-				string hp = $"{Math.Max(0, life)}/{lifeMax}";
+				string hp = $"{life}/{lifeMax}";
 				float room = 208 - (barX + barWidth + 3);
 				float numberScale = Math.Min(1f, room / Math.Max(1f, DrDraw.Measure(hp, DrDraw.SmallFont)));
 				DrDraw.Text(hp, r.X + barX + barWidth + 3, r.Y + barY + barHeight / 2f - DrDraw.LineHeight(DrDraw.SmallFont) * numberScale / 2f,
