@@ -421,7 +421,7 @@ namespace MercyMode.Battle
 			float left = gunTimer / (float)GunWindowTicks;
 			DrDraw.Rect(x + 82, y + 30, (FightBoxWidth - 4) * left, 4, yellow * alpha);
 			bool blink = gunTimer > 0 && (time / 8) % 2 == 0;
-			DrDraw.Text("SPAM  Z  TO  SHOOT", x + 92, y + 6, (blink ? Color.White : yellow) * alpha, DrDraw.SmallFont);
+			DrDraw.Text("SPAM  Z", x + 92, y + 6, (blink ? Color.White : yellow) * alpha, DrDraw.SmallFont);
 			DrDraw.Text($"{gunShots}/{MaxGunShots}", x + 80 + FightBoxWidth - 34, y + 6, Color.White * alpha, DrDraw.SmallFont);
 			if (phase == Phase.FightBar)
 			{

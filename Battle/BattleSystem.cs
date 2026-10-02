@@ -2068,7 +2068,8 @@ namespace MercyMode.Battle
 			DrawPlayerHead(new Vector2(x + 19, y + 20), alpha);
 			DrDraw.Outline(x + 78, y, FightBoxWidth + 3, 37, blue);
 			DrDraw.Outline(x + 79, y + 1, FightBoxWidth + 1, 35, blue);
-			if (!DrDraw.Sprite("spr_pressspot", 0, x + 80, y, Color.White, 1f, 0f, alpha))
+			// Guns have no line to hit, so no press spot
+			if (!gunMode && !DrDraw.Sprite("spr_pressspot", 0, x + 80, y, Color.White, 1f, 0f, alpha))
 				DrDraw.Rect(x + 80, y, 10, 38, new Color(0, 0, 255) * alpha);
 
 			if (gunMode)
