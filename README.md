@@ -4,7 +4,7 @@
 >
 > MercyMode does **not** include, package, or redistribute Deltarune game assets.
 >
-> If you have a legitimate local installation of Deltarune, MercyMode can optionally load compatible assets directly from that installation at runtime. The assets stay on your computer and are not included in the MercyMode source repository or mod package.
+> If you have a legitimate local installation of Deltarune, MercyMode can optionally load compatible assets directly from that installation at runtime. The Deltarune source files remain in the user's own installation; MercyMode loads compatible data into memory at runtime and does not include those assets in its source repository or mod package.
 >
 > Users are responsible for obtaining and installing Deltarune through an authorized source before using the optional Deltarune asset integration. MercyMode does not verify Steam ownership.
 >
@@ -80,6 +80,8 @@ The intended Workshop package contains the MercyMode mod itself and does not con
 Deltarune is a separate copyrighted work owned by its respective rights holders. MercyMode does not grant users access to Deltarune or provide copies of its assets.
 
 The runtime asset-loading system is intended for users who already have a legitimate local Deltarune installation. The code does not authenticate a Steam purchase, so this is an intended-use requirement rather than an ownership check performed by the mod.
+
+Because MercyMode can read files from a user's separate Deltarune installation, Workshop distribution is subject to the applicable tModLoader Workshop rules regarding external file access. The project does not include or redistribute Deltarune game assets.
 
 ## Build
 
