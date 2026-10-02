@@ -147,9 +147,10 @@ namespace MercyMode.Battle
 		/// <summary>Bolts and the share of Terraria hits each one stands for, from the use time in ticks.</summary>
 		private static void Speed(WeaponOption w, int useTicks)
 		{
-			float hits = TurnSeconds * 60f / useTicks;
+			// Each bolt hits for the weapon's own damage (what its tooltip says), fast weapons just get more bolts.
+			// It used to stand for TurnSeconds of the weapon's DPS, which made a 5-damage shortsword hit for ~28.
 			w.Bolts = Math.Clamp((int)Math.Round(BoltTierTicks / useTicks), 1, MaxBolts);
-			w.HitShare = hits / w.Bolts;
+			w.HitShare = 1f;
 		}
 
 		/// <summary>The weapon FIGHT uses now: the one chosen this battle, else the held weapon, else the best one.</summary>
