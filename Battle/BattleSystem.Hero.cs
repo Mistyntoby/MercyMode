@@ -469,7 +469,7 @@ namespace MercyMode.Battle
 						break;
 					case HeroPose.Defend:
 						// DEFEND: empty hand raised up in front, nothing held
-						p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, MathHelper.Pi * 0.75f);
+						p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, -MathHelper.Pi * 0.68f);
 						break;
 					case HeroPose.Act:
 						bodyFrame = legFrame = Math.Min(1f, timer / 14f) < 1f ? 5 : 0;
