@@ -1511,6 +1511,7 @@ namespace MercyMode.Battle
 				DrawEnemy(sb, m);
 				DrawAllies(sb, m);
 				DrawHero(sb, m);
+				DrawMinions();
 				DrawEffects();
 				if (arenaBlend > 0f)
 				{
