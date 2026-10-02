@@ -69,6 +69,8 @@ namespace MercyMode.Battle
 			allySoulDrawn.Clear();
 			allySeen.Clear();
 			downed = false;
+			downedDark = 0f;
+			allyDark.Clear();
 			allySlot.Clear();
 			allyLastFeet.Clear();
 			allyWalkingOff.Clear();
@@ -272,6 +274,10 @@ namespace MercyMode.Battle
 
 		/// <summary>HP fell to zero while a partner was still up: HP below zero, turns skipped, no SOUL in the box.</summary>
 		private bool downed;
+		/// <summary>How dark the downed player is drawn (eases in and out), ours and each ally's.</summary>
+		private float downedDark;
+		private readonly Dictionary<int, float> allyDark = new();
+		private static readonly Color DownedShade = new(70, 70, 90);
 		/// <summary>The HP the battle shows: below zero while downed.</summary>
 		private int ShownLife => downed ? battleLife : Player.statLife;
 		private (int type, string name, int heal) pickedItem;
@@ -291,7 +297,7 @@ namespace MercyMode.Battle
 			Player.dead = false;
 			Sfx("hurt");
 			ShakeScreen(4);
-			HeroNumber(0, new Color(255, 40, 40), DamageNumber.MissFrame);
+			HeroNumber(0, new Color(255, 40, 40), DamageNumber.DownFrame);
 			return true;
 		}
 
@@ -317,6 +323,7 @@ namespace MercyMode.Battle
 		/// <summary>Down with nobody left standing: the party is beaten, and this player really dies.</summary>
 		private void CheckDowned()
 		{
+			downedDark = MathHelper.Clamp(downedDark + (downed ? 0.04f : -0.06f), 0f, 1f);
 			if (downed && (!BattleNet.InParty || !AnyAllyUp()) && phase != Phase.Death && !deathPending)
 			{
 				downed = false;
@@ -535,6 +542,11 @@ namespace MercyMode.Battle
 					_ => 0f,
 				};
 				Color light = fly >= 1f ? Color.White : Color.Lerp(Lighting.GetColor(p.Center.ToTileCoordinates()), Color.White, fly);
+				// Down (their HP below zero): they fade dark
+				bool down = BattleNet.AllyHp.TryGetValue(who, out var hpNow) && hpNow.Life <= 0;
+				float dark = MathHelper.Clamp((allyDark.TryGetValue(who, out float d) ? d : 0f) + (down ? 0.04f : -0.06f), 0f, 1f);
+				allyDark[who] = dark;
+				light = Tint(light, Color.Lerp(Color.White, DownedShade, dark));
 				// Watchers stand a little see-through until they jump in
 				float shadow = BattleNet.Joining.Contains(who) ? 0.5f : 0f;
 				allyLastFeet[who] = spot;

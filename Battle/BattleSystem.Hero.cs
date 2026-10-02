@@ -312,6 +312,8 @@ namespace MercyMode.Battle
 				return;
 
 			HeroLight = WorldLightTint(p.Center);
+			// Downed (multiplayer): fades dark
+			HeroLight = Tint(HeroLight, Color.Lerp(Color.White, DownedShade, downedDark));
 
 			// Fading afterimages first (Terraria's own "shadow" draw makes them see-through)
 			foreach (var t in trail)

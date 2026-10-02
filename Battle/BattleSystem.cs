@@ -1388,7 +1388,9 @@ namespace MercyMode.Battle
 			// Terraria's own hit invincibility would hide the SOUL's; the battle handles it
 			Player.immune = false;
 			Player.immuneTime = 0;
-			battleLife = Player.statLife;
+			// A lethal hit just put us DOWN (battleLife is below zero now): keep it
+			if (!downed)
+				battleLife = Player.statLife;
 
 			inv = InvincibleTicks;
 			Sfx("hurt");
@@ -2132,7 +2134,8 @@ namespace MercyMode.Battle
 			DrDraw.Outline(x + 78, y, FightBoxWidth + 3, 37, blue);
 			DrDraw.Outline(x + 79, y + 1, FightBoxWidth + 1, 35, blue);
 			// Guns have no line to hit, so no press spot
-			if (!gunMode && !DrDraw.Sprite("spr_pressspot", 0, x + 80, y, Color.White, 1f, 0f, alpha))
+			// In a party the press spot takes our colour too, like the others' rows
+			if (!gunMode && !DrDraw.Sprite("spr_pressspot", 0, x + 80, y, Net.BattleNet.InParty ? KrisCyan : Color.White, 1f, 0f, alpha))
 				DrDraw.Rect(x + 80, y, 10, 38, new Color(0, 0, 255) * alpha);
 
 			if (gunMode)
