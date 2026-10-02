@@ -598,7 +598,7 @@ namespace MercyMode.Battle
 			if (Math.Abs(panelTarget - panel) < 0.75f)
 				panel = panelTarget;
 			panel = MathHelper.Clamp(panel, 0f, PanelHeight);
-			float liftTarget = phase is Phase.Menu or Phase.WeaponSelect or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect ? 32f : 0f;
+			float liftTarget = phase is Phase.Menu or Phase.WeaponSelect or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect or Phase.PartySelect ? 32f : 0f;
 			partyLift = MathHelper.Lerp(partyLift, liftTarget, EasePerTick(liftTarget == 0f ? 0.68f : 0.5f));
 			if (Math.Abs(liftTarget - partyLift) < 0.5f)
 				partyLift = liftTarget;
@@ -1041,6 +1041,7 @@ namespace MercyMode.Battle
 			if (target >= 0 && target != Player.whoAmI)
 			{
 				Net.BattleNet.SendHealAlly(target, heal);
+				PlayAllyHealFx(target, heal);
 				usedItemType = type;
 				faceAction = FaceItem;
 				SetHeroPose(HeroPose.Item);
