@@ -35,6 +35,8 @@ namespace MercyMode.Battle
 		private bool waitingShowsOthers;
 		private uint actingSince;
 		private readonly Dictionary<int, Vector2> allySoulDrawn = new();
+		/// <summary>Each ally's graze flash, counting down like ours (grazeTimer).</summary>
+		private readonly Dictionary<int, int> allyGraze = new();
 		/// <summary>How many of each ally's hit numbers are up this turn (they stack).</summary>
 		private readonly Dictionary<int, int> allyHitsShown = new();
 		/// <summary>When each ally first showed up on this screen (0: there from the start, gliding in with us).</summary>
@@ -464,7 +466,8 @@ namespace MercyMode.Battle
 				BattleNet.SendHp(lastSentHp, lastSentHpMax);
 			}
 			if (BattleNet.InParty && !downed && phase is Phase.EnemyIntro or Phase.EnemyTurn && time % 2 == 0)
-				BattleNet.SendSoul(soul, (byte)((byte)soulMode | (grazeTimer > 0 ? 0x80 : 0)));
+				// Flags with the SOUL mode: 0x80 grazing, 0x40 the dark frame of the hit-invincibility blink
+				BattleNet.SendSoul(soul, (byte)((byte)soulMode | (grazeTimer > 0 ? 0x80 : 0) | (inv > 0 && inv / SoulBlinkTicks % 2 == 1 ? 0x40 : 0)));
 		}
 
 		/// <summary>Leaves the battle on this client only (multiplayer /mmbattle end).</summary>
@@ -761,9 +764,23 @@ namespace MercyMode.Battle
 					? Vector2.Lerp(was, pos, 0.5f) : pos;
 				allySoulDrawn[who] = shown;
 				Color c = PartyColors.Of(Main.player[who]);
-				// They grazed something: the graze outline on their SOUL too
-				if ((mode & 0x80) != 0 && !DrDraw.Sprite("spr_grazeappear", 0, shown.X + SoulSize / 2f, shown.Y + SoulSize / 2f, Color.White, 1f, 0f, 0.7f))
-					DrDraw.Outline(shown.X - 5, shown.Y - 5, SoulSize + 10, SoulSize + 10, Color.White * 0.7f, 2);
+				// They grazed something: the graze outline on their SOUL, fading out like ours
+				if ((mode & 0x80) != 0)
+					allyGraze[who] = GrazeFlashTicks;
+				else if (allyGraze.TryGetValue(who, out int g) && g > 0)
+					allyGraze[who] = g - 1;
+				if (allyGraze.TryGetValue(who, out int graze) && graze > 0)
+				{
+					float a = graze / (float)TicksPerFrame / 6f;
+					Vector2 gc = shown + new Vector2(SoulSize / 2f);
+					if (!DrDraw.Sprite("spr_grazeappear", 0, gc.X, gc.Y, Color.White, 1f, 0f, a))
+						DrDraw.Outline(gc.X - GrazeSize / 2f, gc.Y - GrazeSize / 2f, GrazeSize, GrazeSize, Color.White * a, 2);
+					else
+						DrDraw.Sprite("spr_grazeappear", 3, gc.X, gc.Y, Color.White, 1f, 0f, a - 0.2f);
+				}
+				// Hit: their SOUL blinks dark while invincible, like ours
+				if ((mode & 0x40) != 0)
+					c = Color.Lerp(c, Color.Black, 0.5f);
 				// The same SOUL sprite as ours, in their colour (a plain heart without Deltarune's)
 				if (WhiteHeart() is Texture2D white)
 					DrDraw.Sb.Draw(white, shown, null, c * 0.9f, 0f, DeltaruneAssets.Sprite("spr_dodgeheart").Origin, 1f, SpriteEffects.None, 0f);
