@@ -14,6 +14,8 @@ MercyMode is a tModLoader mod that turns Terraria boss and optional regular-enem
 
 Battles pause the Terraria world and offer FIGHT, ACT, ITEM, SPARE, and DEFEND turns. On enemy turns, dodge bullets with the SOUL; bullets can hurt the player's real health, while grazing them builds TP. Spared bosses still drop loot.
 
+Development Note: This mod is heavily vibe-coded. If you're wondering how some of this works... no idea 😭.
+
 ## Features
 
 * Custom encounters for the Eye of Cthulhu, King Slime, Eater of Worlds, Brain of Cthulhu, Queen Bee, Skeletron, Deerclops, and Wall of Flesh.
