@@ -217,8 +217,8 @@ namespace MercyMode.Battle
 			// Weapons on the hotbar get equipped for real
 			if (pick.Slot >= 0 && pick.Slot < 10)
 				Player.selectedItem = pick.Slot;
-			// Two or more kinds of summons out: which one fights alongside
-			if (Minions().Count >= 2)
+			// Summons out or in the inventory: which one fights alongside (or none)
+			if (SummonEntries().Count > 0)
 			{
 				OpenSummonSelect();
 				return;
@@ -887,34 +887,59 @@ namespace MercyMode.Battle
 			return kinds.FirstOrDefault(k => k.type == chosenSummon) ?? kinds[0];
 		}
 
-		// ---- picking the summon (after the weapon, when there are two or more kinds) ----
+		// ---- picking the summon (after the weapon): one that's out, one from the inventory, or none ----
+
+		/// <summary>A row of the summon menu: a kind already out, a summon item to call now, or (both null) none.</summary>
+		private record SummonEntry(Projectile Out, Item Call);
+
+		/// <summary>The minion a summon item calls (Abigail's flower shoots her counter; she's the one who fights).</summary>
+		private static int SummonKindOf(Item item) => item.shoot == ProjectileID.AbigailCounter ? ProjectileID.AbigailMinion : item.shoot;
+
+		private List<SummonEntry> SummonEntries()
+		{
+			var kinds = Minions();
+			var list = kinds.Select(k => new SummonEntry(k, null)).ToList();
+			var seen = new HashSet<int>(kinds.Select(k => k.type));
+			for (int i = 0; i < 50; i++)
+			{
+				Item item = Player.inventory[i];
+				if (item == null || item.IsAir || item.shoot <= ProjectileID.None || item.buffType <= 0 || item.sentry
+					|| !item.CountsAsClass(DamageClass.Summon) || ProjectileID.Sets.IsAWhip[item.shoot])
+					continue;
+				if (seen.Add(SummonKindOf(item)))
+					list.Add(new SummonEntry(null, item));
+			}
+			// Nothing out and nothing to call: no menu at all
+			if (list.Count == 0)
+				return list;
+			list.Add(new SummonEntry(null, null));
+			return list;
+		}
 
 		private void OpenSummonSelect()
 		{
-			var kinds = Minions();
-			listIndex = Math.Max(0, kinds.FindIndex(k => k.type == chosenSummon));
-			if (chosenSummon == 0)
-				listIndex = kinds.Count;
+			var entries = SummonEntries();
+			listIndex = Math.Max(0, entries.FindIndex(e => e.Out?.type == chosenSummon));
+			if (chosenSummon == 0 && Minions().Count == 0)
+				listIndex = entries.Count - 1;
 			SetPhase(Phase.SummonSelect);
 		}
 
-		private List<string> SummonLabels()
-		{
-			var labels = Minions().Select(k => $"{Lang.GetProjectileName(k.type).Value}  ({SummonDamage(k)})").ToList();
-			labels.Add("No summon");
-			return labels;
-		}
+		private List<string> SummonLabels() => SummonEntries().Select(e =>
+			e.Out != null ? $"{Lang.GetProjectileName(e.Out.type).Value}  ({SummonDamage(e.Out)})"
+			: e.Call != null ? $"Summon {e.Call.Name}"
+			: Minions().Count > 0 ? "Unsummon" : "No summon").ToList();
 
 		private void UpdateSummonSelect()
 		{
-			var kinds = Minions();
-			int count = kinds.Count + 1;
+			var entries = SummonEntries();
+			int count = entries.Count;
 			int before = listIndex;
 			if (Pressed(Microsoft.Xna.Framework.Input.Keys.Down) && listIndex + 1 < count)
 				listIndex++;
 			if (Pressed(Microsoft.Xna.Framework.Input.Keys.Up) && listIndex > 0)
 				listIndex--;
-			listIndex = Math.Clamp(listIndex, 0, count - 1);
+			listIndex = Math.Clamp(listIndex, 0, Math.Max(0, count - 1));
 			if (listIndex != before)
 				Sfx("menumove");
 			if (Cancel)
@@ -922,11 +947,52 @@ namespace MercyMode.Battle
 				OpenWeaponSelect();
 				return;
 			}
-			if (!Confirm)
+			if (!Confirm || count == 0)
 				return;
 			Sfx("select");
-			chosenSummon = listIndex < kinds.Count ? kinds[listIndex].type : 0;
+			SummonEntry pick = entries[listIndex];
+			if (pick.Out != null)
+				chosenSummon = pick.Out.type;
+			else if (pick.Call != null)
+				chosenSummon = CallSummon(pick.Call);
+			else
+			{
+				Unsummon();
+				chosenSummon = 0;
+			}
 			OpenEnemySelect();
+		}
+
+		/// <summary>Calls a summon from the inventory (like using the staff once, beside the player); returns its kind.</summary>
+		private int CallSummon(Item item)
+		{
+			Player.AddBuff(item.buffType, 2);
+			var source = Player.GetSource_ItemUse(item);
+			int damage = Player.GetWeaponDamage(item);
+			int kind = SummonKindOf(item);
+			int made = Projectile.NewProjectile(source, Player.Center, Vector2.Zero, item.shoot, damage, item.knockBack, Player.whoAmI);
+			if (made >= 0 && made < Main.maxProjectiles)
+				Main.projectile[made].originalDamage = item.damage;
+			// Abigail's counter spawns her from its AI, which is frozen during the battle: call her too
+			if (kind != item.shoot && !Main.projectile.Any(p => p.active && p.owner == Player.whoAmI && p.type == kind))
+			{
+				int her = Projectile.NewProjectile(source, Player.Center, Vector2.Zero, kind, damage, item.knockBack, Player.whoAmI);
+				if (her >= 0 && her < Main.maxProjectiles)
+					Main.projectile[her].originalDamage = item.damage;
+			}
+			Sfx("boost");
+			return kind;
+		}
+
+		/// <summary>Dismisses the player's minions (sentries stay where they were built).</summary>
+		private void Unsummon()
+		{
+			foreach (Projectile p in Main.ActiveProjectiles)
+				if (IsSummonOf(p, Player.whoAmI) && !p.sentry)
+				{
+					if (p.minion || p.type is ProjectileID.AbigailMinion or ProjectileID.AbigailCounter)
+						p.Kill();
+				}
 		}
 
 		/// <summary>After the player's hits: every kind of minion they have out flies at the target and hits once.</summary>
@@ -961,7 +1027,7 @@ namespace MercyMode.Battle
 				int dealt = target.StrikeNPC(strike);
 				if (Main.netMode != NetmodeID.SinglePlayer)
 					NetMessage.SendStrikeNPC(target, in strike);
-				EnemyNumber(dealt, new Color(180, 140, 255), -1, yOffset: -18f * (hitsLanded + n), at: spot);
+				EnemyNumber(dealt, HeroDamageColor, -1, yOffset: -18f * (hitsLanded + n), at: spot);
 				Net.BattleNet.SendPartyHit(target, dealt, false);
 				n++;
 			}

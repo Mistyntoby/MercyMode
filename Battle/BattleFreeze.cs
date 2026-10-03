@@ -16,10 +16,27 @@ namespace MercyMode.Battle
 		/// </summary>
 		public static bool Frozen(NPC npc) => MercyMode.IsSingleplayer ? BattleSystem.Active : Net.BattleNet.IsFrozen(npc);
 
+		public override bool InstancePerEntity => true;
+
+		/// <summary>Made unchaseable while frozen, so summons outside the battle don't dash at it forever.</summary>
+		private bool unchased;
+
 		public override bool PreAI(NPC npc)
 		{
 			if (!Frozen(npc))
+			{
+				if (unchased)
+				{
+					npc.chaseable = true;
+					unchased = false;
+				}
 				return true;
+			}
+			if (npc.chaseable)
+			{
+				npc.chaseable = false;
+				unchased = true;
+			}
 			// AI is skipped, but Terraria still adds velocity to position afterwards
 			npc.velocity = Vector2.Zero;
 			// Multiplayer, seen from outside: it faces the players fighting it

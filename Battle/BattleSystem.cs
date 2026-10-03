@@ -1776,8 +1776,8 @@ namespace MercyMode.Battle
 				return;
 			int f = Math.Min(4, slashTimer / 4); // image_speed 0.5: two frames per sprite frame
 			float s = bestPoints == 150 ? 2.5f : 2f;
-			if (!DrDraw.Sprite("spr_attack_cut1", f, pos.X, pos.Y, Color.White, s))
-				DrDraw.Rect(pos.X - 30 + slashTimer * 3, pos.Y - 30 + slashTimer * 3, 8, 8, Color.White);
+			if (!DrDraw.Sprite("spr_attack_cut1", f, pos.X, pos.Y, KrisCyan, s))
+				DrDraw.Rect(pos.X - 30 + slashTimer * 3, pos.Y - 30 + slashTimer * 3, 8, 8, KrisCyan);
 		}
 
 		private void DrawBox()
