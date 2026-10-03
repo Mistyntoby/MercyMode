@@ -294,6 +294,15 @@ namespace MercyMode.Battle
 			}
 			if (parts.Count == 1)
 				return parts[0];
+			// Several enemies at once (Deltarune thins each one's attack out the same way): each fires less often, and
+			// their volleys take turns instead of landing together (two zombie walls with their own gaps at the same
+			// moment left nowhere to go)
+			for (int k = 0; k < parts.Count; k++)
+				if (((OwnedAttack)parts[k]).Inner is RepeatingAttack ra)
+				{
+					ra.Every = (int)Math.Round(ra.Every * (1f + 0.6f * (parts.Count - 1)));
+					ra.FirstAt += k * ra.Every / parts.Count;
+				}
 			return new Combo(parts.Max(p => p.Duration), parts.ToArray()) { FullScreen = parts.Any(p => p.FullScreen) };
 		}
 	}

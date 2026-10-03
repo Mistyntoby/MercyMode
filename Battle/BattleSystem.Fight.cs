@@ -346,6 +346,8 @@ namespace MercyMode.Battle
 		private readonly List<PendingHit> pendingHits = new();
 		private readonly List<BoltBurst> boltBursts = new();
 		private int hitsTried, hitsLanded;
+		/// <summary>Numbers already shown on each enemy this FIGHT (the next stacks above them).</summary>
+		private readonly Dictionary<BattleEnemy, int> hitStack = new();
 		/// <summary>Best press this turn (for the size of the slash).</summary>
 		private int bestPoints;
 
@@ -355,6 +357,7 @@ namespace MercyMode.Battle
 			boltX = 0;
 			fightFade = 0;
 			hitsTried = hitsLanded = 0;
+			hitStack.Clear();
 			bestPoints = 0;
 			// Guns: no timed bolts, spam Z for as many shots as the window and the gun's speed allow
 			gunMode = fightWeapon.Item?.useAmmo == AmmoID.Bullet;
@@ -835,8 +838,11 @@ namespace MercyMode.Battle
 			if (hit.Crit)
 				Sfx("crit");
 			// Several hits stack their numbers upward
+			// (Counted per enemy: the hits that carry on into the next one start at its own spot, not stacked on the last's)
+			hitStack.TryGetValue(targetEnemy, out int stack);
+			hitStack[targetEnemy] = stack + 1;
 			EnemyNumber(dealt > 0 ? dealt : 0, hit.Crit ? HeroCritColor : HeroDamageColor, dealt > 0 ? -1 : DamageNumber.MissFrame,
-				yOffset: -18f * hitsLanded, at: spot);
+				yOffset: -18f * stack, at: spot);
 			hitsLanded++;
 			// The summon joins in right after the first hit lands (not on ACT, ITEM, SPARE or DEFEND)
 			if (hitsLanded == 1 && summonPendingTicks < 0 && ChosenSummon() != null)
@@ -1542,7 +1548,9 @@ namespace MercyMode.Battle
 					DuelSendHit(dealt, false);
 				else if (Main.netMode != NetmodeID.SinglePlayer)
 					NetMessage.SendStrikeNPC(target, in strike);
-				EnemyNumber(dealt, HeroDamageColor, -1, yOffset: -18f * (hitsLanded + n), at: spot);
+				hitStack.TryGetValue(targetEnemy, out int stack);
+				hitStack[targetEnemy] = stack + 1;
+				EnemyNumber(dealt, HeroDamageColor, -1, yOffset: -18f * stack, at: spot);
 				Net.BattleNet.SendPartyHit(target, dealt, false);
 				n++;
 			}
