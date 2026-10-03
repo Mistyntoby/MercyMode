@@ -149,6 +149,7 @@ namespace MercyMode.Battle
 				else
 				{
 					projectile.direction = owner.direction;
+					projectile.rotation = 0f; // upright while it waits, not tilted from flying
 					projectile.spriteDirection = owner.direction * FacingRight(type);
 				}
 			}
