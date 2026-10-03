@@ -1705,14 +1705,20 @@ namespace MercyMode.Battle
 			}
 		}
 
+		private static readonly System.Diagnostics.Stopwatch BackgroundClock = System.Diagnostics.Stopwatch.StartNew();
+
 		private void DrawBackground(float left, float top, float width, float height)
 		{
 			// obj_battleback: black fades in at 0.1 per frame, then bg_battleback1 tiled twice, scrolling
 			// diagonally: one layer +0.5 px/frame at half alpha, the other -1 px/frame
 			DrDraw.Rect(left, top, width, height, Color.Black * screenFade);
 			var tile = DeltaruneAssets.Sprite("bg_battleback1");
-			float frames = time / (float)TicksPerFrame;
+			// Real time, not game ticks: it scrolls smoothly at whatever rate the screen draws (ticks moved it in steps,
+			// and rounding to whole pixels made it jump every few ticks)
+			float frames = (float)(BackgroundClock.Elapsed.TotalSeconds * 30.0 % 200.0);
 			float siner = frames * 0.5f % 100f, siner2 = frames % 100f;
+			// Tiles land on whole screen pixels (no seams or shimmer between them), at any battle scale
+			float Snap(float v) => (float)Math.Round(v * drScale) / drScale;
 			if (tile == null)
 			{
 				Color grid = new Color(80, 32, 120) * (0.35f * screenFade);
@@ -1729,10 +1735,10 @@ namespace MercyMode.Battle
 				float startY = oy + (float)Math.Floor((top - oy) / h) * h;
 				for (float x = startX; x < left + width; x += w)
 					for (float y = startY; y < top + height; y += h)
-						DrDraw.Sb.Draw(tile.Frames[0], new Vector2(x, y), Color.White * alpha);
+						DrDraw.Sb.Draw(tile.Frames[0], new Vector2(Snap(x), Snap(y)), Color.White * alpha);
 			}
-			tiled((float)Math.Round(-100 + siner), (float)Math.Round(-100 + siner), screenFade / 2f);
-			tiled((float)Math.Round(-200 - siner2), (float)Math.Round(-210 - siner2), screenFade);
+			tiled(-100 + siner, -100 + siner, screenFade / 2f);
+			tiled(-200 - siner2, -210 - siner2, screenFade);
 		}
 
 		/// <summary>Every enemy in the battle, each at its own spot (back row first, so the front one overlaps).</summary>

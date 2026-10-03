@@ -343,11 +343,17 @@ namespace MercyMode.Battle
 				AttackSfx.Vanilla(use);
 			else
 				Sfx("attack");
-			if (proj <= 0)
-				return;
 			Vector2 from = DuelOppHand;
 			// At us: our heart; otherwise the spot in the box where the piece goes
 			Vector2 to = at.X < 0 ? HeroFeetNow + new Vector2(0f, -40f) : at;
+			if (IsBeamWeapon(ContentSamples.ItemsByType.TryGetValue(item, out Item beamItem) ? beamItem : null))
+			{
+				AddEffect(new MuzzleFlash(from));
+				AddEffect(new BeamEffect(from, to, item == ItemID.LastPrism, 22f));
+				return;
+			}
+			if (proj <= 0)
+				return;
 			AddEffect(new MuzzleFlash(from));
 			AddEffect(new ShotProjectile(proj, from, to, 10f));
 		}
@@ -543,6 +549,19 @@ namespace MercyMode.Battle
 						OnDuelFire(item, proj, at);
 					break;
 				}
+				case BattleNet.DuelKind.ForceSoul:
+				{
+					var mode = (SoulMode)r.ReadByte();
+					if (duelOver || phase is not (Phase.EnemyIntro or Phase.EnemyTurn) || mode == soulMode)
+						break;
+					// Their doing: the SOUL changes mid-turn, with a flash
+					BeginSoulMode(mode);
+					if (attack != null)
+						attack.Soul = mode;
+					AddEffect(new Shockwave(SoulCenter, mode.Color(), 30f));
+					Sfx("boost");
+					break;
+				}
 				case BattleNet.DuelKind.Hurt:
 				{
 					int dealt = r.ReadInt32();
@@ -585,6 +604,7 @@ namespace MercyMode.Battle
 						inv = -1;
 						grazeTimer = 0;
 						duelOppHurt = -1;
+						soulMode = SoulMode.Red;
 						SetHeroPose(HeroPose.Idle);
 						Bullets.Clear();
 						boxTimer = 0;
@@ -733,7 +753,7 @@ namespace MercyMode.Battle
 
 		// ================================================================== pieces
 
-		internal enum PieceKind : byte { Slash, Thrust, Arrow, Spray, Orb, Minion, Bounce, Shot }
+		internal enum PieceKind : byte { Slash, Thrust, Arrow, Spray, Orb, Minion, Bounce, Shot, Beam, Explosive }
 
 		/// <summary>One placed attack piece: what, from which weapon, how hard, where and which way.</summary>
 		internal struct DuelPiece
@@ -768,6 +788,20 @@ namespace MercyMode.Battle
 				Dir = new Vector2(r.ReadSingle(), r.ReadSingle()),
 			};
 		}
+
+		/// <summary>How far a beam piece reaches.</summary>
+		private const float BeamLength = 700f;
+
+		private static Color PieceColor(DuelPiece pc) => pc.Kind switch
+		{
+			PieceKind.Arrow => new Color(220, 190, 140),
+			PieceKind.Spray => new Color(255, 230, 120),
+			PieceKind.Orb => new Color(230, 120, 255),
+			PieceKind.Minion => new Color(120, 220, 255),
+			PieceKind.Beam => WeaponBeam.Rainbow(0f),
+			PieceKind.Explosive => new Color(255, 150, 60),
+			_ => Color.White,
+		};
 
 		/// <summary>Ticks a piece shows as a warning before its bullets come.</summary>
 		private const int PieceWarnTicks = 36;
@@ -820,7 +854,8 @@ namespace MercyMode.Battle
 				{
 					float a = b.Age / 4 % 2 == 0 ? 0.9f : 0.4f;
 					DrDraw.Outline(b.Position.X - 9, b.Position.Y - 9, 18, 18, new Color(255, 80, 80) * a, 2);
-					DrDraw.Line(b.Position, b.Position + dir * 40f, 2f, new Color(255, 80, 80) * a * 0.7f);
+					// A beam warns along its whole length
+					DrDraw.Line(b.Position, b.Position + dir * (pc.Kind == PieceKind.Beam ? BeamLength : 40f), 2f, new Color(255, 80, 80) * a * 0.7f);
 				},
 			});
 			var item = ItemTexture(pc.Item);
@@ -862,11 +897,57 @@ namespace MercyMode.Battle
 				{
 					Bullet b = TexBullet(proj, pc.At, dir * 2.6f, 24f, 12f);
 					b.Lifetime = 320;
+					b.Trail = 4;
 					b.OnUpdate = x =>
 					{
 						x.Rotation += 0.1f;
 						if (x.Age < 200)
 							x.Velocity = Vector2.Lerp(x.Velocity, (SoulCenter - x.Position).SafeNormalize(Vector2.UnitX) * 2.6f, 0.03f);
+					};
+					bullets.Add(b);
+					break;
+				}
+				case PieceKind.Beam:
+				{
+					// Held on one line for a moment: thin while it charges, then wide; it hurts once it's wide
+					bool prism = pc.Item == ItemID.LastPrism;
+					Vector2 end = pc.At + dir * BeamLength;
+					const int life = 70;
+					bullets.Add(new Bullet
+					{
+						Position = pc.At,
+						HitSize = new Vector2(8),
+						Lifetime = life,
+						DestroyOnHit = false,
+						OffscreenMargin = 2000f,
+						HitTest = (x, area) => x.Age > life * 0.2f && x.Age < life * 0.85f && WeaponBeam.Touches(pc.At, end, 6f, area),
+						OnDraw = x => WeaponBeam.Draw(pc.At, end, x.Age / (float)life, prism, 1f),
+						SoundOnSpawn = true,
+					});
+					break;
+				}
+				case PieceKind.Explosive:
+				{
+					// Flies a little way, then bursts: a ring of shrapnel and a shockwave
+					Bullet b = TexBullet(proj, pc.At, dir * 3.4f, 22f, 10f);
+					b.RotateWithVelocity = true;
+					b.RotationOffset = MathHelper.PiOver2;
+					b.Trail = 3;
+					int dmg = Math.Max(1, pc.Damage);
+					b.OnUpdate = x =>
+					{
+						if (x.Age < 45)
+							return;
+						x.Dead = true;
+						AddEffect(new Shockwave(x.Position, new Color(255, 150, 60), 46f));
+						Sparks.Burst(this, x.Position, 14, new Color(255, 190, 80), 3.5f);
+						ShakeScreen(2f);
+						Terraria.Audio.SoundEngine.PlaySound(SoundID.Item14 with { Volume = 0.6f });
+						for (int i = 0; i < 8; i++)
+						{
+							Vector2 v = (MathHelper.TwoPi * i / 8f).ToRotationVector2() * 3.6f;
+							Spawn(new Bullet { Position = x.Position, Velocity = v, HitSize = new Vector2(6), Color = new Color(255, 170, 70), DamageMult = dmg, Lifetime = 90 });
+						}
 					};
 					bullets.Add(b);
 					break;
@@ -911,6 +992,19 @@ namespace MercyMode.Battle
 					bullets.Add(b);
 					break;
 				}
+			}
+			// A puff where the piece comes in, in its colour
+			if (bullets.Count > 0)
+			{
+				Bullet first = bullets[0];
+				Action<Bullet> then = first.OnUpdate;
+				Color puff = PieceColor(pc);
+				first.OnUpdate = x =>
+				{
+					if (x.Age == 0)
+						Sparks.Burst(this, x.Position, 7, puff, 2.2f);
+					then?.Invoke(x);
+				};
 			}
 			foreach (Bullet b in bullets)
 			{
@@ -1031,10 +1125,18 @@ namespace MercyMode.Battle
 			[PieceKind.Minion] = ("MINION", 40),
 			[PieceKind.Bounce] = ("BOUNCE", 30),
 			[PieceKind.Shot] = ("SHOT", 15),
+			[PieceKind.Beam] = ("BEAM", 40),
+			[PieceKind.Explosive] = ("BOOM", 35),
 		};
 
 		private static PieceKind Classify(Item it)
 		{
+			if (IsBeamWeapon(it))
+				return PieceKind.Beam;
+			if (it.useAmmo == AmmoID.Rocket || it.shoot is ProjectileID.Grenade or ProjectileID.StickyGrenade or ProjectileID.BouncyGrenade
+				or ProjectileID.Bomb or ProjectileID.StickyBomb or ProjectileID.BouncyBomb or ProjectileID.Dynamite or ProjectileID.StickyDynamite
+				or ProjectileID.BouncyDynamite or ProjectileID.Beenade or ProjectileID.PartyGirlGrenade or ProjectileID.MolotovCocktail)
+				return PieceKind.Explosive;
 			if (it.shoot > ProjectileID.None && ProjectileID.Sets.IsAWhip[it.shoot])
 				return PieceKind.Thrust;
 			if (it.CountsAsClass(DamageClass.Summon))
@@ -1101,6 +1203,7 @@ namespace MercyMode.Battle
 			dragFrom = null;
 			mouseWasDown = Main.mouseLeft;
 			buildPreview = new DuelAttack { Preview = true };
+			soulForceCooldown = 0;
 			pieceFirst = Math.Clamp(Math.Min(pieceFirst, piecePick), Math.Max(0, piecePick - PiecesShown + 1), Math.Max(0, pieceOptions.Count - PiecesShown));
 			buildScroll = 0;
 			boxTimer = 0;
@@ -1122,6 +1225,32 @@ namespace MercyMode.Battle
 		}
 
 		private float PaletteTop => ScreenHeight - panel + 44f;
+
+		// ---- forcing the dodger's SOUL mode ----
+
+		/// <summary>Ticks until the builder can change the SOUL again.</summary>
+		private int soulForceCooldown;
+		private const int SoulForceCooldownTicks = 6 * 60;
+		private static readonly SoulMode[] ForceModes = { SoulMode.Red, SoulMode.Blue, SoulMode.Green, SoulMode.Purple, SoulMode.Yellow };
+
+		private Rectangle SoulButton(int i) => new(540 + i * 17, (int)PaletteTop + 28, 15, 15);
+
+		private void ForceSoul(SoulMode mode)
+		{
+			if (soulForceCooldown > 0 || buildDone)
+			{
+				Sfx("cantselect");
+				return;
+			}
+			if (mode == soulMode)
+				return;
+			soulForceCooldown = SoulForceCooldownTicks;
+			// Ours shows it at once; theirs changes when it arrives
+			soulMode = mode;
+			AddEffect(new Shockwave(SoulCenter, mode.Color(), 30f));
+			Sfx("boost");
+			BattleNet.SendDuel(BattleNet.DuelKind.ForceSoul, w => w.Write((byte)mode));
+		}
 
 		/// <summary>Weapons shown at once in the palette (it scrolls when there are more).</summary>
 		private const int PiecesShown = 5;
@@ -1264,6 +1393,8 @@ namespace MercyMode.Battle
 			if (buildDone)
 				return;
 			buildInk = Math.Min(InkMax, buildInk + InkPerTick);
+			if (soulForceCooldown > 0)
+				soulForceCooldown--;
 			if (--buildTicks <= 0)
 			{
 				FinishBuild();
@@ -1296,7 +1427,10 @@ namespace MercyMode.Battle
 				Point mp = mouse.ToPoint();
 				int hit = Enumerable.Range(0, pieceOptions.Count).FirstOrDefault(i => PieceButton(i)?.Contains(mp) == true, -1);
 				int shapeHit = Enumerable.Range(0, Shapes.Length).FirstOrDefault(i => ShapeButton(i).Contains(mp), -1);
-				if (hit >= 0)
+				int soulHit = Enumerable.Range(0, ForceModes.Length).FirstOrDefault(i => SoulButton(i).Contains(mp), -1);
+				if (soulHit >= 0)
+					ForceSoul(ForceModes[soulHit]);
+				else if (hit >= 0)
 					PickPiece(hit);
 				else if (shapeHit >= 0)
 				{
@@ -1347,9 +1481,14 @@ namespace MercyMode.Battle
 			SetHeroPose(HeroPose.Attack);
 			if (o.Item?.UseSound is Terraria.Audio.SoundStyle use)
 				AttackSfx.Vanilla(use);
-			if (shot > 0)
+			Vector2 muzzle = HeroFeetNow + new Vector2(28f, -36f);
+			if (o.Kind == PieceKind.Beam)
 			{
-				Vector2 muzzle = HeroFeetNow + new Vector2(28f, -36f);
+				AddEffect(new MuzzleFlash(muzzle));
+				AddEffect(new BeamEffect(muzzle, at, o.Item?.type == ItemID.LastPrism, 22f));
+			}
+			else if (shot > 0)
+			{
 				AddEffect(new MuzzleFlash(muzzle));
 				AddEffect(new ShotProjectile(shot, muzzle, at, 10f));
 			}
@@ -1362,6 +1501,7 @@ namespace MercyMode.Battle
 		{
 			PieceKind.Arrow or PieceKind.Orb or PieceKind.Shot => o.Proj,
 			PieceKind.Spray => o.Proj > 0 ? o.Proj : ProjectileID.Bullet,
+			PieceKind.Explosive => o.Proj,
 			_ => 0,
 		};
 
@@ -1460,6 +1600,17 @@ namespace MercyMode.Battle
 			DrDraw.Rect(540, top + 14, 84, 8, new Color(30, 30, 60));
 			DrDraw.Rect(540, top + 14, inkW, 8, new Color(120, 200, 255));
 			DrDraw.Text($"{(buildTicks + 59) / 60}s", 590, top - 2, Color.White, DrDraw.SmallFont, 0.7f);
+			// Their SOUL: click a colour to force it (once every few seconds)
+			for (int i = 0; i < ForceModes.Length; i++)
+			{
+				Rectangle sb = SoulButton(i);
+				bool now = ForceModes[i] == soulMode;
+				float a = soulForceCooldown > 0 && !now ? 0.35f : 1f;
+				DrDraw.Rect(sb.X + 2, sb.Y + 2, sb.Width - 4, sb.Height - 4, ForceModes[i].Color() * a);
+				DrDraw.Outline(sb.X, sb.Y, sb.Width, sb.Height, now ? Color.White : new Color(90, 90, 90), now ? 2 : 1);
+			}
+			if (soulForceCooldown > 0)
+				DrDraw.Text($"{(soulForceCooldown + 59) / 60}", 628, PaletteTop + 28, new Color(160, 160, 160), DrDraw.SmallFont, 0.6f);
 			Rectangle d = DoneButton;
 			DrDraw.Rect(d.X, d.Y, d.Width, d.Height, new Color(20, 60, 20));
 			DrDraw.Outline(d.X, d.Y, d.Width, d.Height, new Color(80, 255, 80), 2);

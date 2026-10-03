@@ -33,6 +33,7 @@ namespace MercyMode.Battle.Net
 			MercyAnswer, // my answer to your MERCY act
 			Pose, // how I stand and what I hold (so you see me pick and ready a weapon)
 			Fire, // I swung or shot: item, projectile, where at (x -1: at you)
+			ForceSoul, // the builder changed the dodger's SOUL mode
 		}
 
 		/// <summary>How long a challenge stays open after the hit (refreshed by more hits).</summary>
