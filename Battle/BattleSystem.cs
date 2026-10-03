@@ -2034,7 +2034,8 @@ namespace MercyMode.Battle
 					DrawEnemyList(textY);
 					break;
 				case Phase.ActSelect:
-					DrawGrid(textY, currentActs.Select(a => (a.Name, a.TPCost > 0 && Player.GetModPlayer<MercyPlayer>().TP < a.TPCost)).ToList());
+					DrawGrid(textY, currentActs.Select(a => (a.Name, a.TPCost > 0 && Player.GetModPlayer<MercyPlayer>().TP < a.TPCost)).ToList(),
+						currentActs.Select(a => a.Color).ToList());
 					DrawActInfo(textY);
 					break;
 				case Phase.PartySelect:
@@ -2195,8 +2196,12 @@ namespace MercyMode.Battle
 				float rowY = y + (i - first) * 30;
 				bool spareable = e.Mercy >= 100f;
 				string name = row.Part != null ? e.PartName(row.Part) : e.Name;
+				// Yellow: can be spared. Blue: TIRED. Both: yellow fading into blue, like Deltarune
 				Color nameColor = row.Locked ? new Color(128, 128, 128) : spareable ? new Color(255, 255, 0) : e.Tired ? TiredBlue : Color.White;
-				DrDraw.Text(name, 80, rowY, nameColor);
+				if (!row.Locked && spareable && e.Tired)
+					DrDraw.GradientText(name, 80, rowY, new Color(255, 255, 0), TiredBlue);
+				else
+					DrDraw.Text(name, 80, rowY, nameColor);
 				float hp = row.Part != null
 					? MathHelper.Clamp(row.Part.life / (float)Math.Max(1, row.Part.lifeMax), 0f, 1f)
 					: MathHelper.Clamp(e.LifeRatio, 0f, 1f);
@@ -2215,13 +2220,14 @@ namespace MercyMode.Battle
 				DrDraw.Text("v", 60, y + EnemyListRows * 30 - 6, Color.White, DrDraw.SmallFont);
 		}
 
-		private void DrawGrid(float y, List<(string name, bool greyed)> entries)
+		private void DrawGrid(float y, List<(string name, bool greyed)> entries, List<Color?> colors = null)
 		{
 			for (int i = 0; i < entries.Count; i++)
 			{
 				float x = i % 2 == 0 ? 80 : 300;
 				float ey = y + (i / 2) * 30;
-				DrDraw.Text(entries[i].name, x, ey, entries[i].greyed ? new Color(128, 128, 128) : Color.White);
+				Color c = entries[i].greyed ? new Color(128, 128, 128) : colors != null && i < colors.Count && colors[i] is Color own ? own : Color.White;
+				DrDraw.Text(entries[i].name, x, ey, c);
 				if (i == listIndex)
 					DrawHeartCursor(x - 25, ey + 10);
 			}
