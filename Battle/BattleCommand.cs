@@ -14,13 +14,54 @@ namespace MercyMode.Battle
 	{
 		public override CommandType Type => CommandType.Chat;
 		public override string Command => "mmbattle";
-		public override string Usage => "/mmbattle [npc <id|name> | group <n> <name> | group <name>, <name>, ... | spawn [dx dy] | spawnnpc <id|name> | join | end | clear | heal | hp <n> | mercy <n> | kit | night | tp <0-100> | bosshp <n> | turn <n>]";
-		public override string Description => "Start Mercy Mode battles for testing (no arguments: Eye of Cthulhu)";
+		public override string Usage => "/mmbattle [eye | npc <id|name> | group <n> <name> | group <name>, <name>, ... | spawn [dx dy] | spawnnpc <id|name> | loadout <starter|melee|spear|ranged|magic|thrown|endgame|summon|mixed> | clearinv confirm | join | end | clear | heal | hp <n> | mercy <n> | kit | night | tp <0-100> | bosshp <n> | turn <n>]";
+		public override string Description => "Mercy Mode test commands (type /mmbattle for the list)";
+
+		/// <summary>Weapon sets for demonstrating FIGHT with each kind of weapon (item, stack).</summary>
+		private static readonly Dictionary<string, (int, int)[]> Loadouts = new()
+		{
+			["starter"] = new (int, int)[] { (ItemID.CopperHelmet, 1), (ItemID.CopperChainmail, 1), (ItemID.CopperGreaves, 1), (ItemID.CopperShortsword, 1), (ItemID.CopperBroadsword, 1), (ItemID.WoodenBow, 1), (ItemID.WoodenArrow, 200), (ItemID.WandofSparking, 1) },
+			["melee"] = new (int, int)[] { (ItemID.MoltenHelmet, 1), (ItemID.MoltenBreastplate, 1), (ItemID.MoltenGreaves, 1), (ItemID.Gladius, 1), (ItemID.Muramasa, 1), (ItemID.NightsEdge, 1), (ItemID.TerraBlade, 1) },
+			["spear"] = new (int, int)[] { (ItemID.HallowedHelmet, 1), (ItemID.HallowedPlateMail, 1), (ItemID.HallowedGreaves, 1), (ItemID.Spear, 1), (ItemID.Trident, 1), (ItemID.Gungnir, 1) },
+			["ranged"] = new (int, int)[] { (ItemID.NecroHelmet, 1), (ItemID.NecroBreastplate, 1), (ItemID.NecroGreaves, 1), (ItemID.WoodenBow, 1), (ItemID.WoodenArrow, 300), (ItemID.Minishark, 1), (ItemID.Megashark, 1), (ItemID.MusketBall, 999) },
+			["magic"] = new (int, int)[] { (ItemID.JungleHat, 1), (ItemID.JungleShirt, 1), (ItemID.JunglePants, 1), (ItemID.WandofSparking, 1), (ItemID.WaterBolt, 1), (ItemID.MagicMissile, 1), (ItemID.LastPrism, 1) },
+			["thrown"] = new (int, int)[] { (ItemID.NinjaHood, 1), (ItemID.NinjaShirt, 1), (ItemID.NinjaPants, 1), (ItemID.Shuriken, 200), (ItemID.ThrowingKnife, 200), (ItemID.BoneDagger, 200), (ItemID.Javelin, 200) },
+			["endgame"] = new (int, int)[] { (ItemID.SolarFlareHelmet, 1), (ItemID.SolarFlareBreastplate, 1), (ItemID.SolarFlareLeggings, 1), (ItemID.Zenith, 1), (ItemID.SDMG, 1), (ItemID.ChlorophyteBullet, 999), (ItemID.LastPrism, 1), (ItemID.DayBreak, 1) },
+			["summon"] = new (int, int)[] { (ItemID.BeeHeadgear, 1), (ItemID.BeeBreastplate, 1), (ItemID.BeeGreaves, 1), (ItemID.AbigailsFlower, 1), (ItemID.ImpStaff, 1), (ItemID.StardustDragonStaff, 1), (ItemID.BlandWhip, 1) },
+			["mixed"] = new (int, int)[] { (ItemID.PlatinumHelmet, 1), (ItemID.PlatinumChainmail, 1), (ItemID.PlatinumGreaves, 1), (ItemID.NightsEdge, 1), (ItemID.Minishark, 1), (ItemID.MusketBall, 999), (ItemID.MagicMissile, 1), (ItemID.Shuriken, 200) },
+		};
+
+		private static void ShowHelp(CommandCaller caller)
+		{
+			Color h = MercyMode.MercyYellow, t = MercyMode.TextWhite, g = MercyMode.Gray;
+			caller.Reply("* Mercy Mode commands:", h);
+			caller.Reply("Battles (singleplayer):", h);
+			caller.Reply("  /mmbattle eye  - fight the Eye of Cthulhu", t);
+			caller.Reply("  /mmbattle npc <id|name>  - spawn an enemy or boss and fight it", t);
+			caller.Reply("  /mmbattle group <n> <name>  or  group <a>, <b>, <c>  - fight a squad", t);
+			caller.Reply("  /mmbattle spawn [dx dy]  - spawn the Eye without starting  |  spawnnpc <id|name>", t);
+			caller.Reply("Gear:", h);
+			caller.Reply("  /mmbattle loadout <starter|melee|spear|ranged|magic|thrown|endgame|summon|mixed>", t);
+			caller.Reply("  /mmbattle kit  - potions and one of each weapon kind", t);
+			caller.Reply("  /mmbattle clearinv confirm  - DELETES your main inventory (not armor)", t);
+			caller.Reply("In a battle:", h);
+			caller.Reply("  /mmbattle end  |  heal  |  hp <n>  |  mercy <n>  |  tp <0-100>  |  bosshp <n>  |  turn <n>", t);
+			caller.Reply("Other:", h);
+			caller.Reply("  /mmbattle join  - join a battle nearby (multiplayer; same as the Join Battle key)", t);
+			caller.Reply("  /mmbattle night  |  clear", t);
+			caller.Reply("  /drassets  - which Deltarune assets loaded", g);
+		}
 
 		public override void Action(CommandCaller caller, string input, string[] args)
 		{
 			Player player = caller.Player;
 			string cmd = args.Length > 0 ? args[0].ToLowerInvariant() : "";
+			// Nothing (or help): the list of commands
+			if (cmd is "" or "help" or "?")
+			{
+				ShowHelp(caller);
+				return;
+			}
 
 			switch (cmd)
 			{
@@ -75,6 +116,40 @@ namespace MercyMode.Battle
 					player.QuickSpawnItem(src, ItemID.WandofSparking, 1);
 					player.QuickSpawnItem(src, ItemID.Shuriken, 50);
 					caller.Reply("* Got healing items and one of each kind of weapon.", MercyMode.TextWhite);
+					return;
+				case "loadout":
+				{
+					// Weapon sets for showing off FIGHT (video clips): /mmbattle loadout <name>
+					string which = args.Length > 1 ? args[1].ToLowerInvariant() : "";
+					if (!Loadouts.TryGetValue(which, out var items))
+					{
+						caller.Reply($"* Loadouts: {string.Join(", ", Loadouts.Keys)}. Use /mmbattle clearinv confirm first for a clean weapon list.", MercyMode.Gray);
+						return;
+					}
+					var lsrc = player.GetSource_FromThis();
+					foreach (var (type, stack) in items)
+						player.QuickSpawnItem(lsrc, type, stack);
+					player.QuickSpawnItem(lsrc, ItemID.HealingPotion, 5);
+					// Magic needs the mana to show more than one hit
+					if (which is "magic" or "endgame" or "mixed")
+					{
+						player.statManaMax = Math.Max(player.statManaMax, 200);
+						player.statMana = player.statManaMax2;
+					}
+					caller.Reply($"* Got the {which} loadout. Armor goes in your inventory: equip it yourself.", MercyMode.TextWhite);
+					return;
+				}
+				case "clearinv":
+					// Empties the 50 main inventory slots (not armor, accessories, coins or ammo slots) so the weapon list
+					// shows only a loadout. Destroys those items, so it has to be confirmed
+					if (args.Length < 2 || args[1] != "confirm")
+					{
+						caller.Reply("* This DELETES everything in your main inventory (not armor/accessories). Type /mmbattle clearinv confirm to do it.", new Color(255, 80, 80));
+						return;
+					}
+					for (int i = 0; i < 50; i++)
+						player.inventory[i].TurnToAir();
+					caller.Reply("* Main inventory cleared.", MercyMode.Gray);
 					return;
 				case "bosshp" when args.Length == 2 && int.TryParse(args[1], out int hp):
 					if (BattleSystem.Active)
@@ -166,6 +241,14 @@ namespace MercyMode.Battle
 				}
 				else
 					caller.Reply($"* Spawned {spawned.FullName}.", MercyMode.TextWhite);
+				return;
+			}
+
+			// Anything not known: the list, rather than a surprise Eye of Cthulhu
+			if (cmd != "eye" && cmd != "spawn")
+			{
+				caller.Reply($"* Unknown command \"{cmd}\".", MercyMode.Gray);
+				ShowHelp(caller);
 				return;
 			}
 

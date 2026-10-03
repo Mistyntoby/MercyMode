@@ -22,7 +22,7 @@ namespace MercyMode.Battle.Net
 	/// key near a battle watch until its next bullet box, then fight. Enemy HP needs nothing extra: FIGHT uses
 	/// <see cref="NPC.SimpleStrikeNPC"/>, which Terraria syncs.
 	/// </summary>
-	public static class BattleNet
+	public static partial class BattleNet
 	{
 		private enum Msg : byte
 		{
@@ -47,7 +47,16 @@ namespace MercyMode.Battle.Net
 			SoulPos, // c→s→party: my SOUL in the box
 			Left, // c→s
 			BattleState, // s→all: a battle's stage and players (outsiders' view, join prompt)
+			WorldAction, // s→all: who acts now and with what (outsiders show it in the world)
 			PlayerColor, // both ways: a player's party colour choice
+			PartyHp, // c→s→party: my HP in the battle (Terraria's own sync drifts: other clients guess regen)
+			HealAlly, // c→s→target: an ITEM used on a partner
+			DuelOffer, // c→s: a player hit me with PvP on (the challenge prompt opens for both)
+			DuelPress, // c→s: I pressed the challenge key
+			ChallengeState, // s→c: a challenge with this player, n/2 pressed
+			DuelStart, // s→c: the duel begins (opponent, who goes first)
+			DuelRelay, // c→s→opponent: anything in the duel (HP, hits, SOUL, attack pieces, turns, text)
+			DuelEnd, // c→s: I'm out of the duel; s→c: your opponent is
 		}
 
 		/// <summary>Over: every enemy is gone (won); nobody can join and it isn't shown as a battle any more.</summary>
@@ -56,10 +65,12 @@ namespace MercyMode.Battle.Net
 		public const int MaxParty = 3;
 		/// <summary>How close (pixels) players must be to the one starting the battle to be pulled in with them.</summary>
 		public const float JoinRange = 7 * 16;
+		/// <summary>Against a boss everyone in the area is in the fight: a much bigger range for pulling in and the prompt.</summary>
+		public const float BossJoinRange = 60 * 16;
 		/// <summary>How close to a battle's enemy or fighter the join prompt shows up.</summary>
 		public const float PromptRange = 8 * 16;
 		/// <summary>Picking an action / carrying it out: after this long the party goes on without them.</summary>
-		public const int ChooseTimeoutTicks = 60 * 60, ActTimeoutTicks = 45 * 60;
+		public const int ChooseTimeoutTicks = 180 * 60, ActTimeoutTicks = 45 * 60;
 
 		public static bool Online => Main.netMode == NetmodeID.MultiplayerClient;
 		/// <summary>The server of a real multiplayer game (the headless lab runs as a server too, but singleplayer).</summary>
@@ -107,7 +118,9 @@ namespace MercyMode.Battle.Net
 		/// <summary>Party members who have picked their action this round, with the command's face icon.</summary>
 		public static readonly Dictionary<int, int> ReadyFaces = new();
 		/// <summary>The player carrying out their action right now (-1: none).</summary>
-		public static int Acting { get; private set; } = -1;
+		public static readonly HashSet<int> ActingNow = new();
+		/// <summary>Players fighting right now, in order (their FIGHT bars stack in this order).</summary>
+		public static readonly List<int> FightingNow = new();
 		private static uint lastRequestTick;
 
 		public static IEnumerable<Player> Allies => Party.Where(i => i != Main.myPlayer && i >= 0 && i < Main.maxPlayers && Main.player[i].active).Select(i => Main.player[i]);
@@ -121,6 +134,19 @@ namespace MercyMode.Battle.Net
 
 		/// <summary>Other party members' SOULs in the box: position, SOUL mode, when last heard.</summary>
 		public static readonly Dictionary<int, (Vector2 Pos, byte Mode, uint Tick)> AllySouls = new();
+		/// <summary>The weapon each ally picked in their battle (item type; 0 = none), for drawing them with it.</summary>
+		public static readonly Dictionary<int, int> AllyWeapons = new();
+
+		/// <summary>When the first party member picked this round (for the auto-skip countdown).</summary>
+		public static uint FirstReadyTick;
+
+		/// <summary>Seconds left before the server goes on without this player, or -1 if nobody's waiting on them.</summary>
+		public static int SecondsUntilSkip => InParty && !ReadyFaces.ContainsKey(Main.myPlayer) && ReadyFaces.Values.Any(f => f != 0)
+			? Math.Max(0, (int)((ChooseTimeoutTicks - (Main.GameUpdateCount - FirstReadyTick)) / 60)) : -1;
+
+		/// <summary>Each ally's HP as they last reported it from their battle.</summary>
+		public static readonly Dictionary<int, (int Life, int Max)> AllyHp = new();
+
 		/// <summary>When each ally last landed a FIGHT hit (their attack pose).</summary>
 		public static readonly Dictionary<int, uint> AllyHitTick = new();
 
@@ -133,14 +159,21 @@ namespace MercyMode.Battle.Net
 			public readonly List<int> Players = new();
 			public readonly List<int> Pending = new();
 			public readonly Dictionary<int, int> Ready = new();
+			/// <summary>The weapon or item each player picked (for the outside view).</summary>
+			public readonly Dictionary<int, int> Weapons = new();
+			/// <summary>The command each player picked this round (kept after Ready is cleared).</summary>
+			public readonly Dictionary<int, int> Faces = new();
 			public readonly Dictionary<int, Vector2> SavedVelocity = new();
 			public Stage Stage;
-			public readonly List<int> Order = new();
-			public int OrderIndex;
+			/// <summary>Who acts, step by step: each ACT/ITEM/SPARE/DEFEND alone, then every FIGHT together.</summary>
+			public readonly List<List<int>> Steps = new();
+			public int StepIndex;
+			public readonly HashSet<int> Done = new();
 			public int StageTicks;
 			public int EmptyTicks;
 			public int Round;
-			public int Current => OrderIndex < Order.Count ? Order[OrderIndex] : -1;
+			public List<int> Step => StepIndex < Steps.Count ? Steps[StepIndex].Where(Players.Contains).ToList() : new List<int>();
+			public int Current => Step.FirstOrDefault(p => !Done.Contains(p), -1);
 		}
 
 		private static readonly List<NetBattle> battles = new();
@@ -155,6 +188,7 @@ namespace MercyMode.Battle.Net
 		internal static List<int> LabPending(int id) => Find(id)?.Pending.ToList() ?? new List<int>();
 		internal static Stage LabStage(int id) => Find(id)?.Stage ?? Stage.Choosing;
 		internal static int LabCurrent(int id) => Find(id)?.Current ?? -1;
+		internal static List<int> LabStep(int id) => Find(id)?.Step ?? new List<int>();
 
 		public static void Reset()
 		{
@@ -166,8 +200,11 @@ namespace MercyMode.Battle.Net
 			ReadyFaces.Clear();
 			AllySouls.Clear();
 			AllyHitTick.Clear();
+			AllyHp.Clear();
+			AllyWeapons.Clear();
 			MyBattle = -1;
-			Acting = -1;
+			ActingNow.Clear();
+			FightingNow.Clear();
 			lastRequestTick = 0;
 		}
 
@@ -245,7 +282,7 @@ namespace MercyMode.Battle.Net
 			ToServer(p);
 		}
 
-		public static void SendReady(int face)
+		public static void SendReady(int face, int weapon)
 		{
 			if (!InParty)
 				return;
@@ -253,6 +290,7 @@ namespace MercyMode.Battle.Net
 			ModPacket p = Packet(Msg.Ready);
 			p.Write(MyBattle);
 			p.Write((byte)face);
+			p.Write(weapon);
 			ToServer(p);
 		}
 
@@ -287,9 +325,32 @@ namespace MercyMode.Battle.Net
 			ToServer(p);
 		}
 
+		public static void SendHealAlly(int target, int amount)
+		{
+			if (!InParty)
+				return;
+			ModPacket p = Packet(Msg.HealAlly);
+			p.Write(MyBattle);
+			p.Write((byte)target);
+			p.Write(amount);
+			ToServer(p);
+		}
+
+		public static void SendHp(int life, int max)
+		{
+			if (!InParty || Party.Count < 2)
+				return;
+			ModPacket p = Packet(Msg.PartyHp);
+			p.Write(MyBattle);
+			p.Write((short)life);
+			p.Write((short)max);
+			ToServer(p);
+		}
+
 		public static void SendAddMercy(NPC npc, float delta)
 		{
-			if (!Online || delta == 0f)
+			// (A duel's opponent is a stand-in NPC the server doesn't have)
+			if (!Online || delta == 0f || npc.whoAmI >= Main.maxNPCs)
 				return;
 			ModPacket p = Packet(Msg.AddMercy);
 			p.Write((short)npc.whoAmI);
@@ -349,7 +410,12 @@ namespace MercyMode.Battle.Net
 			Joining.Clear();
 			ReadyFaces.Clear();
 			AllySouls.Clear();
-			Acting = -1;
+			ActingNow.Clear();
+			FightingNow.Clear();
+			// Nothing from this battle carries into the next (an old HP looked like a heal when they came back)
+			AllyHp.Clear();
+			AllyWeapons.Clear();
+			AllyHitTick.Clear();
 		}
 
 		// ================================================================== client handling
@@ -359,6 +425,12 @@ namespace MercyMode.Battle.Net
 			BattleSystem battle = BattleSystem.Instance;
 			switch (msg)
 			{
+				case Msg.ChallengeState:
+				case Msg.DuelStart:
+				case Msg.DuelRelay:
+				case Msg.DuelEnd:
+					HandleDuelClient(msg, r);
+					break;
 				case Msg.JoinBattle:
 				{
 					int id = r.ReadInt32();
@@ -384,7 +456,8 @@ namespace MercyMode.Battle.Net
 					MyBattle = id;
 					ReadyFaces.Clear();
 					AllySouls.Clear();
-					Acting = -1;
+					ActingNow.Clear();
+			FightingNow.Clear();
 					if (!battle.StartNet(roots, spectate))
 					{
 						MyBattle = -1;
@@ -404,6 +477,12 @@ namespace MercyMode.Battle.Net
 					// Whoever is gone leaves the battle screen (walking off, or with us if the battle is ending)
 					foreach (int gone in Party.Where(k => k != Main.myPlayer && !players.Contains(k) && !pending.Contains(k)).ToList())
 						battle.OnAllyLeft(gone);
+					// Newcomers start clean: no HP or weapon left over from an earlier battle
+					foreach (int fresh in players.Concat(pending).Where(k => !Party.Contains(k)))
+					{
+						AllyHp.Remove(fresh);
+						AllyWeapons.Remove(fresh);
+					}
 					Party.Clear();
 					Party.AddRange(players);
 					Party.AddRange(pending);
@@ -437,18 +516,29 @@ namespace MercyMode.Battle.Net
 					int id = r.ReadInt32();
 					int player = r.ReadByte();
 					int face = r.ReadByte();
+					int weapon = r.ReadInt32();
 					if (id == MyBattle)
+					{
+						// The server's wait for the slow ones starts with the first player ready
+						if (face != 0 && !ReadyFaces.Values.Any(f => f != 0))
+							FirstReadyTick = Main.GameUpdateCount;
 						ReadyFaces[player] = face;
+						AllyWeapons[player] = weapon;
+					}
 					break;
 				}
 				case Msg.TurnOf:
 				{
 					int id = r.ReadInt32();
-					int player = r.ReadByte();
+					var players = ReadPlayers(r);
 					if (id != MyBattle)
 						return;
-					Acting = player;
-					battle.OnNetTurnOf(player);
+					ActingNow.Clear();
+					ActingNow.UnionWith(players);
+					FightingNow.Clear();
+					if (players.Count > 1 || players.Count == 1 && ReadyFaces.TryGetValue(players[0], out int f) && f == FightFace)
+						FightingNow.AddRange(players);
+					battle.OnNetTurnOf(players);
 					break;
 				}
 				case Msg.PartyText:
@@ -468,7 +558,8 @@ namespace MercyMode.Battle.Net
 					if (id != MyBattle)
 						return;
 					ReadyFaces.Clear();
-					Acting = -1;
+					ActingNow.Clear();
+			FightingNow.Clear();
 					Joining.Remove(Main.myPlayer);
 					battle.OnNetEnemyTurn(seed, round);
 					break;
@@ -499,12 +590,12 @@ namespace MercyMode.Battle.Net
 					if (id == MyBattle)
 					{
 						AllyHitTick[player] = Main.GameUpdateCount;
-						battle.OnNetHit(n, damage, crit);
+						battle.OnNetHit(player, n, damage, crit);
 					}
 					else
 					{
 						// Outside the battle: the fighter swings in the world (only a picture, it hits nothing)
-						WorldVisuals.Swing(Main.player[player], n);
+						WorldVisuals.Swing(Main.player[player], n, damage, crit);
 					}
 					break;
 				}
@@ -516,6 +607,20 @@ namespace MercyMode.Battle.Net
 					byte mode = r.ReadByte();
 					if (id == MyBattle)
 						AllySouls[player] = (pos, mode, Main.GameUpdateCount);
+					break;
+				}
+				case Msg.WorldAction:
+				{
+					int id = r.ReadInt32();
+					int count = r.ReadByte();
+					for (int i = 0; i < count; i++)
+					{
+						int player = r.ReadByte();
+						int face = r.ReadByte();
+						int item = r.ReadInt32();
+						if (id != MyBattle)
+							WorldVisuals.Act(Main.player[player], face, item);
+					}
 					break;
 				}
 				case Msg.BattleState:
@@ -531,12 +636,36 @@ namespace MercyMode.Battle.Net
 					wb.Players = players;
 					break;
 				}
+				case Msg.HealAlly:
+				{
+					int id = r.ReadInt32();
+					int from = r.ReadByte();
+					int amount = r.ReadInt32();
+					if (id == MyBattle)
+						battle.OnNetHealed(from, amount);
+					break;
+				}
+				case Msg.PartyHp:
+				{
+					int id = r.ReadInt32();
+					int player = r.ReadByte();
+					int life = r.ReadInt16(), max = r.ReadInt16();
+					if (id == MyBattle)
+					{
+						// Went up: they were healed (shown on them here, MAX if full)
+						if (AllyHp.TryGetValue(player, out var was) && life > was.Life)
+							battle.OnAllyHealed(player, life - was.Life, life >= max);
+						AllyHp[player] = (life, max);
+					}
+					break;
+				}
 				case Msg.PlayerColor:
 				{
 					int player = r.ReadByte();
 					byte choice = r.ReadByte();
-					if (player != Main.myPlayer)
-						Main.player[player].GetModPlayer<BattleNetPlayer>().ColorChoice = choice;
+					// Kept in a plain array: it can arrive before that player's character is set up on this client
+					if (player != Main.myPlayer && player < Main.maxPlayers)
+						PartyColors.Remote[player] = choice;
 					break;
 				}
 			}
@@ -576,8 +705,14 @@ namespace MercyMode.Battle.Net
 				case Msg.RequestJoin:
 					ServerJoin(from, Main.npc[r.ReadInt16()]);
 					break;
+				case Msg.DuelOffer:
+				case Msg.DuelPress:
+				case Msg.DuelRelay:
+				case Msg.DuelEnd:
+					HandleDuelServer(msg, r, from);
+					break;
 				case Msg.Ready:
-					ServerReady(from, r.ReadInt32(), r.ReadByte());
+					ServerReady(from, r.ReadInt32(), r.ReadByte(), r.ReadInt32());
 					break;
 				case Msg.ActionDone:
 					ServerActionDone(from, r.ReadInt32());
@@ -650,6 +785,39 @@ namespace MercyMode.Battle.Net
 						}, Msg.SoulPos, except: from);
 					break;
 				}
+				case Msg.HealAlly:
+				{
+					int id = r.ReadInt32();
+					int target = r.ReadByte();
+					int amount = r.ReadInt32();
+					NetBattle b = Find(id);
+					if (b != null && b.Players.Contains(from) && b.Players.Contains(target))
+					{
+						ModPacket p = Packet(Msg.HealAlly);
+						p.Write(id);
+						p.Write((byte)from);
+						p.Write(amount);
+						ToPlayer(p, target, Msg.HealAlly);
+					}
+					break;
+				}
+				case Msg.PartyHp:
+				{
+					int id = r.ReadInt32();
+					short life = r.ReadInt16(), max = r.ReadInt16();
+					NetBattle b = Find(id);
+					if (b != null)
+						ToParty(b, () =>
+						{
+							ModPacket p = Packet(Msg.PartyHp);
+							p.Write(id);
+							p.Write((byte)from);
+							p.Write(life);
+							p.Write(max);
+							return p;
+						}, Msg.PartyHp, except: from);
+					break;
+				}
 				case Msg.Left:
 					ServerLeave(from, r.ReadInt32());
 					break;
@@ -660,7 +828,7 @@ namespace MercyMode.Battle.Net
 					// Only for themselves
 					if (player != from)
 						return;
-					Main.player[player].GetModPlayer<BattleNetPlayer>().ColorChoice = choice;
+					PartyColors.Remote[player] = choice;
 					SendColor(player, choice, -1, from);
 					break;
 				}
@@ -673,6 +841,8 @@ namespace MercyMode.Battle.Net
 		internal static int ServerStartBattle(int requester, List<NPC> roots)
 		{
 			roots = roots.Where(n => n.active && n.life > 0 && !IsFrozen(n)).Distinct().ToList();
+			// Asking means their game has no battle open: any battle still listing them is stale (it blocked new ones)
+			DropStale(requester);
 			if (InBattle(requester) || roots.Count == 0)
 				return -1;
 
@@ -680,7 +850,8 @@ namespace MercyMode.Battle.Net
 			b.Roots.AddRange(roots.Select(n => n.whoAmI));
 			b.Players.Add(requester);
 			Player leader = Main.player[requester];
-			bool Near(Player p) => p.DistanceSQ(leader.Center) <= JoinRange * JoinRange;
+			float range = roots.Any(EncounterRegistry.IsBossFight) ? BossJoinRange : JoinRange;
+			bool Near(Player p) => p.DistanceSQ(leader.Center) <= range * range;
 			foreach (Player p in Main.player.Where(p => p.active).OrderBy(p => p.DistanceSQ(leader.Center)).ToList())
 			{
 				if (b.Players.Count >= MaxParty)
@@ -702,6 +873,7 @@ namespace MercyMode.Battle.Net
 		/// <summary>Server: a player pressed the join key near a battle. They watch until its next bullet box.</summary>
 		internal static void ServerJoin(int player, NPC npc)
 		{
+			DropStale(player);
 			NetBattle b = Find(BattleOf(npc));
 			if (b == null || b.Stage == Stage.Over || !NpcsOf(b.Id).Any() || InBattle(player) || b.Players.Count + b.Pending.Count >= MaxParty || Main.player[player].dead)
 				return;
@@ -711,34 +883,60 @@ namespace MercyMode.Battle.Net
 			SendState(b);
 		}
 
-		internal static void ServerReady(int player, int id, int face)
+		/// <summary>A player asking for a battle isn't in one on their screen: take them out of any the server still lists.</summary>
+		private static void DropStale(int player)
+		{
+			foreach (NetBattle old in battles.Where(x => x.Players.Contains(player) || x.Pending.Contains(player)).ToList())
+				ServerLeave(player, old.Id);
+		}
+
+		internal static void ServerReady(int player, int id, int face, int weapon = 0)
 		{
 			NetBattle b = Find(id);
 			if (b == null || !b.Players.Contains(player) || b.Stage is Stage.Acting or Stage.Over)
 				return;
 			if (b.Stage == Stage.EnemyTurn)
 				SetStage(b, Stage.Choosing);
+			if (face != 0 && !b.Ready.Values.Any(f => f != 0))
+				b.StageTicks = 0;
 			b.Ready[player] = face;
+			b.Weapons[player] = weapon;
 			ToParty(b, () =>
 			{
 				ModPacket p = Packet(Msg.ReadyState);
 				p.Write(id);
 				p.Write((byte)player);
 				p.Write((byte)face);
+				p.Write(weapon);
 				return p;
 			}, Msg.ReadyState);
 			CheckReady(b);
 		}
 
-		/// <summary>Everyone has picked (or the wait ran out): they act one at a time, in party order.</summary>
+		/// <summary>The FIGHT command's face icon (BattleSystem.FaceFight).</summary>
+		private const int FightFace = 1;
+
+		/// <summary>
+		/// Everyone has picked (or the wait ran out). Like Deltarune: ACT, ITEM, SPARE and DEFEND go one at a time in
+		/// party order (so a heal lands before the attacks), then everyone who picked FIGHT attacks at once.
+		/// </summary>
 		private static void CheckReady(NetBattle b, bool force = false)
 		{
 			if (b.Stage == Stage.Acting || b.Ready.Count == 0 || !force && !b.Players.All(b.Ready.ContainsKey))
 				return;
-			b.Order.Clear();
-			b.Order.AddRange(b.Players.Where(b.Ready.ContainsKey));
+			b.Steps.Clear();
+			var ready = b.Players.Where(b.Ready.ContainsKey).ToList();
+			b.Faces.Clear();
+			foreach (int pl in ready)
+				b.Faces[pl] = b.Ready[pl];
+			foreach (int pl in ready.Where(pl => b.Ready[pl] != FightFace))
+				b.Steps.Add(new List<int> { pl });
+			var fighters = ready.Where(pl => b.Ready[pl] == FightFace).ToList();
+			if (fighters.Count > 0)
+				b.Steps.Add(fighters);
 			b.Ready.Clear();
-			b.OrderIndex = 0;
+			b.StepIndex = 0;
+			b.Done.Clear();
 			SetStage(b, Stage.Acting);
 			SendTurn(b);
 		}
@@ -746,17 +944,26 @@ namespace MercyMode.Battle.Net
 		internal static void ServerActionDone(int player, int id)
 		{
 			NetBattle b = Find(id);
-			if (b == null || b.Stage != Stage.Acting || b.Current != player)
+			if (b == null || b.Stage != Stage.Acting || !b.Step.Contains(player))
 				return;
-			b.OrderIndex++;
+			b.Done.Add(player);
+			// The step's over once everyone in it is done (a FIGHT step has several players)
+			if (b.Step.All(b.Done.Contains))
+				NextStep(b);
+		}
+
+		private static void NextStep(NetBattle b)
+		{
+			b.StepIndex++;
+			b.Done.Clear();
 			SendTurn(b);
 		}
 
 		/// <summary>The next player in line acts; after the last one, the enemies attack.</summary>
 		private static void SendTurn(NetBattle b)
 		{
-			while (b.OrderIndex < b.Order.Count && !b.Players.Contains(b.Order[b.OrderIndex]))
-				b.OrderIndex++;
+			while (b.StepIndex < b.Steps.Count && b.Step.Count == 0)
+				b.StepIndex++;
 			b.StageTicks = 0;
 			// Every enemy gone (won by an earlier action): nobody else acts, no bullet box
 			if (!NpcsOf(b.Id).Any())
@@ -764,19 +971,30 @@ namespace MercyMode.Battle.Net
 				SetStage(b, Stage.Over);
 				return;
 			}
-			if (b.OrderIndex >= b.Order.Count)
+			if (b.StepIndex >= b.Steps.Count)
 			{
 				BeginEnemyTurn(b);
 				return;
 			}
-			int who = b.Current;
+			var who = b.Step;
 			ToParty(b, () =>
 			{
 				ModPacket p = Packet(Msg.TurnOf);
 				p.Write(b.Id);
-				p.Write((byte)who);
+				WritePlayers(p, who);
 				return p;
 			}, Msg.TurnOf);
+			// Everyone else sees them act in the world
+			ModPacket w = Packet(Msg.WorldAction);
+			w.Write(b.Id);
+			w.Write((byte)who.Count);
+			foreach (int pl in who)
+			{
+				w.Write((byte)pl);
+				w.Write((byte)(b.Faces.TryGetValue(pl, out int f) ? f : 0));
+				w.Write(b.Weapons.TryGetValue(pl, out int it) ? it : 0);
+			}
+			ToAll(w, Msg.WorldAction);
 		}
 
 		private static void BeginEnemyTurn(NetBattle b)
@@ -861,7 +1079,7 @@ namespace MercyMode.Battle.Net
 			NetBattle b = Find(id);
 			if (b == null)
 				return;
-			bool wasCurrent = b.Stage == Stage.Acting && b.Current == player;
+			bool wasCurrent = b.Stage == Stage.Acting && b.Step.Contains(player);
 			if (!b.Players.Remove(player) && !b.Pending.Remove(player))
 				return;
 			b.Ready.Remove(player);
@@ -879,13 +1097,18 @@ namespace MercyMode.Battle.Net
 			SendParty(b);
 			SendState(b);
 			if (wasCurrent)
-				SendTurn(b);
+			{
+				// Whoever's left in this step may all be done already
+				if (b.Step.All(b.Done.Contains))
+					NextStep(b);
+			}
 			else
 				CheckReady(b);
 		}
 
 		public static void ServerDisconnect(int player)
 		{
+			ServerDuelDisconnect(player);
 			foreach (NetBattle b in battles.Where(x => x.Players.Contains(player) || x.Pending.Contains(player)).ToList())
 				ServerLeave(player, b.Id);
 		}
@@ -893,8 +1116,13 @@ namespace MercyMode.Battle.Net
 		/// <summary>Server, every tick: timeouts, players who vanished, battles whose enemies are all gone.</summary>
 		public static void ServerUpdate()
 		{
+			ServerDuelUpdate();
+			// Every few seconds, everyone hears again which NPCs are held (a missed packet let an enemy run loose)
+			bool resend = Main.GameUpdateCount % 300 == 0;
 			foreach (NetBattle b in battles.ToList())
 			{
+				if (resend)
+					SendFrozen(b);
 				foreach (int pl in b.Players.Concat(b.Pending).ToList())
 					if (!Main.player[pl].active)
 						ServerLeave(pl, b.Id);
@@ -902,13 +1130,11 @@ namespace MercyMode.Battle.Net
 					continue;
 
 				b.StageTicks++;
-				if (b.Stage != Stage.Acting && b.Ready.Count > 0 && b.StageTicks > ChooseTimeoutTicks)
+				// Only a real choice starts the wait for the slow ones (a downed player's automatic skip doesn't)
+				if (b.Stage != Stage.Acting && b.Ready.Values.Any(f => f != 0) && b.StageTicks > ChooseTimeoutTicks)
 					CheckReady(b, force: true);
 				else if (b.Stage == Stage.Acting && b.StageTicks > ActTimeoutTicks)
-				{
-					b.OrderIndex++;
-					SendTurn(b);
-				}
+					NextStep(b);
 
 				bool anyAlive = NpcsOf(b.Id).Any();
 				// Won: nobody joins a battle that's over, and outsiders stop seeing it as one
@@ -938,15 +1164,35 @@ namespace MercyMode.Battle.Net
 				n.velocity = Vector2.Zero;
 				n.netUpdate = true;
 			}
+			SendFrozen(b);
+		}
+
+		/// <summary>Which NPCs this battle holds, to everyone (or one player). Sent again now and then so nobody misses it.</summary>
+		private static void SendFrozen(NetBattle b, int toPlayer = -1)
+		{
+			var ids = frozen.Where(f => f.Value.Battle == b.Id).Select(f => f.Key).ToList();
 			ModPacket p = Packet(Msg.Frozen);
 			p.Write(b.Id);
 			p.Write((short)ids.Count);
 			foreach (int i in ids)
 			{
 				p.Write((short)i);
-				p.Write(Main.npc[i].type);
+				p.Write(frozen[i].Type);
 			}
-			ToAll(p, Msg.Frozen);
+			if (toPlayer >= 0)
+				ToPlayer(p, toPlayer, Msg.Frozen);
+			else
+				ToAll(p, Msg.Frozen);
+		}
+
+		/// <summary>A player just joined the game: every battle going on (frozen NPCs, stage, fighters).</summary>
+		public static void SendWorldStateTo(int player)
+		{
+			foreach (NetBattle b in battles)
+			{
+				SendFrozen(b, player);
+				SendState(b);
+			}
 		}
 
 		private static void EndBattle(NetBattle b)

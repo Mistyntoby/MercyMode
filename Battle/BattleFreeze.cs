@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
@@ -15,16 +17,44 @@ namespace MercyMode.Battle
 		/// </summary>
 		public static bool Frozen(NPC npc) => MercyMode.IsSingleplayer ? BattleSystem.Active : Net.BattleNet.IsFrozen(npc);
 
+		public override bool InstancePerEntity => true;
+
+		/// <summary>Made unchaseable while frozen, so summons outside the battle don't dash at it forever.</summary>
+		private bool unchased;
+
 		public override bool PreAI(NPC npc)
 		{
 			if (!Frozen(npc))
+			{
+				if (unchased)
+				{
+					npc.chaseable = true;
+					unchased = false;
+				}
 				return true;
+			}
+			if (npc.chaseable)
+			{
+				npc.chaseable = false;
+				unchased = true;
+			}
 			// AI is skipped, but Terraria still adds velocity to position afterwards
 			npc.velocity = Vector2.Zero;
+			// Multiplayer, seen from outside: it faces the players fighting it
+			if (!MercyMode.IsSingleplayer && Net.BattleNet.WorldBattles.TryGetValue(Net.BattleNet.BattleOf(npc), out var wb))
+			{
+				Player near = wb.Players.Where(i => i >= 0 && i < Main.maxPlayers && Main.player[i].active)
+					.Select(i => Main.player[i]).OrderBy(pl => pl.DistanceSQ(npc.Center)).FirstOrDefault();
+				if (near != null)
+					npc.direction = npc.spriteDirection = near.Center.X < npc.Center.X ? -1 : 1;
+			}
 			return false;
 		}
 
 		public override bool CheckActive(NPC npc) => !Frozen(npc);
+
+		// A battle's enemy and the rest of the world leave each other alone (town NPCs, other monsters)
+		public override bool CanHitNPC(NPC npc, NPC target) => !Frozen(npc) && !Frozen(target);
 
 		public override bool CanHitPlayer(NPC npc, Player target, ref int cooldownSlot)
 		{
@@ -53,7 +83,9 @@ namespace MercyMode.Battle
 		public override void OnHitByProjectile(NPC npc, Projectile projectile, NPC.HitInfo hit, int damageDone)
 		{
 			// Town NPCs' shots (the Guide's arrows) also belong to the local player in singleplayer; skip them
-			if (!projectile.npcProj && projectile.owner >= 0 && projectile.owner < Main.maxPlayers)
+			// Summons don't start battles: they roam, and dragged their owner into fights far away
+			if (!projectile.npcProj && projectile.owner >= 0 && projectile.owner < Main.maxPlayers
+				&& !BattleSystem.IsSummonOf(projectile, projectile.owner))
 				BattleSystem.TryStart(npc, Main.player[projectile.owner], "hit by " + projectile.Name);
 		}
 
@@ -85,15 +117,92 @@ namespace MercyMode.Battle
 	{
 		public override bool PreAI(Projectile projectile)
 		{
-			// Multiplayer: projectiles belong to their owners and the server; the world keeps going
-			if (!BattleSystem.Active || !MercyMode.IsSingleplayer)
+			// Our own minions and sentries stay out of it (in multiplayer too): they fight in the battle, after FIGHT
+			// Summons of anyone in a battle hold still, on every screen and the server (not just the owner's)
+			bool ownSummon = SummonInBattle(projectile);
+			// Multiplayer: other projectiles belong to their owners and the server; the world keeps going
+			if (!ownSummon && (!BattleSystem.Active || !MercyMode.IsSingleplayer))
 				return true;
 			projectile.velocity = Vector2.Zero;
 			projectile.timeLeft++; // don't expire while frozen
+			// Summons that start invisible and fade in from their AI (the Stardust Dragon) would stay invisible while
+			// frozen, which is how one called in the battle shows up: fade them in here instead
+			if (ownSummon && projectile.alpha > 0 && Terraria.ID.ContentSamples.ProjectilesByType.TryGetValue(projectile.type, out Projectile sample)
+				&& sample.alpha >= 200)
+				projectile.alpha = System.Math.Max(0, projectile.alpha - 20);
+			// A fighter's following summons wait just behind them in the world (sentries stay where they were built)
+			int type = projectile.type;
+			bool dragonBody = type is Terraria.ID.ProjectileID.StardustDragon2 or Terraria.ID.ProjectileID.StardustDragon3 or Terraria.ID.ProjectileID.StardustDragon4;
+			if (ownSummon && !projectile.sentry && type is not (Terraria.ID.ProjectileID.AbigailCounter or Terraria.ID.ProjectileID.StormTigerGem) && !dragonBody)
+			{
+				Player owner = Main.player[projectile.owner];
+				Vector2 to = owner.Center + new Vector2(-owner.direction * 30f, -14f);
+				// Walkers (slimes, spiders, the tiger) stand on the ground beside them instead of floating
+				if (projectile.tileCollide)
+					to.Y = owner.Bottom.Y - projectile.height / 2f;
+				Vector2 moved = to - projectile.Center;
+				projectile.Center = to;
+				// The Stardust Dragon's body and tail come along with its head, keeping its shape
+				if (type == Terraria.ID.ProjectileID.StardustDragon1)
+				{
+					foreach (Projectile seg in Main.ActiveProjectiles)
+						if (seg.owner == projectile.owner && seg.type is Terraria.ID.ProjectileID.StardustDragon2 or Terraria.ID.ProjectileID.StardustDragon3 or Terraria.ID.ProjectileID.StardustDragon4)
+							seg.Center += moved;
+				}
+				else
+				{
+					projectile.direction = owner.direction;
+					if (!BattleSystem.KeepsRotation(type))
+						projectile.rotation = 0f; // upright while it waits, not tilted from flying
+					projectile.spriteDirection = owner.direction * FacingRight(type);
+				}
+			}
 			return false;
 		}
 
 		public override bool CanHitPlayer(Projectile projectile, Player target) => !BattleSystem.Active;
+
+		/// <summary>
+		/// Per summon kind, the spriteDirection that makes it face right. Sprites drawn facing left (the Imp) use -1.
+		/// Learned from how each summon turns while it flies about in the world; a few known ones to start with.
+		/// </summary>
+		private static readonly Dictionary<int, int> facingVotes = new()
+		{
+			[Terraria.ID.ProjectileID.FlyingImp] = -50,
+		};
+
+		public static int FacingRight(int type) => facingVotes.TryGetValue(type, out int v) && v < 0 ? -1 : 1;
+
+		public override void PostAI(Projectile projectile)
+		{
+			// Moving sideways at a fair speed, a summon faces where it goes: note which spriteDirection that was
+			if (projectile.owner != Main.myPlayer || Main.netMode == Terraria.ID.NetmodeID.Server || System.Math.Abs(projectile.velocity.X) < 2f
+				|| projectile.spriteDirection == 0 || !BattleSystem.IsSummonOf(projectile, projectile.owner) || SummonInBattle(projectile))
+				return;
+			int vote = projectile.spriteDirection * System.Math.Sign(projectile.velocity.X);
+			facingVotes.TryGetValue(projectile.type, out int v);
+			facingVotes[projectile.type] = System.Math.Clamp(v + vote, -60, 60);
+		}
+
+		/// <summary>A summon whose owner is in a battle (ours, or another player's as the server and the others know it).</summary>
+		public static bool SummonInBattle(Projectile p)
+		{
+			if (p.owner < 0 || p.owner >= Main.maxPlayers || !BattleSystem.IsSummonOf(p, p.owner))
+				return false;
+			if (p.owner == Main.myPlayer && BattleSystem.Active)
+				return true;
+			if (Main.netMode == Terraria.ID.NetmodeID.Server)
+				return Net.BattleNet.InBattle(p.owner);
+			return Net.BattleNet.WorldBattles.Values.Any(b => b.Stage != Net.BattleNet.Stage.Over && b.Players.Contains(p.owner));
+		}
+
+		// Frozen minions can't hit anything in the world meanwhile (no kills heard in the background)
+		public override bool? CanHitNPC(Projectile projectile, NPC target) =>
+			SummonInBattle(projectile) ? false : null;
+
+		// The battle screen draws them beside the player; the world copies stay hidden
+		public override bool PreDraw(Projectile projectile, ref Color lightColor) =>
+			BattleSystem.DrawingSummons || !(BattleSystem.Active && BattleSystem.IsSummonOf(projectile, Main.myPlayer));
 	}
 
 	/// <summary>Locks the player in place during a battle. Only the battle itself can hurt them.</summary>
@@ -111,6 +220,15 @@ namespace MercyMode.Battle
 		}
 
 		public override bool CanUseItem(Item item) => !BattleSystem.Active;
+
+		public override void PostUpdateEquips()
+		{
+			// In a battle, enemies in the world don't go after this player (the server decides targets in multiplayer)
+			bool inBattle = Main.netMode == Terraria.ID.NetmodeID.Server ? Net.BattleNet.InBattle(Player.whoAmI)
+				: Player.whoAmI == Main.myPlayer && BattleSystem.Active;
+			if (inBattle)
+				System.Array.Fill(Player.npcTypeNoAggro, true);
+		}
 
 		public override void HideDrawLayers(PlayerDrawSet drawInfo)
 		{
@@ -216,7 +334,18 @@ namespace MercyMode.Battle
 		}
 	}
 
-	/// <summary>Silences Terraria's music while Rude Buster plays.</summary>
+	/// <summary>
+	/// The battle screen isn't in the world: Terraria lights the held weapon by the tile at the spot it's drawn, which made
+	/// weapons dark on the battle screen. While the battle draws a character, that light is the battle's own.
+	/// </summary>
+	public class BattleLighting : ModSystem
+	{
+		public override void Load()
+		{
+			Terraria.On_Lighting.GetColor_int_int += (orig, x, y) => BattleSystem.DrawingHero ? BattleSystem.HeroLight : orig(x, y);
+		}
+	}
+
 	/// <summary>
 	/// Silences Terraria's music while Rude Buster plays. In boss battles it stays off, so Terraria picks the boss's
 	/// own track as usual (vanilla, modded, Otherworldly).

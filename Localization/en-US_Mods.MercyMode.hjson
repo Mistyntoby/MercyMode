@@ -1,11 +1,12 @@
 Keybinds: {
 	JoinBattle.DisplayName: Join Battle
-	BattleConfirm.DisplayName: "Battle: Confirm / Shoot"
-	BattleBack.DisplayName: "Battle: Back / Move Slower"
-	BattleUp.DisplayName: "Battle: Up"
-	BattleDown.DisplayName: "Battle: Down"
-	BattleLeft.DisplayName: "Battle: Left"
-	BattleRight.DisplayName: "Battle: Right"
+	BattleConfirm.DisplayName: Battle: Confirm / Shoot
+	BattleBack.DisplayName: Battle: Back / Move Slower
+	BattleUp.DisplayName: Battle: Up
+	BattleDown.DisplayName: Battle: Down
+	BattleLeft.DisplayName: Battle: Left
+	BattleRight.DisplayName: Battle: Right
+	BattleBuffs.DisplayName: Battle: Show / Hide Buffs
 }
 
 Configs: {

@@ -680,17 +680,17 @@ namespace MercyMode.Lab
 				BattleNet.ServerReady(1, id, 6);
 				Check(Sent("TurnOf") == 0, "someone acted before everyone had picked");
 				BattleNet.ServerReady(2, id, 3);
-				Check(BattleNet.LabStage(id) == BattleNet.Stage.Acting && BattleNet.LabCurrent(id) == 0, "player 0 doesn't act first");
+				// Player 0 picked FIGHT, 1 ACT, 2 ITEM: the ACT and the ITEM go first, one at a time, then the FIGHT
+				Check(BattleNet.LabStage(id) == BattleNet.Stage.Acting && BattleNet.LabStep(id).SequenceEqual(new[] { 1 }), $"step {string.Join(",", BattleNet.LabStep(id))}, expected the ACT (1) first");
 				Check(Sent("TurnOf") == 3, "the turn wasn't announced to all three");
-				// One at a time, in party order; nobody can skip ahead
-				BattleNet.ServerActionDone(1, id);
-				Check(BattleNet.LabCurrent(id) == 0, "player 1 ended player 0's turn");
 				BattleNet.ServerActionDone(0, id);
-				Check(BattleNet.LabCurrent(id) == 1, "player 1 isn't next");
+				Check(BattleNet.LabStep(id).SequenceEqual(new[] { 1 }), "player 0 ended player 1's turn");
 				BattleNet.ServerActionDone(1, id);
-				Check(BattleNet.LabCurrent(id) == 2, "player 2 isn't next");
-				Check(Sent("BeginEnemyTurn") == 0, "the bullet box opened before the last action");
+				Check(BattleNet.LabStep(id).SequenceEqual(new[] { 2 }), "the ITEM (2) isn't next");
 				BattleNet.ServerActionDone(2, id);
+				Check(BattleNet.LabStep(id).SequenceEqual(new[] { 0 }), "the FIGHT (0) isn't last");
+				Check(Sent("BeginEnemyTurn") == 0, "the bullet box opened before the last action");
+				BattleNet.ServerActionDone(0, id);
 				Check(BattleNet.LabStage(id) == BattleNet.Stage.EnemyTurn && Sent("BeginEnemyTurn") == 3, "the bullet box didn't open for all three");
 
 				// Someone leaves; a newcomer presses the join key: they watch, then jump in at the next bullet box
@@ -707,18 +707,19 @@ namespace MercyMode.Lab
 				Check(BattleNet.LabPlayers(id).SequenceEqual(new[] { 0, 1, 4 }) && BattleNet.LabPending(id).Count == 0, "the newcomer didn't jump in at the bullet box");
 				Check(BattleNet.LabSent.Contains("BeginEnemyTurn>4"), "the newcomer isn't in the bullet box");
 
-				// The acting player leaves: the next one goes
+				// Everyone picked FIGHT: they all fight at once; the step ends when every one of them is done
 				BattleNet.ServerReady(0, id, 1);
 				BattleNet.ServerReady(1, id, 1);
 				BattleNet.ServerReady(4, id, 1);
+				Check(BattleNet.LabStep(id).SequenceEqual(new[] { 0, 1, 4 }), $"step {string.Join(",", BattleNet.LabStep(id))}, expected all three fighting together");
+				BattleNet.ServerActionDone(1, id);
+				Check(BattleNet.LabStage(id) == BattleNet.Stage.Acting, "the FIGHT step ended before everyone finished");
+				// One of them leaves mid-FIGHT, another never finishes: the step still ends (timeout)
 				BattleNet.ServerLeave(0, id);
-				Check(BattleNet.LabCurrent(id) == 1, "the turn didn't pass on when the acting player left");
-				// An action that never finishes times out
+				Check(BattleNet.LabStage(id) == BattleNet.Stage.Acting, "the FIGHT step ended with player 4 still fighting");
 				for (int t = 0; t <= BattleNet.ActTimeoutTicks + 1; t++)
 					BattleNet.ServerUpdate();
-				Check(BattleNet.LabCurrent(id) == 4, "a stuck action never timed out");
-				BattleNet.ServerActionDone(4, id);
-				Check(BattleNet.LabStage(id) == BattleNet.Stage.EnemyTurn, "no bullet box after the last action");
+				Check(BattleNet.LabStage(id) == BattleNet.Stage.EnemyTurn, "a stuck FIGHT never timed out");
 				// One AFK player: the others go ahead after the wait
 				BattleNet.ServerReady(1, id, 1);
 				for (int t = 0; t <= BattleNet.ChooseTimeoutTicks + 1; t++)

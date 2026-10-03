@@ -56,6 +56,9 @@ namespace MercyMode.Battle
 		/// <summary>Then the hero swings their weapon (the weapon-draw sound plays)...</summary>
 		private const int IntroSwingAt = GlideTicks + 3 * TicksPerFrame;
 		private const int SwingFrames = 12; // attackframes 6 at speed 0.5
+		/// <summary>The swing follows the weapon's own speed (its use time), within reason.</summary>
+		private int WeaponSwingFrames => fightWeapon?.Item is Item w && w.useAnimation > 0
+			? Math.Clamp((int)Math.Round(w.useAnimation / (float)TicksPerFrame), 6, 18) : SwingFrames;
 		// The shortsword / spear stab, in Deltarune frames: wind-up, out, hold, back; reach and body lean in battle px
 		private const float StabWindup = 2f, StabOut = 2f, StabHold = 3f, StabBack = 5f;
 		private const float StabReach = 12f, StabLean = 4f;
@@ -129,7 +132,11 @@ namespace MercyMode.Battle
 				SetHeroPose(HeroPose.Idle);
 			if (heroPose == HeroPose.Item && heroTimer >= ItemPoseFrames)
 				SetHeroPose(HeroPose.Idle);
-			if (heroPose == HeroPose.Attack && heroTimer >= SwingFrames + 6 && phase != Phase.FightResult && phase != Phase.FightBar)
+			// After the swing: back to holding the weapon ready while the bar runs (more bolts may come), weapon down after
+			if (heroPose == HeroPose.Attack && heroTimer >= WeaponSwingFrames + 6)
+				SetHeroPose(phase == Phase.FightBar ? HeroPose.AttackReady : HeroPose.Idle);
+			// The bar's done: the weapon goes down
+			if (heroPose == HeroPose.AttackReady && phase == Phase.FightResult)
 				SetHeroPose(HeroPose.Idle);
 
 			// Afterimages: drop one every frame while gliding, let the old ones fade out
@@ -305,6 +312,8 @@ namespace MercyMode.Battle
 				return;
 
 			HeroLight = WorldLightTint(p.Center);
+			// Downed (multiplayer): fades dark
+			HeroLight = Tint(HeroLight, Color.Lerp(Color.White, DownedShade, downedDark));
 
 			// Fading afterimages first (Terraria's own "shadow" draw makes them see-through)
 			foreach (var t in trail)
@@ -348,11 +357,10 @@ namespace MercyMode.Battle
 			new(c.R * tint.R / 255, c.G * tint.G / 255, c.B * tint.B / 255, c.A);
 
 		/// <summary>How far through a weapon swing a pose is (0 = start, 1 = end), or -1 for no weapon.</summary>
-		private static float SwingProgress(HeroPose pose, float timer) => pose switch
+		private float SwingProgress(HeroPose pose, float timer) => pose switch
 		{
 			HeroPose.AttackReady => 0.5f,
-			HeroPose.Attack => Math.Min(1f, timer / SwingFrames),
-			HeroPose.Defend => 0.12f,
+			HeroPose.Attack => Math.Min(1f, timer / WeaponSwingFrames),
 			_ => -1f,
 		};
 
@@ -368,6 +376,8 @@ namespace MercyMode.Battle
 			int oldDir = p.direction;
 			int oldSlot = p.selectedItem;
 			Item oldHeld = p.inventory[oldSlot];
+			// Terraria draws the held item from lastVisualizedSelectedItem (the last item swung), not the selected slot
+			Item oldVisual = p.lastVisualizedSelectedItem;
 			int oldAnim = p.itemAnimation, oldAnimMax = p.itemAnimationMax, oldTime = p.itemTime;
 			float oldRot = p.itemRotation;
 			Vector2 oldLoc = p.itemLocation;
@@ -388,20 +398,37 @@ namespace MercyMode.Battle
 			Vector2 manualHand = Vector2.Zero;
 			Vector2 manualOrigin = Vector2.Zero;
 			float manualThrust = 0f;
+			bool manualHeldOut = false;
 
 			if (swing >= 0f && weapon != null && shadow < 0.95f)
 			{
 				p.inventory[oldSlot] = weapon;
+				p.lastVisualizedSelectedItem = weapon;
 				p.itemAnimationMax = 30;
 				p.itemAnimation = Math.Max(1, (int)Math.Round(30 * (1f - swing)));
 				p.itemTime = p.itemAnimation;
 				// Guns and bows point straight ahead, tipping up with the recoil of a shot
 				p.itemRotation = -0.35f * (heroRecoil / RecoilFrames);
-				if (!weapon.noUseGraphic)
+				if (IsBeamWeapon(weapon))
+				{
+					// Beam weapons (the Last Prism): held out in front at arm's length, no swing or stab
+					float armRot = -MathHelper.PiOver2;
+					p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot * facing);
+					manualItem = weapon;
+					manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot * facing);
+					manualHeldOut = true;
+					p.itemAnimation = 0;
+				}
+				else if (!weapon.noUseGraphic)
 				{
 					Main.instance.LoadItem(weapon.type);
 					p.ItemCheck_ApplyUseStyle(p.mount.PlayerOffsetHitbox, weapon, Item.GetDrawHitbox(weapon.type, p));
 					bodyFrame = VanillaUseBodyFrame(p, weapon);
+					// Terraria's mid-swing spot sits the hilt a little above and behind the hand, which a still pose at
+					// battle size shows: down into the fist
+					if (weapon.useStyle == ItemUseStyleID.Swing && p.itemAnimation >= p.itemAnimationMax * 0.333f
+						&& p.itemAnimation < p.itemAnimationMax * 0.666f)
+						p.itemLocation += new Vector2(3f * facing, 7f);
 				}
 				else
 				{
@@ -440,9 +467,10 @@ namespace MercyMode.Battle
 						// The streak of the thrust, drawn at the tip while it's going out
 						stabStreak = t >= StabWindup && t < StabWindup + StabOut + StabHold ? 1f - Math.Max(0f, t - StabWindup - StabOut) / StabHold : 0f;
 					}
-					p.SetCompositeArmFront(true, stretch, armRot);
+					// Terraria's arm angles aren't mirrored for a left-facing player: its own code passes them times the direction
+					p.SetCompositeArmFront(true, stretch, armRot * facing);
 					manualItem = weapon;
-					manualHand = p.GetFrontHandPosition(stretch, armRot);
+					manualHand = p.GetFrontHandPosition(stretch, armRot * facing);
 					manualRotation = armRot + MathHelper.PiOver2; // along the arm
 					p.itemAnimation = 0;
 				}
@@ -450,23 +478,33 @@ namespace MercyMode.Battle
 			else
 			{
 				p.inventory[oldSlot] = new Item(); // nothing in hand
+				p.lastVisualizedSelectedItem = p.inventory[oldSlot];
 				switch (pose)
 				{
 					case HeroPose.ActReady:
 						bodyFrame = 2;
+						break;
+					case HeroPose.Defend:
+						// DEFEND: empty hand raised up in front, nothing held
+						p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, -MathHelper.Pi * 0.68f * facing);
 						break;
 					case HeroPose.Act:
 						bodyFrame = legFrame = Math.Min(1f, timer / 14f) < 1f ? 5 : 0;
 						break;
 					case HeroPose.ItemReady:
 					case HeroPose.Item:
-						if (!ally && usedItemType > 0 && (pose == HeroPose.ItemReady || timer <= ItemUseFrame) && shadow < 0.95f)
+						// Ours, or the item an ally picked (sent with their action)
+						int heldType = ally ? AllyItem(p) : usedItemType;
+						// Choosing from the ITEM list: the highlighted one
+						if (!ally && phase == Phase.ItemSelect && HealingItems() is var list && listIndex < list.Count)
+							heldType = list[listIndex].type;
+						if (heldType > 0 && (pose == HeroPose.ItemReady || timer <= ItemUseFrame) && shadow < 0.95f)
 						{
 							// Arm raised, holding the item up; it's used up at ItemUseFrame
 							float armRot = MathHelper.Pi;
-							p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot);
-							manualItem = ContentSamples.ItemsByType[usedItemType];
-							manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot);
+							p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot * facing);
+							manualItem = ContentSamples.ItemsByType[heldType];
+							manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot * facing);
 							// Raise the potion briskly, then hold it overhead until the use pose ends.
 							float rise = 22f * (1f - (float)Math.Pow(1f - Math.Min(timer, ItemRiseFrames) / ItemRiseFrames, 2f));
 							manualThrust = pose == HeroPose.Item ? rise : 0f;
@@ -481,7 +519,7 @@ namespace MercyMode.Battle
 						break;
 				}
 			}
-			if (!ally && hurtTimer >= 0 && shadow == 0f && pose != HeroPose.Defend)
+			if ((!ally && hurtTimer >= 0 || ally && duelDrawingHurt) && shadow == 0f && pose != HeroPose.Defend)
 				bodyFrame = legFrame = 5;
 			// Walking (an ally leaving the battle): Terraria's walk cycle, body and legs together
 			if (walkFrame >= 0)
@@ -492,7 +530,7 @@ namespace MercyMode.Battle
 
 			// Where the player's hitbox bottom-centre lands on the battle screen; world offsets scale around it
 			// The stab leans the whole body in a little
-			feet.X += stabLean * scale / BattleCharacterScale;
+			feet.X += stabLean * facing * scale / BattleCharacterScale;
 			Vector2 anchorWorld = p.position + new Vector2(p.width / 2f, p.height);
 			Vector2 ToBattle(Vector2 world) => feet + (world - anchorWorld) * scale;
 
@@ -517,18 +555,50 @@ namespace MercyMode.Battle
 					Texture2D tex = TextureAssets.Item[manualItem.type].Value;
 					Rectangle src = Main.itemAnimations[manualItem.type] != null ? Main.itemAnimations[manualItem.type].GetFrame(tex) : tex.Bounds;
 					Vector2 hand = ToBattle(manualHand);
-					if (pose == HeroPose.Item || pose == HeroPose.ItemReady)
+					if (manualHeldOut)
+					{
+						// Held in front of the hand, the right way round for the side they face, glowing a little
+						bool left = facing < 0;
+						float pulse = 0.85f + 0.15f * (float)Math.Sin(time / 6f);
+						if (manualItem.type == ItemID.LastPrism)
+						{
+							// The prism as Terraria shows it in use (its holdout, spinning faster as the beam charges),
+							// its point aimed at the enemy: the sprite points up, so a quarter turn toward them
+							Main.instance.LoadProjectile(ProjectileID.LastPrism);
+							Texture2D ptex = TextureAssets.Projectile[ProjectileID.LastPrism].Value;
+							int frames = Math.Max(1, Main.projFrames[ProjectileID.LastPrism]);
+							float charge = ally ? duelOppBeamCharge : beamCharge;
+							int speed = (int)MathHelper.Lerp(7f, 2f, charge);
+							Rectangle psrc = new(0, ptex.Height / frames * (int)(time / speed % frames), ptex.Width, ptex.Height / frames);
+							Vector2 pat = hand + new Vector2(facing * psrc.Height * scale * 0.3f, 0f);
+							Color glow = Color.Lerp(Color.White, WeaponBeam.Rainbow(0f), 0.35f * charge);
+							DrDraw.Sb.Draw(ptex, pat, psrc, glow * (1f - shadow) * pulse, MathHelper.PiOver2 * facing, psrc.Size() / 2f, scale * 0.8f, SpriteEffects.None, 0f);
+						}
+						else
+						{
+							Vector2 at = hand + new Vector2(facing * src.Width * scale * 0.35f, 0f);
+							DrDraw.Sb.Draw(tex, at, src, Color.White * (1f - shadow) * pulse, 0f, src.Size() / 2f, scale * 0.8f,
+								left ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+						}
+					}
+					else if (pose == HeroPose.Item || pose == HeroPose.ItemReady)
 					{
 						// Potion held up by its bottom, rising as it's used
 						DrDraw.Sb.Draw(tex, hand - new Vector2(0, manualThrust), src, Color.White * (1f - shadow), 0f, new Vector2(src.Width / 2f, src.Height), scale * 0.75f, SpriteEffects.None, 0f);
 					}
 					else
 					{
-						// Blade sprites point up-right (-45 degrees); turn them to follow the arm, handle in the hand
+						// Blade sprites point up-right (-45 degrees); turn them to follow the arm, handle in the hand.
+						// Facing left the arm is mirrored, so the blade is too: flipped, handle at its bottom-right
 						Vector2 along = manualRotation.ToRotationVector2();
+						bool left = facing < 0;
+						if (left)
+							along.X = -along.X;
 						Vector2 grip = hand + along * manualThrust * scale / BattleCharacterScale;
-						DrDraw.Sb.Draw(tex, grip, src, Color.White * (1f - shadow), manualRotation + MathHelper.PiOver4,
-							new Vector2(0, src.Height), scale * 0.85f, SpriteEffects.None, 0f);
+						DrDraw.Sb.Draw(tex, grip, src, Color.White * (1f - shadow),
+							left ? -manualRotation - MathHelper.PiOver4 : manualRotation + MathHelper.PiOver4,
+							left ? new Vector2(src.Width, src.Height) : new Vector2(0, src.Height), scale * 0.85f,
+							left ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
 						if (stabStreak > 0f && shadow < 0.5f)
 						{
 							// A thin white streak off the point of the blade
@@ -544,6 +614,7 @@ namespace MercyMode.Battle
 				p.legFrame = oldLeg;
 				p.direction = oldDir;
 				p.inventory[oldSlot] = oldHeld;
+				p.lastVisualizedSelectedItem = oldVisual;
 				p.itemAnimation = oldAnim;
 				p.itemAnimationMax = oldAnimMax;
 				p.itemTime = oldTime;
@@ -665,11 +736,16 @@ namespace MercyMode.Battle
 		/// <summary>Starts the battle-screen enemy's farewell from the last frame it was drawn.</summary>
 		private void PlayEnemySpared()
 		{
+			// A duel's opponent is a player, drawn live: no sprite snapshot to animate
+			if (duelWith >= 0)
+				return;
 			enemyOverride = new SpareAnimation(enemySnap);
 		}
 
 		private void PlayEnemyDeath()
 		{
+			if (duelWith >= 0)
+				return;
 			enemyOverride = new DeathAnimation(enemySnap);
 		}
 	}
