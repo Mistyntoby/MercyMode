@@ -398,6 +398,7 @@ namespace MercyMode.Battle
 			Vector2 manualHand = Vector2.Zero;
 			Vector2 manualOrigin = Vector2.Zero;
 			float manualThrust = 0f;
+			bool manualHeldOut = false;
 
 			if (swing >= 0f && weapon != null && shadow < 0.95f)
 			{
@@ -408,7 +409,17 @@ namespace MercyMode.Battle
 				p.itemTime = p.itemAnimation;
 				// Guns and bows point straight ahead, tipping up with the recoil of a shot
 				p.itemRotation = -0.35f * (heroRecoil / RecoilFrames);
-				if (!weapon.noUseGraphic)
+				if (IsBeamWeapon(weapon))
+				{
+					// Beam weapons (the Last Prism): held out in front at arm's length, no swing or stab
+					float armRot = -MathHelper.PiOver2;
+					p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot * facing);
+					manualItem = weapon;
+					manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot * facing);
+					manualHeldOut = true;
+					p.itemAnimation = 0;
+				}
+				else if (!weapon.noUseGraphic)
 				{
 					Main.instance.LoadItem(weapon.type);
 					p.ItemCheck_ApplyUseStyle(p.mount.PlayerOffsetHitbox, weapon, Item.GetDrawHitbox(weapon.type, p));
@@ -456,9 +467,10 @@ namespace MercyMode.Battle
 						// The streak of the thrust, drawn at the tip while it's going out
 						stabStreak = t >= StabWindup && t < StabWindup + StabOut + StabHold ? 1f - Math.Max(0f, t - StabWindup - StabOut) / StabHold : 0f;
 					}
-					p.SetCompositeArmFront(true, stretch, armRot);
+					// Terraria's arm angles aren't mirrored for a left-facing player: its own code passes them times the direction
+					p.SetCompositeArmFront(true, stretch, armRot * facing);
 					manualItem = weapon;
-					manualHand = p.GetFrontHandPosition(stretch, armRot);
+					manualHand = p.GetFrontHandPosition(stretch, armRot * facing);
 					manualRotation = armRot + MathHelper.PiOver2; // along the arm
 					p.itemAnimation = 0;
 				}
@@ -474,7 +486,7 @@ namespace MercyMode.Battle
 						break;
 					case HeroPose.Defend:
 						// DEFEND: empty hand raised up in front, nothing held
-						p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, -MathHelper.Pi * 0.68f);
+						p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, -MathHelper.Pi * 0.68f * facing);
 						break;
 					case HeroPose.Act:
 						bodyFrame = legFrame = Math.Min(1f, timer / 14f) < 1f ? 5 : 0;
@@ -490,9 +502,9 @@ namespace MercyMode.Battle
 						{
 							// Arm raised, holding the item up; it's used up at ItemUseFrame
 							float armRot = MathHelper.Pi;
-							p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot);
+							p.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armRot * facing);
 							manualItem = ContentSamples.ItemsByType[heldType];
-							manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot);
+							manualHand = p.GetFrontHandPosition(Player.CompositeArmStretchAmount.Full, armRot * facing);
 							// Raise the potion briskly, then hold it overhead until the use pose ends.
 							float rise = 22f * (1f - (float)Math.Pow(1f - Math.Min(timer, ItemRiseFrames) / ItemRiseFrames, 2f));
 							manualThrust = pose == HeroPose.Item ? rise : 0f;
@@ -543,7 +555,16 @@ namespace MercyMode.Battle
 					Texture2D tex = TextureAssets.Item[manualItem.type].Value;
 					Rectangle src = Main.itemAnimations[manualItem.type] != null ? Main.itemAnimations[manualItem.type].GetFrame(tex) : tex.Bounds;
 					Vector2 hand = ToBattle(manualHand);
-					if (pose == HeroPose.Item || pose == HeroPose.ItemReady)
+					if (manualHeldOut)
+					{
+						// Held in front of the hand, the right way round for the side they face, glowing a little
+						bool left = facing < 0;
+						Vector2 at = hand + new Vector2(facing * src.Width * scale * 0.35f, 0f);
+						float pulse = 0.85f + 0.15f * (float)Math.Sin(time / 6f);
+						DrDraw.Sb.Draw(tex, at, src, Color.White * (1f - shadow) * pulse, 0f, src.Size() / 2f, scale * 0.8f,
+							left ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+					}
+					else if (pose == HeroPose.Item || pose == HeroPose.ItemReady)
 					{
 						// Potion held up by its bottom, rising as it's used
 						DrDraw.Sb.Draw(tex, hand - new Vector2(0, manualThrust), src, Color.White * (1f - shadow), 0f, new Vector2(src.Width / 2f, src.Height), scale * 0.75f, SpriteEffects.None, 0f);

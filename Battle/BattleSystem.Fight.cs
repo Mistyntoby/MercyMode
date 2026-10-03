@@ -1653,9 +1653,16 @@ namespace MercyMode.Battle
 			NPC aim = Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : null;
 			Vector2 to = PartSpot(aim) + Main.rand.NextVector2Circular(14f, 14f);
 			AddEffect(new MuzzleFlash(from));
-			AddEffect(new ShotProjectile(projectile, from, to, 10f));
+			// Beam weapons fire a beam, not their holdout (the Last Prism's prism) flying across
+			if (IsBeamWeapon(w.Item))
+				AddEffect(new BeamEffect(from, to, w.Item.type == ItemID.LastPrism));
+			else
+				AddEffect(new ShotProjectile(projectile, from, to, 10f));
 			DuelSendFire(w.Item?.type ?? 0, projectile, null);
 		}
+
+		/// <summary>Weapons whose shot is a beam held on the target (their projectile is the gun in the hand).</summary>
+		public static bool IsBeamWeapon(Item item) => item != null && item.type is ItemID.LastPrism or ItemID.ChargedBlasterCannon;
 	}
 
 	/// <summary>A projectile flying from the hero to the enemy, with a short fading trail.</summary>
