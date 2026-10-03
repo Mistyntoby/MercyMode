@@ -852,8 +852,61 @@ namespace MercyMode.Battle
 		/// <summary>Bookkeeping projectiles that stand for a summon but aren't it (Abigail's flower counter), and dragon tails.</summary>
 		private static readonly HashSet<int> NotAttackers = new()
 		{
-			ProjectileID.AbigailCounter, ProjectileID.StardustDragon2, ProjectileID.StardustDragon3, ProjectileID.StardustDragon4,
+			ProjectileID.AbigailCounter, ProjectileID.StormTigerGem,
+			ProjectileID.StardustDragon2, ProjectileID.StardustDragon3, ProjectileID.StardustDragon4,
 		};
+
+		/// <summary>
+		/// Summons that come as a family from one staff (it picks a spider or pirate at random, the Optic Staff makes both
+		/// twins, the Desert Tiger grows through tiers): one menu entry and one attack for all of them. Bookkeeping pieces
+		/// (Abigail's and the tiger's counters, the dragon's body) belong to the one they stand for.
+		/// </summary>
+		public static int Family(int type) => type switch
+		{
+			ProjectileID.JumperSpider or ProjectileID.DangerousSpider => ProjectileID.VenomSpider,
+			ProjectileID.SoulscourgePirate or ProjectileID.PirateCaptain => ProjectileID.OneEyedPirate,
+			ProjectileID.Pygmy2 or ProjectileID.Pygmy3 or ProjectileID.Pygmy4 => ProjectileID.Pygmy,
+			ProjectileID.Spazmamini => ProjectileID.Retanimini,
+			ProjectileID.StormTigerTier2 or ProjectileID.StormTigerTier3 or ProjectileID.StormTigerGem => ProjectileID.StormTigerTier1,
+			ProjectileID.AbigailCounter => ProjectileID.AbigailMinion,
+			ProjectileID.StardustDragon2 or ProjectileID.StardustDragon3 or ProjectileID.StardustDragon4 => ProjectileID.StardustDragon1,
+			_ => type,
+		};
+
+		private static string FamilyName(int family) => family switch
+		{
+			ProjectileID.VenomSpider => "Spiders",
+			ProjectileID.OneEyedPirate => "Pirates",
+			ProjectileID.Pygmy => "Pygmies",
+			ProjectileID.Retanimini => "Optic Twins",
+			ProjectileID.StormTigerTier1 => "Desert Tiger",
+			_ => Lang.GetProjectileName(family).Value,
+		};
+
+		/// <summary>The counter that carries a summon's damage and level (Abigail's flower, the tiger's gem).</summary>
+		private static int CounterOf(int family) => family switch
+		{
+			ProjectileID.AbigailMinion => ProjectileID.AbigailCounter,
+			ProjectileID.StormTigerTier1 => ProjectileID.StormTigerGem,
+			_ => 0,
+		};
+
+		/// <summary>The pieces of a family that fight (not counters or the dragon's body).</summary>
+		private List<Projectile> Members(int family, int owner) => Main.projectile
+			.Where(q => q.active && q.owner == owner && Family(q.type) == family && !NotAttackers.Contains(q.type)).ToList();
+
+		/// <summary>How many times its staff was used: counters for Abigail and the tiger, one dragon, two twins a use.</summary>
+		private int UsesOf(int family)
+		{
+			int counter = CounterOf(family);
+			if (counter > 0)
+				return Main.projectile.Count(q => q.active && q.owner == Player.whoAmI && q.type == counter);
+			int n = Members(family, Player.whoAmI).Count;
+			return family == ProjectileID.Retanimini ? (n + 1) / 2 : n;
+		}
+
+		/// <summary>Summons that point somewhere as their look (flying swords): their tilt isn't reset.</summary>
+		public static bool KeepsRotation(int type) => type is ProjectileID.EmpressBlade or ProjectileID.Smolstar;
 
 		/// <summary>The player's minions, one of each kind that attacks: they join in after a FIGHT that landed.</summary>
 		private List<Projectile> Minions()
@@ -861,7 +914,7 @@ namespace MercyMode.Battle
 			var seen = new HashSet<int>();
 			var list = new List<Projectile>();
 			foreach (Projectile p in Main.ActiveProjectiles)
-				if (IsSummonOf(p, Player.whoAmI) && SummonDamage(p) > 0 && !NotAttackers.Contains(p.type) && seen.Add(p.type))
+				if (IsSummonOf(p, Player.whoAmI) && SummonDamage(p) > 0 && !NotAttackers.Contains(p.type) && seen.Add(Family(p.type)))
 					list.Add(p);
 			return list;
 		}
@@ -873,9 +926,10 @@ namespace MercyMode.Battle
 		{
 			// The base (before the player's summon bonuses), then the bonuses, like a staff's damage in the inventory
 			int baseDamage = p.originalDamage;
-			if (p.type == ProjectileID.AbigailMinion)
+			int counter = CounterOf(Family(p.type));
+			if (counter > 0)
 				foreach (Projectile c in Main.ActiveProjectiles)
-					if (c.owner == p.owner && c.type == ProjectileID.AbigailCounter)
+					if (c.owner == p.owner && c.type == counter)
 						baseDamage = Math.Max(baseDamage, c.originalDamage);
 			if (baseDamage > 0)
 				return Math.Max(1, (int)Main.player[p.owner].GetTotalDamage(DamageClass.Summon).ApplyTo(baseDamage));
@@ -898,6 +952,17 @@ namespace MercyMode.Battle
 			[ProjectileID.UFOMinion] = ProjectileID.UFOLaser,
 			[ProjectileID.Tempest] = ProjectileID.MiniSharkron,
 			[ProjectileID.StardustCellMinion] = ProjectileID.StardustCellMinionShot,
+			// Sentries fire from where they were built
+			[ProjectileID.SpiderHiver] = ProjectileID.SpiderEgg,
+			[ProjectileID.FrostHydra] = ProjectileID.FrostBlastFriendly,
+			[ProjectileID.HoundiusShootius] = ProjectileID.HoundiusShootiusFireball,
+			[ProjectileID.MoonlordTurret] = ProjectileID.MoonlordTurretLaser,
+			[ProjectileID.DD2BallistraTowerT1] = ProjectileID.DD2BallistraProj,
+			[ProjectileID.DD2BallistraTowerT2] = ProjectileID.DD2BallistraProj,
+			[ProjectileID.DD2BallistraTowerT3] = ProjectileID.DD2BallistraProj,
+			[ProjectileID.DD2FlameBurstTowerT1] = ProjectileID.DD2FlameBurstTowerT1Shot,
+			[ProjectileID.DD2FlameBurstTowerT2] = ProjectileID.DD2FlameBurstTowerT2Shot,
+			[ProjectileID.DD2FlameBurstTowerT3] = ProjectileID.DD2FlameBurstTowerT3Shot,
 		};
 
 		/// <summary>The Stardust Dragon's body and tail: drawn and moved with its head.</summary>
@@ -921,7 +986,7 @@ namespace MercyMode.Battle
 			var kinds = Minions();
 			if (kinds.Count == 0 || chosenSummon == 0)
 				return null;
-			return kinds.FirstOrDefault(k => k.type == chosenSummon) ?? kinds[0];
+			return kinds.FirstOrDefault(k => Family(k.type) == chosenSummon) ?? kinds[0];
 		}
 
 		// ---- picking the summon (after the weapon): one that's out, one from the inventory, or none ----
@@ -930,7 +995,7 @@ namespace MercyMode.Battle
 		private record SummonEntry(Projectile Out, Item Call);
 
 		/// <summary>The minion a summon item calls (Abigail's flower shoots her counter; she's the one who fights).</summary>
-		private static int SummonKindOf(Item item) => item.shoot == ProjectileID.AbigailCounter ? ProjectileID.AbigailMinion : item.shoot;
+		private static int SummonKindOf(Item item) => Family(item.shoot);
 
 		/// <summary>What was called from the inventory on this pick (undone by backing out of the target), and the pick before.</summary>
 		private int calledSummon;
@@ -943,7 +1008,7 @@ namespace MercyMode.Battle
 			var kinds = Minions();
 			var list = new List<SummonEntry> { new(null, null) };
 			list.AddRange(kinds.Select(k => new SummonEntry(k, null)));
-			var seen = new HashSet<int>(kinds.Select(k => k.type));
+			var seen = new HashSet<int>(kinds.Select(k => Family(k.type)));
 			for (int i = 0; i < 50; i++)
 			{
 				Item item = Player.inventory[i];
@@ -961,7 +1026,7 @@ namespace MercyMode.Battle
 		private int SummonEntryDamage(SummonEntry e)
 		{
 			if (e.Out != null)
-				return SummonDamage(e.Out) * Math.Max(1, Main.projectile.Count(p => p.active && p.owner == Player.whoAmI && p.type == e.Out.type));
+				return Math.Max(1, Members(Family(e.Out.type), Player.whoAmI).Sum(SummonDamage));
 			return e.Call != null ? Player.GetWeaponDamage(e.Call) : 0;
 		}
 
@@ -972,7 +1037,7 @@ namespace MercyMode.Battle
 			summonBefore = chosenSummon;
 			var entries = SummonEntries();
 			// Start on the one already fighting (or the first out); "No summon" if none is out
-			int at = entries.FindIndex(e => e.Out != null && e.Out.type == chosenSummon);
+			int at = entries.FindIndex(e => e.Out != null && Family(e.Out.type) == chosenSummon);
 			if (at < 0 && chosenSummon != 0)
 				at = entries.FindIndex(e => e.Out != null);
 			listIndex = Math.Max(0, at);
@@ -1002,8 +1067,7 @@ namespace MercyMode.Battle
 			foreach (Projectile p in Main.projectile.Where(q => q.active && q.owner == Player.whoAmI && q.minion && q.minionSlots > 0f
 				&& ProjectileID.Sets.MinionSacrificable[q.type]).OrderBy(q => q.minionPos))
 			{
-				int kind = IsDragonSegment(p.type) ? ProjectileID.StardustDragon1 : p.type == ProjectileID.AbigailCounter ? ProjectileID.AbigailMinion : p.type;
-				string name = Lang.GetProjectileName(kind).Value;
+				string name = FamilyName(Family(p.type));
 				if (!names.Contains(name))
 					names.Add(name);
 				free += p.minionSlots;
@@ -1017,17 +1081,15 @@ namespace MercyMode.Battle
 		private readonly Dictionary<int, int> summonsBeforeCall = new();
 
 		private Dictionary<int, int> SummonCounts() => Main.projectile
-			.Where(q => q.active && q.owner == Player.whoAmI && q.minion && !IsDragonSegment(q.type) && q.type != ProjectileID.AbigailCounter)
-			.GroupBy(q => q.type).ToDictionary(g => g.Key, g => g.Count());
+			.Where(q => q.active && q.owner == Player.whoAmI && q.minion).Select(q => Family(q.type)).Distinct()
+			.ToDictionary(f => f, UsesOf);
 
 		/// <summary>The summon called on this pick goes away again, and the pick before it is back.</summary>
 		private void UndoCalledSummon()
 		{
 			if (calledSummon > 0)
 				foreach (Projectile p in Main.ActiveProjectiles)
-					if (p.owner == Player.whoAmI && (p.type == calledSummon
-						|| calledSummon == ProjectileID.AbigailMinion && p.type == ProjectileID.AbigailCounter
-						|| calledSummon == ProjectileID.StardustDragon1 && IsDragonSegment(p.type)))
+					if (p.owner == Player.whoAmI && Family(p.type) == calledSummon)
 						p.Kill();
 			// Whatever it pushed out comes back (called again with its item, if it's still in the inventory)
 			if (calledSummon > 0)
@@ -1068,7 +1130,7 @@ namespace MercyMode.Battle
 			{
 				SummonEntry e = entries[i];
 				float ey = y + (i - first) * 30;
-				string name = e.Out != null ? Lang.GetProjectileName(e.Out.type).Value
+				string name = e.Out != null ? FamilyName(Family(e.Out.type))
 					: e.Call != null ? "Call " + e.Call.Name
 					: Minions().Count > 0 ? "Unsummon" : "No summon";
 				float scale = Math.Min(1f, 270f / Math.Max(1f, DrDraw.Measure(name, DrDraw.BigFont)));
@@ -1077,7 +1139,7 @@ namespace MercyMode.Battle
 					DrawHeartCursor(55, ey + 10);
 				// Better or worse than the one fighting now
 				int dmg = SummonEntryDamage(e);
-				if (e.Out != null && current != null && e.Out.type == current.type)
+				if (e.Out != null && current != null && Family(e.Out.type) == Family(current.type))
 					DrDraw.Text("E", 360, ey + 6, new Color(128, 128, 128), DrDraw.SmallFont);
 				else if (dmg != currentDamage)
 					StatArrow(362, ey + 8, dmg > currentDamage);
@@ -1100,7 +1162,7 @@ namespace MercyMode.Battle
 			DrDraw.Text($"ATK {selDamage}", sx, sy, Color.White, DrDraw.SmallFont);
 			if (selDamage != currentDamage && !(sel.Out != null && sel.Out == current))
 				StatArrow(sx + DrDraw.Measure($"ATK {selDamage}", DrDraw.SmallFont) + 8, sy + 3, selDamage > currentDamage);
-			int count = sel.Out != null ? Main.projectile.Count(p => p.active && p.owner == Player.whoAmI && p.type == sel.Out.type) : 1;
+			int count = sel.Out != null ? Members(Family(sel.Out.type), Player.whoAmI).Count : 1;
 			DrDraw.Text(count > 1 ? $"{count} OUT, 1 HIT" : "1 HIT", sx, sy + 20, gray, DrDraw.SmallFont);
 			string replaces = sel.Call != null ? string.Join(", ", Replaced(sel.Call)) : "";
 			if (replaces.Length > 0)
@@ -1138,7 +1200,7 @@ namespace MercyMode.Battle
 			Sfx("select");
 			SummonEntry pick = entries[listIndex];
 			if (pick.Out != null)
-				chosenSummon = pick.Out.type;
+				chosenSummon = Family(pick.Out.type);
 			else if (pick.Call != null)
 			{
 				summonsBeforeCall.Clear();
@@ -1168,8 +1230,9 @@ namespace MercyMode.Battle
 				if (made >= 0 && made < Main.maxProjectiles)
 					Main.projectile[made].originalDamage = item.damage;
 			}
-			// Abigail's counter spawns her from its AI, which is frozen during the battle: call her too
-			if (kind != item.shoot && !Main.projectile.Any(p => p.active && p.owner == Player.whoAmI && p.type == kind))
+			// Abigail's flower and the tiger's gem are counters; the one who fights appears from the counter's AI, which
+			// is frozen during the battle: call them too (if Terraria's own code already did, there's one and that's it)
+			if (CounterOf(kind) > 0 && !Main.projectile.Any(p => p.active && p.owner == Player.whoAmI && Family(p.type) == kind && p.type != CounterOf(kind)))
 			{
 				int her = Projectile.NewProjectile(source, Player.Center, Vector2.Zero, kind, damage, item.knockBack, Player.whoAmI);
 				if (her >= 0 && her < Main.maxProjectiles)
@@ -1235,19 +1298,28 @@ namespace MercyMode.Battle
 			if (!encounter.Alive || ChosenSummon() is not Projectile chosen)
 				return;
 			NPC target = encounter.TargetableParts && Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : encounter.StrikeTarget();
-			if (SummonShots.TryGetValue(chosen.type, out int shot))
+			int family = Family(chosen.type);
+			summonStrikeTicks = 0;
+			bool shotFired = false;
+			// Every one of the family goes: shooters fire from where they're drawn, the rest lunge
+			foreach (Projectile m in Members(family, Player.whoAmI))
 			{
-				Vector2 from = summonSpots.TryGetValue(chosen.type, out Vector2 at) ? at : HeroFeetNow + new Vector2(-20f, -60f);
-				AddEffect(new ShotProjectile(shot, from, PartSpot(target), 10f));
+				if (SummonShots.TryGetValue(m.type, out int shot))
+				{
+					Vector2 from = summonSpots.TryGetValue(m.whoAmI, out Vector2 at) ? at : HeroFeetNow + new Vector2(-20f, -60f);
+					AddEffect(new ShotProjectile(shot, from, PartSpot(target) + Main.rand.NextVector2Circular(10f, 10f), 10f));
+					shotFired = true;
+					summonStrikeTicks = Math.Max(summonStrikeTicks, 10);
+				}
+				else
+				{
+					summonLungeTime = time;
+					// The top of the lunge (the dragon's is a longer loop out and back)
+					summonStrikeTicks = Math.Max(summonStrikeTicks, family == ProjectileID.StardustDragon1 ? DragonAttackTicks / 2 : 12);
+				}
+			}
+			if (shotFired)
 				Sfx("attack");
-				summonStrikeTicks = 10;
-			}
-			else
-			{
-				summonLungeTime = time;
-				// The top of the lunge (the dragon's is a longer loop out and back)
-				summonStrikeTicks = chosen.type == ProjectileID.StardustDragon1 ? DragonAttackTicks / 2 : 12;
-			}
 		}
 
 		private void SummonStrike()
@@ -1259,7 +1331,6 @@ namespace MercyMode.Battle
 			{
 				if (!encounter.Alive)
 					break;
-				int count = Main.projectile.Count(p => p.active && p.owner == Player.whoAmI && p.type == m.type);
 				NPC target = encounter.TargetableParts && Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : encounter.StrikeTarget();
 				Vector2 spot = PartSpot(target);
 				// The hit lands on the enemy (the summon itself stays drawn beside the player)
@@ -1267,7 +1338,7 @@ namespace MercyMode.Battle
 				AddEffect(new Shockwave(spot, new Color(180, 140, 255), 26f));
 				var strike = new NPC.HitInfo
 				{
-					Damage = AfterDefense(Math.Max(1, (int)Math.Round(SummonDamage(m) * Math.Max(1, count) * DamageScale)), target),
+					Damage = AfterDefense(Math.Max(1, (int)Math.Round(SummonEntryDamage(new SummonEntry(m, null)) * DamageScale)), target),
 					HitDirection = Player.direction,
 					DamageType = DamageClass.Summon,
 				};
@@ -1321,7 +1392,7 @@ namespace MercyMode.Battle
 			Projectile dragonHead = Main.projectile.FirstOrDefault(p => p.active && p.owner == owner.whoAmI && p.type == ProjectileID.StardustDragon1);
 			bool ours = owner.whoAmI == Player.whoAmI;
 			int since = ours ? time - summonLungeTime : -1;
-			int fighting = ours ? ChosenSummon()?.type ?? 0 : 0;
+			int fighting = ours && ChosenSummon() is Projectile cs ? Family(cs.type) : 0;
 			float lunge = since >= 0 && since < 24 ? (float)Math.Sin(since / 24f * Math.PI) : 0f;
 			if (mine.Count == 0)
 				return;
@@ -1341,7 +1412,7 @@ namespace MercyMode.Battle
 				foreach (Projectile p in mine)
 				{
 					// Abigail's flower counter isn't drawn in the world either; Abigail herself is drawn by hand below
-					if (p.type == ProjectileID.AbigailCounter)
+					if (p.type is ProjectileID.AbigailCounter or ProjectileID.StormTigerGem)
 						continue;
 					if (dragonHead != null && (p.type == ProjectileID.StardustDragon1 || IsDragonSegment(p.type)))
 						continue;
@@ -1364,17 +1435,17 @@ namespace MercyMode.Battle
 					// Idle: flying ones drift about a little (frozen, they'd hang perfectly still)
 					if (!p.sentry && !p.tileCollide)
 						rel += new Vector2((float)Math.Sin(time * 0.03f + p.whoAmI) * 10f, (float)Math.Sin(time * 0.06f + p.whoAmI * 1.7f) * 6f) * (scale / HeroScale);
-					if (lunge > 0f && kind == fighting && !p.sentry && !SummonShots.ContainsKey(kind) && encounter != null)
+					if (lunge > 0f && Family(p.type) == fighting && !p.sentry && !SummonShots.ContainsKey(p.type) && encounter != null)
 						rel += (encounter.ScreenCenter - (feet + rel)) * lunge * 0.85f;
 					if (ours && p == anchor)
-						summonSpots[p.type] = feet + rel;
+						summonSpots[p.whoAmI] = feet + rel;
 					Vector2 shift = Main.screenPosition + feet + rel - p.Center;
 					Vector2 oldPosition = p.position;
 					float oldScale = p.scale;
 					int oldFrame = p.frame, oldDir = p.spriteDirection;
 					float oldRotation = p.rotation;
 					// Upright: a tilt it had while flying in the world would stay frozen on it
-					if (!p.sentry)
+					if (!p.sentry && !KeepsRotation(p.type))
 						p.rotation = 0f;
 					// Frozen, its AI doesn't animate it: run through its frames here, facing the enemy
 					int frames = Main.projFrames[p.type];
@@ -1498,7 +1569,7 @@ namespace MercyMode.Battle
 				last = at;
 			}
 			if (owner.whoAmI == Player.whoAmI)
-				summonSpots[ProjectileID.StardustDragon1] = sim.Head;
+				summonSpots[head.whoAmI] = sim.Head;
 
 			// Tail first, the head on top
 			for (int i = chain.Count - 1; i >= 0; i--)
@@ -1539,7 +1610,7 @@ namespace MercyMode.Battle
 			at.Y += (float)Math.Sin(time / 20f) * 3f;
 			// Her attack: a quick lunge at the enemy and back
 			// Only our own lunge (an ally's isn't sent); the time check also skips a lunge left from an earlier battle
-			int since = p.owner == Player.whoAmI && ChosenSummon()?.type == p.type ? time - summonLungeTime : -1;
+			int since = p.owner == Player.whoAmI && ChosenSummon() is Projectile cs && Family(cs.type) == Family(p.type) ? time - summonLungeTime : -1;
 			float lunge = since >= 0 && since < 24 ? (float)Math.Sin(since / 24f * Math.PI) : 0f;
 			if (lunge > 0f && encounter != null)
 				at = Vector2.Lerp(at, encounter.ScreenCenter, lunge * 0.85f);
