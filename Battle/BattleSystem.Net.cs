@@ -738,7 +738,7 @@ namespace MercyMode.Battle
 			head.UseColor(PartyColors.Of(p));
 			head.Request();
 			Color tint = Color.Lerp(PartyColors.Of(p), Color.White, 0.45f);
-			if (head.IsReady)
+			if (RightFacingHead.Usable(head))
 				DrDraw.Sb.Draw(head.GetTarget(), center, null, tint * alpha, 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
 			else
 				DrDraw.HeartShapeAt(center.X - 6f, center.Y - 10f, 17, PartyColors.Of(p) * alpha);
@@ -833,6 +833,20 @@ namespace MercyMode.Battle
 	public sealed class RightFacingHead : PlayerHeadDrawRenderTargetContent
 	{
 		private Player who;
+		/// <summary>It has been drawn at least once: its picture is there even on frames Terraria skips preparing it.</summary>
+		private bool everReady;
+
+		/// <summary>
+		/// Whether there's a head to show. Terraria doesn't prepare these while the game window isn't focused, so the
+		/// last picture is kept rather than dropping to the stand-in heart.
+		/// </summary>
+		public static bool Usable(RightFacingHead h)
+		{
+			if (h.IsReady)
+				h.everReady = true;
+			var t = h.GetTarget();
+			return h.everReady && t != null && !t.IsDisposed;
+		}
 
 		public void Use(Player p)
 		{
