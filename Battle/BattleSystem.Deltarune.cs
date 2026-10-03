@@ -22,23 +22,31 @@ namespace MercyMode.Battle
 		private static readonly Color TiredBlue = new(60, 160, 255);
 
 		/// <summary>The spare star after a spareable enemy's name (spr_sparestar, or a drawn star).</summary>
-		private void DrawSpareMark(float x, float y)
+		/// <returns>How wide it is.</returns>
+		private float DrawSpareMark(float x, float y)
 		{
-			if (DrDraw.Sprite("spr_sparestar", (int)(time / 8), x, y, Color.White, 1f))
-				return;
+			var spr = DeltaruneAssets.Sprite("spr_sparestar");
+			if (spr != null && DrDraw.Sprite("spr_sparestar", (int)(time / 8), x + spr.Origin.X, y + spr.Origin.Y, Color.White, 1f))
+				return spr.Frame(0).Width;
 			Color yellow = new(255, 255, 0);
 			DrDraw.Rect(x + 6, y + 1, 4, 14, yellow);
 			DrDraw.Rect(x + 1, y + 6, 14, 4, yellow);
 			DrDraw.Rect(x + 4, y + 4, 8, 8, yellow);
+			return 16f;
 		}
 
 		/// <summary>The TIRED mark: spr_tiredmark, or little blue z's.</summary>
-		private void DrawTiredMark(float x, float y)
+		/// <returns>How wide it is.</returns>
+		private float DrawTiredMark(float x, float y)
 		{
-			if (DrDraw.Sprite("spr_tiredmark", (int)(time / 10), x, y, Color.White, 1f))
-				return;
-			DrDraw.Text("z", x, y + 6, TiredBlue, DrDraw.SmallFont, 0.7f);
-			DrDraw.Text("Z", x + 7, y, TiredBlue, DrDraw.SmallFont, 0.9f);
+			var spr = DeltaruneAssets.Sprite("spr_tiredmark");
+			if (spr != null && DrDraw.Sprite("spr_tiredmark", (int)(time / 10), x + spr.Origin.X, y + spr.Origin.Y, Color.White, 1f))
+				return spr.Frame(0).Width;
+			// Two little z's, one up and one down, in Deltarune's cyan
+			Color zc = new(110, 220, 230);
+			DrDraw.Text("z", x, y + 1, zc, DrDraw.SmallFont, 0.7f);
+			DrDraw.Text("z", x + 7, y + 6, zc, DrDraw.SmallFont, 0.7f);
+			return 16f;
 		}
 
 		// ---- PACIFY ----

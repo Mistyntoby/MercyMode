@@ -2239,17 +2239,18 @@ namespace MercyMode.Battle
 					DrDraw.GradientText(name, 80, rowY, new Color(255, 255, 0), TiredBlue);
 				else
 					DrDraw.Text(name, 80, rowY, nameColor);
-				// Deltarune's marks after the name: a star when it can be spared, z's when it's TIRED
-				if (!row.Locked)
+				// Deltarune's marks after the name and a space: a star when it can be spared, then z's and a gray
+				// "(Tired)" right after them when it's TIRED
+				if (!row.Locked && (spareable || e.Tired))
 				{
-					float mx = 80 + DrDraw.Measure(name, DrDraw.BigFont) + 8;
+					float mx = 80 + DrDraw.Measure(name + " ", DrDraw.BigFont);
 					if (spareable)
-					{
-						DrawSpareMark(mx, rowY + 2);
-						mx += 22;
-					}
+						mx += DrawSpareMark(mx, rowY + 2) + 2;
 					if (e.Tired)
-						DrawTiredMark(mx, rowY + 2);
+					{
+						mx += DrawTiredMark(mx, rowY + 2);
+						DrDraw.Text("(Tired)", mx, rowY, new Color(128, 128, 128));
+					}
 				}
 				float hp = row.Part != null
 					? MathHelper.Clamp(row.Part.life / (float)Math.Max(1, row.Part.lifeMax), 0f, 1f)
