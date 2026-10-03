@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Terraria;
 using Terraria.ModLoader;
 using Terraria.ModLoader.IO;
@@ -47,6 +48,24 @@ namespace MercyMode.Battle
 			DrDraw.Text("z", x, y + 1, zc, DrDraw.SmallFont, 0.7f);
 			DrDraw.Text("z", x + 7, y + 6, zc, DrDraw.SmallFont, 0.7f);
 			return 16f;
+		}
+
+		/// <summary>
+		/// A command button pulsing white: Deltarune's own white frame if the sprite has one, otherwise its selected
+		/// frame (the one with the name under it) turned white.
+		/// </summary>
+		private void DrawButtonGlow(string sprite, string label, float x, float y)
+		{
+			float a = 0.45f + 0.45f * (float)Math.Sin(time / 12f);
+			var spr = DeltaruneAssets.Sprite(sprite);
+			if (spr == null)
+			{
+				DrDraw.Outline(x, y, 31, 32, Color.White * a, 2);
+				DrDraw.Text(label, x + 15 - DrDraw.Measure(label, DrDraw.SmallFont) * 0.35f, y + 33, Color.White * a, DrDraw.SmallFont, 0.7f);
+				return;
+			}
+			Texture2D tex = spr.Frames.Length >= 3 ? spr.Frame(2) : WhiteMask.Of(spr.Frame(1));
+			DrDraw.Sb.Draw(tex, new Vector2(x, y), null, Color.White * a, 0f, spr.Origin, 1f, SpriteEffects.None, 0f);
 		}
 
 		// ---- PACIFY ----
@@ -138,7 +157,10 @@ namespace MercyMode.Battle
 				int chars = Math.Min(en.Bubble.Length, age / 2 + 1);
 
 				// Wrapped to the bubble's width (Deltarune's bubbles: the dialogue font at full size, black on white)
-				const float scale = 1f, lineH = 17f, pad = 8f, tail = 10f;
+				// Deltarune's bubbles: big text, roomy, up to about half the screen wide for long lines
+				const string font = DrDraw.BigFont;
+				const float scale = 0.9f, pad = 12f, tail = 12f;
+				float lineH = DrDraw.LineHeight(font) * scale;
 				float half = 24f;
 				WithEnemy(en, () =>
 				{
@@ -146,15 +168,15 @@ namespace MercyMode.Battle
 					if (frame.Width > 0)
 						half = MathHelper.Clamp(frame.Width * sc / 2f, 16f, 70f);
 				});
-				// As wide as fits between the bullet box and the enemy (narrower, taller bubbles when it's tight)
-				float room = at.X - half - 8f - tail - (Box.Right + 8f);
-				float maxW = MathHelper.Clamp(room - pad * 2f, 90f, 190f);
+				// (The box isn't open yet while they talk, so a bubble can reach across the middle of the screen)
+				float room = at.X - half - 8f - tail - 8f;
+				float maxW = MathHelper.Clamp(room - pad * 2f, 100f, 290f);
 				var lines = new List<string>();
 				string line = "";
 				foreach (string word in en.Bubble.Split(' '))
 				{
 					string tryLine = line.Length == 0 ? word : line + " " + word;
-					if (DrDraw.Measure(tryLine, DrDraw.SmallFont) * scale > maxW && line.Length > 0)
+					if (DrDraw.Measure(tryLine, font) * scale > maxW && line.Length > 0)
 					{
 						lines.Add(line);
 						line = word;
@@ -163,15 +185,15 @@ namespace MercyMode.Battle
 						line = tryLine;
 				}
 				lines.Add(line);
-				float w = Math.Min(maxW, lines.Max(l => DrDraw.Measure(l, DrDraw.SmallFont) * scale)) + pad * 2f;
-				float h = lines.Count * lineH + pad * 1.5f;
+				float w = Math.Min(maxW, lines.Max(l => DrDraw.Measure(l, font) * scale)) + pad * 2f;
+				float h = lines.Count * lineH + pad * 1.6f;
 				// Beside the enemy at its own height, its tail pointing at it (its left edge, from how big it's drawn)
 				// On whole pixels, so the corners stay sharp
 				w = (float)Math.Round(w);
 				h = (float)Math.Round(h);
 				float bx = (float)Math.Round(Math.Max(4f, at.X - half - 8f - tail - w)), by = (float)Math.Round(Math.Clamp(at.Y - h / 2f, 4f, ScreenHeight - PanelHeight - h - 4f));
 				// A square notch cut from each corner, like Deltarune's
-				const float notch = 2f;
+				const float notch = 3f;
 				DrDraw.Rect(bx + notch, by, w - notch * 2f, h, Color.White * alpha);
 				DrDraw.Rect(bx, by + notch, notch, h - notch * 2f, Color.White * alpha);
 				DrDraw.Rect(bx + w - notch, by + notch, notch, h - notch * 2f, Color.White * alpha);
@@ -184,13 +206,13 @@ namespace MercyMode.Battle
 				}
 				// The text, typed out so far (whole lines at a time once a line is done)
 				int left = chars;
-				float ty = by + pad * 0.75f;
+				float ty = by + pad * 0.6f;
 				foreach (string l in lines)
 				{
 					if (left <= 0)
 						break;
 					string part = l.Length <= left ? l : l.Substring(0, left);
-					DrDraw.Text(part, bx + pad, ty, Color.Black * alpha, DrDraw.SmallFont, scale);
+					DrDraw.Text(part, bx + pad, ty, Color.Black * alpha, font, scale);
 					left -= l.Length + 1;
 					ty += lineH;
 				}

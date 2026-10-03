@@ -2141,8 +2141,12 @@ namespace MercyMode.Battle
 						DrDraw.Outline(bx, buttonsY, 31, 32, selected ? new Color(255, 255, 0) : Orange, 2);
 						DrDraw.Text(labels[i].Substring(0, 1), bx + 10, buttonsY + 8, selected ? new Color(255, 255, 0) : Orange, DrDraw.SmallFont);
 					}
-					if (i == (int)Choice.Spare && LivingEnemies.Any(e => e.E.Mercy >= 100f))
-						DrDraw.Sprite(names[i], 2, bx, buttonsY, Color.White, 1f, 0f, 0.4f + (float)Math.Sin(time / 12f) * 0.4f);
+					// Something can be spared (SPARE) or PACIFY would work on a TIRED enemy (ACT): the button pulses
+					// white, its name showing under it, like Deltarune's
+					bool glow = i == (int)Choice.Spare && LivingEnemies.Any(e => e.E.Mercy >= 100f)
+						|| i == (int)Choice.Act && LivingEnemies.Any(e => e.E.Tired) && duelWith < 0;
+					if (glow)
+						DrawButtonGlow(names[i], labels[i], bx, buttonsY);
 				}
 			}
 
