@@ -141,6 +141,9 @@ namespace MercyMode.Battle
 			duelLive = null;
 			duelAskPending = false;
 			duelOppHurt = -1;
+			duelOppPose = HeroPose.Idle;
+			duelOppAttackAt = 0;
+			duelSentItem = -1;
 			SyncDuelProxy();
 			duelEnc = new DuelEncounter
 			{
@@ -195,6 +198,21 @@ namespace MercyMode.Battle
 			}
 			if (duelOppHurt >= 0 && ++duelOppHurt > 30)
 				duelOppHurt = -1;
+			// How we stand and what we hold, whenever it changes (the swing itself goes as a Fire)
+			HeroPose pose = heroPose == HeroPose.Attack ? HeroPose.AttackReady : heroPose;
+			int held = heroPose is HeroPose.Item or HeroPose.ItemReady ? usedItemType : WeaponForDisplay()?.type ?? 0;
+			if (phase == Phase.WeaponSelect || phase == Phase.Build && !buildDone)
+				pose = HeroPose.AttackReady;
+			if (pose != duelSentPose || held != duelSentItem || time % 60 == 0)
+			{
+				duelSentPose = pose;
+				duelSentItem = held;
+				BattleNet.SendDuel(BattleNet.DuelKind.Pose, w =>
+				{
+					w.Write((byte)pose);
+					w.Write(held);
+				});
+			}
 			if (phase is Phase.EnemyIntro or Phase.EnemyTurn or Phase.EnemyOutro && time % 2 == 0)
 				BattleNet.SendDuel(BattleNet.DuelKind.Soul, w =>
 				{
@@ -281,6 +299,64 @@ namespace MercyMode.Battle
 			int left = Math.Max(0, (MercyAnswerTicks - phaseTicks + 59) / 60);
 			if (left <= 10)
 				DrDraw.Text($"{left}s", 560, oy, new Color(255, 220, 64), DrDraw.SmallFont);
+		}
+
+		// ================================================================== the opponent's poses, weapons and shots
+
+		private HeroPose duelSentPose = HeroPose.Idle;
+		private int duelSentItem = -1;
+		/// <summary>The opponent as they told us: their pose, since when, what they hold, and their last swing or shot.</summary>
+		private HeroPose duelOppPose = HeroPose.Idle;
+		private uint duelOppPoseSince;
+		private uint duelOppAttackAt;
+		private int duelOppItem;
+
+		/// <summary>We swung or shot (FIGHT, or a piece placed): they see it from us. <paramref name="at"/> null: at them.</summary>
+		private void DuelSendFire(int item, int proj, Vector2? at)
+		{
+			if (duelWith < 0 || duelOver)
+				return;
+			BattleNet.SendDuel(BattleNet.DuelKind.Fire, w =>
+			{
+				w.Write(item);
+				w.Write(proj);
+				w.Write((short)(at?.X ?? -1));
+				w.Write((short)(at?.Y ?? -1));
+			});
+		}
+
+		/// <summary>Where the opponent's weapon is, roughly (their hand, facing us).</summary>
+		private Vector2 DuelOppHand => EnemyPosNow + new Vector2(-22f, -4f);
+
+		private void OnDuelFire(int item, int proj, Vector2 at)
+		{
+			duelOppAttackAt = Main.GameUpdateCount;
+			if (item > 0)
+				duelOppItem = item;
+			Net.BattleNet.AllyWeapons[duelWith] = duelOppItem;
+			// Their weapon's own sound, like ours
+			if (item > 0 && ContentSamples.ItemsByType.TryGetValue(item, out Item sample) && sample.UseSound is Terraria.Audio.SoundStyle use)
+				AttackSfx.Vanilla(use);
+			else
+				Sfx("attack");
+			if (proj <= 0)
+				return;
+			Vector2 from = DuelOppHand;
+			// At us: our heart; otherwise the spot in the box where the piece goes
+			Vector2 to = at.X < 0 ? HeroFeetNow + new Vector2(0f, -40f) : at;
+			AddEffect(new MuzzleFlash(from));
+			AddEffect(new ShotProjectile(proj, from, to, 10f));
+		}
+
+		/// <summary>The opponent's pose to draw now: a fresh swing first, then what they told us.</summary>
+		private (HeroPose, float) DuelOppPoseNow()
+		{
+			if (battleOver)
+				return (HeroPose.Idle, 0f);
+			uint sinceAttack = Main.GameUpdateCount - duelOppAttackAt;
+			if (duelOppAttackAt != 0 && sinceAttack < 30)
+				return (HeroPose.Attack, sinceAttack / (float)TicksPerFrame);
+			return (duelOppPose, (Main.GameUpdateCount - duelOppPoseSince) / (float)TicksPerFrame);
 		}
 
 		/// <summary>Drawing the duel opponent mid-flinch (their hurt frame).</summary>
@@ -439,6 +515,30 @@ namespace MercyMode.Battle
 				case BattleNet.DuelKind.MercyAnswer:
 					OnMercyAnswer(r.ReadBoolean());
 					break;
+				case BattleNet.DuelKind.Pose:
+				{
+					var pose = (HeroPose)r.ReadByte();
+					int held = r.ReadInt32();
+					if (pose != duelOppPose)
+					{
+						duelOppPose = pose;
+						duelOppPoseSince = Main.GameUpdateCount;
+					}
+					duelOppItem = held;
+					// Their weapon (or the item they use) in their hand, through the allies' drawing
+					Net.BattleNet.AllyWeapons[duelWith] = held;
+					Net.BattleNet.ReadyFaces[duelWith] = pose is HeroPose.Item or HeroPose.ItemReady ? FaceItem : FaceFight;
+					break;
+				}
+				case BattleNet.DuelKind.Fire:
+				{
+					int item = r.ReadInt32();
+					int proj = r.ReadInt32();
+					var at = new Vector2(r.ReadInt16(), r.ReadInt16());
+					if (!duelOver)
+						OnDuelFire(item, proj, at);
+					break;
+				}
 				case BattleNet.DuelKind.Hurt:
 				{
 					int dealt = r.ReadInt32();
@@ -480,6 +580,7 @@ namespace MercyMode.Battle
 						inv = -1;
 						grazeTimer = 0;
 						duelOppHurt = -1;
+						SetHeroPose(HeroPose.Idle);
 						Bullets.Clear();
 						boxTimer = 0;
 						duelMyTurn = true;
@@ -539,6 +640,8 @@ namespace MercyMode.Battle
 			if (duelWith < 0)
 				return;
 			BattleNet.SendDuelEnd();
+			Net.BattleNet.AllyWeapons.Remove(duelWith);
+			Net.BattleNet.ReadyFaces.Remove(duelWith);
 			duelWith = -1;
 			duelEnc = null;
 			duelLive = null;
@@ -566,7 +669,8 @@ namespace MercyMode.Battle
 			float bob = (float)Math.Round(Math.Sin((time + 40) / 20f)) * glide;
 			HeroLight = glide >= 1f ? Color.White : Color.Lerp(Lighting.GetColor(o.Center.ToTileCoordinates()), Color.White, glide);
 			duelDrawingHurt = duelOppHurt >= 0;
-			DrawPlayerPose(sb, m, o, feet + new Vector2(0f, bob), scale, HeroPose.Idle, 0f, 0f, ally: true, facing: -1);
+			var (oppPose, oppTimer) = glide >= 1f ? DuelOppPoseNow() : (HeroPose.Idle, 0f);
+			DrawPlayerPose(sb, m, o, feet + new Vector2(0f, bob), scale, oppPose, oppTimer, 0f, ally: true, facing: -1);
 			duelDrawingHurt = false;
 			HeroLight = Color.White;
 			DrawSlash(center);
@@ -757,9 +861,13 @@ namespace MercyMode.Battle
 					bullets.Add(b);
 					break;
 				}
+				case PieceKind.Minion when pc.Proj == ProjectileID.StardustDragon1:
+					bullets.Add(DragonBullet(pc.At, dir));
+					break;
 				case PieceKind.Minion:
 				{
 					Bullet b = TexBullet(proj, pc.At, dir * 1.9f, 28f, 14f);
+					b.Trail = 4;
 					b.Lifetime = 260;
 					b.OnUpdate = x =>
 					{
@@ -801,6 +909,83 @@ namespace MercyMode.Battle
 				b.OffscreenMargin = 120f;
 				Spawn(b);
 			}
+		}
+
+		/// <summary>
+		/// The Stardust Dragon as a piece: its head chases the SOUL and its body and tail follow its path, each piece
+		/// turned along it. Every piece of it hurts.
+		/// </summary>
+		private Bullet DragonBullet(Vector2 at, Vector2 dir)
+		{
+			const int segments = 6;
+			const float spacing = 13f, size = 24f;
+			var path = new List<Vector2> { at };
+			var spots = new Vector2[segments + 1];
+			var rots = new float[segments + 1];
+			var head = ProjTexture(ProjectileID.StardustDragon1);
+			var body = ProjTexture(ProjectileID.StardustDragon2);
+			var body2 = ProjTexture(ProjectileID.StardustDragon3);
+			var tail = ProjTexture(ProjectileID.StardustDragon4);
+
+			void Lay(Bullet x)
+			{
+				// Pieces a spacing apart along the path the head took
+				int j = path.Count - 1;
+				float walked = 0f;
+				Vector2 last = x.Position;
+				for (int i = 0; i <= segments; i++)
+				{
+					float want = i * spacing;
+					while (j > 0 && walked + Vector2.Distance(path[j], path[j - 1]) < want)
+					{
+						walked += Vector2.Distance(path[j], path[j - 1]);
+						j--;
+					}
+					spots[i] = path[j];
+					Vector2 d = i == 0 ? x.Velocity : last - spots[i];
+					rots[i] = d.LengthSquared() > 0.01f ? d.ToRotation() + MathHelper.PiOver2 : rots[Math.Max(0, i - 1)];
+					last = spots[i];
+				}
+			}
+
+			Bullet b = TexBullet(head, at, dir * 2.2f, size, 14f);
+			b.Lifetime = 300;
+			b.OnUpdate = x =>
+			{
+				x.Velocity = Vector2.Lerp(x.Velocity, (SoulCenter - x.Position).SafeNormalize(Vector2.UnitX) * 2.2f, 0.05f);
+				path.Add(x.Position + x.Velocity);
+				if (path.Count > 400)
+					path.RemoveAt(0);
+				Lay(x);
+			};
+			b.HitTest = (x, area) =>
+			{
+				for (int i = 0; i <= segments; i++)
+				{
+					var r = new Rectangle((int)(spots[i].X - 6), (int)(spots[i].Y - 6), 12, 12);
+					if (r.Intersects(area))
+						return true;
+				}
+				return false;
+			};
+			b.OnDraw = x =>
+			{
+				if (spots[0] == Vector2.Zero)
+					Lay(x);
+				// Tail first, the head on top
+				for (int i = segments; i >= 0; i--)
+				{
+					var t = i == 0 ? head : i == segments ? tail : i % 2 == 1 ? body : body2;
+					if (t.tex == null || Main.dedServ)
+					{
+						DrDraw.Rect(spots[i].X - 5, spots[i].Y - 5, 10, 10, Color.White * x.Alpha);
+						continue;
+					}
+					float sc = size / Math.Max(1f, Math.Max(t.src.Width, t.src.Height));
+					DrDraw.Sb.Draw(t.tex, spots[i], t.src, Color.White * x.Alpha, rots[i], t.src.Size() / 2f, sc, SpriteEffects.None, 0f);
+				}
+			};
+			return b;
 		}
 
 		// ================================================================== building (the other player is in the box)
@@ -913,6 +1098,7 @@ namespace MercyMode.Battle
 			BeginSoulMode(SoulMode.Red);
 			SetText("");
 			SetPhase(Phase.Build);
+			SetHeroPose(HeroPose.AttackReady);
 			Sfx("boost");
 		}
 
@@ -944,6 +1130,9 @@ namespace MercyMode.Battle
 			spawnedDuringUpdate.Clear();
 			Bullets.RemoveAll(b => b.Dead);
 
+			// After a swing, back to holding the piece's weapon ready
+			if (heroPose == HeroPose.Attack && heroTimer > 20f)
+				SetHeroPose(buildDone ? HeroPose.Idle : HeroPose.AttackReady);
 			if (buildDone)
 				return;
 			buildInk = Math.Min(InkMax, buildInk + InkPerTick);
@@ -1009,14 +1198,35 @@ namespace MercyMode.Battle
 			var piece = new DuelPiece { Kind = o.Kind, Item = o.Item?.type ?? 0, Proj = o.Proj, Damage = o.Damage, At = at, Dir = dir };
 			BattleNet.SendDuel(BattleNet.DuelKind.Place, piece.Write);
 			buildPreview?.Incoming.Enqueue(piece);
+			// We swing or shoot it, here and on their screen
+			int shot = PieceShot(o);
+			SetHeroPose(HeroPose.Attack);
+			if (o.Item?.UseSound is Terraria.Audio.SoundStyle use)
+				AttackSfx.Vanilla(use);
+			if (shot > 0)
+			{
+				Vector2 muzzle = HeroFeetNow + new Vector2(28f, -36f);
+				AddEffect(new MuzzleFlash(muzzle));
+				AddEffect(new ShotProjectile(shot, muzzle, at, 10f));
+			}
+			DuelSendFire(o.Item?.type ?? 0, shot, at);
 			Sfx("select");
 		}
+
+		/// <summary>What flies from the builder to the spot as they place it (nothing for melee: they just swing).</summary>
+		private static int PieceShot(PieceOption o) => o.Kind switch
+		{
+			PieceKind.Arrow or PieceKind.Orb or PieceKind.Shot => o.Proj,
+			PieceKind.Spray => o.Proj > 0 ? o.Proj : ProjectileID.Bullet,
+			_ => 0,
+		};
 
 		private void FinishBuild()
 		{
 			if (buildDone)
 				return;
 			buildDone = true;
+			SetHeroPose(HeroPose.Idle);
 			dragFrom = null;
 			BattleNet.SendDuel(BattleNet.DuelKind.BuildDone);
 			Sfx("select");
