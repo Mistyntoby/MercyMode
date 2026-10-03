@@ -1181,7 +1181,8 @@ namespace MercyMode.Battle
 			else
 			{
 				summonLungeTime = time;
-				summonStrikeTicks = 12; // the top of the lunge
+				// The top of the lunge (the dragon's is a longer loop out and back)
+				summonStrikeTicks = chosen.type == ProjectileID.StardustDragon1 ? DragonAttackTicks / 2 : 12;
 			}
 		}
 
@@ -1270,10 +1271,15 @@ namespace MercyMode.Battle
 			try
 			{
 				int abigail = 0;
+				// The Stardust Dragon slithers around on its own (its world copy is frozen in a line)
+				if (dragonHead != null)
+					DrawDragon(owner, dragonHead, feet, scale, ours && fighting == ProjectileID.StardustDragon1 ? since : -1);
 				foreach (Projectile p in mine)
 				{
 					// Abigail's flower counter isn't drawn in the world either; Abigail herself is drawn by hand below
 					if (p.type == ProjectileID.AbigailCounter)
+						continue;
+					if (dragonHead != null && (p.type == ProjectileID.StardustDragon1 || IsDragonSegment(p.type)))
 						continue;
 					if (p.type == ProjectileID.AbigailMinion)
 					{
@@ -1337,6 +1343,117 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>Abigail, drawn by hand: her own frames, bobbing, see-through like the ghost she is.</summary>
+		private const int DragonAttackTicks = 56;
+
+		/// <summary>A Stardust Dragon on the battle screen: its head steering about, the body following its path.</summary>
+		private sealed class DragonSim
+		{
+			public Vector2 Head, Velocity;
+			public readonly List<Vector2> Trail = new();
+			public int LastTick = -1;
+		}
+
+		private readonly Dictionary<int, DragonSim> dragons = new();
+
+		private void DrawDragon(Player owner, Projectile head, Vector2 feet, float scale, int since)
+		{
+			float k = scale / HeroScale;
+			// Head first, then the body nearest it in the world, out to the tail
+			var body = Main.projectile.Where(q => q.active && q.owner == owner.whoAmI && IsDragonSegment(q.type))
+				.OrderBy(q => q.type == ProjectileID.StardustDragon4 ? 1 : 0).ThenBy(q => q.DistanceSQ(head.Center)).ToList();
+			var chain = new List<Projectile> { head };
+			chain.AddRange(body);
+			// How far apart the pieces are in the world, onto the battle screen
+			float spacing = 18f;
+			if (chain.Count > 1)
+				spacing = MathHelper.Clamp(Enumerable.Range(1, chain.Count - 1).Average(i => Vector2.Distance(chain[i].Center, chain[i - 1].Center)), 10f, 30f);
+			spacing *= scale;
+
+			Vector2 home = feet + new Vector2(-30f, -80f) * k;
+			if (!dragons.TryGetValue(owner.whoAmI, out DragonSim sim) || sim.LastTick < 0 || sim.LastTick > time)
+			{
+				sim = dragons[owner.whoAmI] = new DragonSim { Head = home, Velocity = new Vector2(2f, 0f) };
+				for (int i = 0; i < 1200; i++)
+					sim.Trail.Add(home - new Vector2(i, 0f));
+				sim.LastTick = time;
+			}
+			// Steer on the battle's ticks (drawing can run more often)
+			for (int steps = Math.Min(10, time - sim.LastTick); steps > 0; steps--)
+			{
+				int t = time - steps + 1;
+				// Idle: a lazy figure eight above and behind the player
+				Vector2 target = home + new Vector2((float)Math.Sin(t * 0.025f) * 70f, (float)Math.Sin(t * 0.05f) * 30f) * k;
+				float maxSpeed = 2.6f * k;
+				int s2 = since - (time - t);
+				if (s2 >= 0 && s2 < DragonAttackTicks && encounter != null)
+				{
+					// Attacking: out to the enemy in a loop and back round to the player
+					float u = s2 / (float)DragonAttackTicks;
+					Vector2 to = encounter.ScreenCenter - target;
+					Vector2 side = new Vector2(-to.Y, to.X).SafeNormalize(Vector2.Zero);
+					target += to * (float)Math.Sin(u * Math.PI) + side * (float)Math.Sin(u * Math.PI * 2) * 50f * k;
+					maxSpeed = 14f * k;
+				}
+				Vector2 want = target - sim.Head;
+				Vector2 desired = want.SafeNormalize(Vector2.Zero) * Math.Min(maxSpeed, want.Length() * 0.12f);
+				sim.Velocity = Vector2.Lerp(sim.Velocity, desired, 0.1f);
+				sim.Head += sim.Velocity;
+				sim.Trail.Insert(0, sim.Head);
+				if (sim.Trail.Count > 1200)
+					sim.Trail.RemoveAt(sim.Trail.Count - 1);
+			}
+			sim.LastTick = time;
+
+			// Each piece sits a spacing further back along the head's path, turned along it
+			var spots = new List<(Vector2 At, float Rot)>();
+			int j = 0;
+			Vector2 last = sim.Trail[0];
+			float walked = 0f;
+			for (int i = 0; i < chain.Count; i++)
+			{
+				float want = i * spacing;
+				while (j + 1 < sim.Trail.Count && walked + Vector2.Distance(sim.Trail[j], sim.Trail[j + 1]) < want)
+				{
+					walked += Vector2.Distance(sim.Trail[j], sim.Trail[j + 1]);
+					j++;
+				}
+				Vector2 at = sim.Trail[j];
+				Vector2 ahead = i == 0 ? sim.Head + sim.Velocity : last;
+				Vector2 dir = ahead - at;
+				if (dir.LengthSquared() < 0.01f)
+					dir = sim.Velocity.LengthSquared() > 0.01f ? sim.Velocity : Vector2.UnitX;
+				spots.Add((at, dir.ToRotation() + MathHelper.PiOver2));
+				last = at;
+			}
+			if (owner.whoAmI == Player.whoAmI)
+				summonSpots[ProjectileID.StardustDragon1] = sim.Head;
+
+			// Tail first, the head on top
+			for (int i = chain.Count - 1; i >= 0; i--)
+			{
+				Projectile p = chain[i];
+				Vector2 oldPosition = p.position;
+				float oldScale = p.scale, oldRot = p.rotation;
+				int oldAlpha = p.alpha;
+				p.Center = Main.screenPosition + spots[i].At;
+				p.rotation = spots[i].Rot;
+				p.scale *= scale;
+				p.alpha = 0;
+				try
+				{
+					Main.instance.LoadProjectile(p.type);
+					Main.instance.DrawProj(p.whoAmI);
+				}
+				finally
+				{
+					p.position = oldPosition;
+					p.scale = oldScale;
+					p.rotation = oldRot;
+					p.alpha = oldAlpha;
+				}
+			}
+		}
+
 		private void DrawGhost(Projectile p, Vector2 at, float scale)
 		{
 			Main.instance.LoadProjectile(p.type);
