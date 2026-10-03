@@ -2253,7 +2253,7 @@ namespace MercyMode.Battle
 		/// <summary>The player's head portrait centred on a point (a cyan heart until it's rendered).</summary>
 		private void DrawPlayerHead(Vector2 center, float alpha)
 		{
-			if (playerHeadPortrait?.IsReady == true)
+			if (playerHeadPortrait != null && RightFacingHead.Usable(playerHeadPortrait))
 			{
 				DrDraw.Sb.Draw(playerHeadPortrait.GetTarget(), center, null,
 					Color.Lerp(KrisCyan, Color.White, 0.45f) * alpha, 0f, new Vector2(42f), 0.82f, SpriteEffects.None, 0f);
