@@ -104,8 +104,6 @@ namespace MercyMode.Battle
 
 		/// <summary>Spares of the same kind of enemy (variants together) that make it a recruit.</summary>
 		public const int RecruitNeeded = 4;
-		/// <summary>A recruit starts its battles with this much MERCY.</summary>
-		private const float RecruitMercy = 35f;
 
 		/// <summary>One kind of enemy for recruiting: its banner groups the variants (every zombie is one recruit).</summary>
 		private static int RecruitKey(NPC npc)
@@ -113,9 +111,6 @@ namespace MercyMode.Battle
 			int banner = npc.BannerID();
 			return banner > 0 ? banner : npc.type;
 		}
-
-		private bool IsRecruited(NPC npc) =>
-			Player.GetModPlayer<RecruitPlayer>().Count(RecruitKey(npc)) >= RecruitNeeded;
 
 		/// <summary>A regular enemy was spared: one more toward recruiting its kind. The line to show, or null.</summary>
 		private string RecordRecruit(Encounter e)
@@ -130,7 +125,7 @@ namespace MercyMode.Battle
 			if (now == RecruitNeeded)
 			{
 				Sfx("mercyadd");
-				return $"* {e.Name} became your RECRUIT!\n* (It'll go easier on you from now on.)";
+				return $"* {e.Name} became your RECRUIT!";
 			}
 			return null;
 		}

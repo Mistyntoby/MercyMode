@@ -153,9 +153,6 @@ namespace MercyMode.Battle
 			{
 				// A duel: the other player, through the proxy NPC
 				Encounter e = duelWith >= 0 && duelEnc != null ? duelEnc : EncounterRegistry.Create(npcs[i]);
-				// A recruit (spared enough times before) is friendlier from the start
-				if (e is EnemyEncounter && IsRecruited(npcs[i]))
-					e.SetMercyQuiet(Math.Max(e.Mercy, RecruitMercy));
 				if (npcs.Count > 1)
 				{
 					e.Slot = spots[i].center;
