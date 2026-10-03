@@ -1313,6 +1313,8 @@ namespace MercyMode.Battle
 					p.scale *= scale;
 					try
 					{
+						// One called during the battle was never drawn in the world, so its texture may not be loaded yet
+						Main.instance.LoadProjectile(p.type);
 						Main.instance.DrawProj(p.whoAmI);
 					}
 					finally

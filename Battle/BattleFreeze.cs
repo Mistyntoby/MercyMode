@@ -124,6 +124,11 @@ namespace MercyMode.Battle
 				return true;
 			projectile.velocity = Vector2.Zero;
 			projectile.timeLeft++; // don't expire while frozen
+			// Summons that start invisible and fade in from their AI (the Stardust Dragon) would stay invisible while
+			// frozen, which is how one called in the battle shows up: fade them in here instead
+			if (ownSummon && projectile.alpha > 0 && Terraria.ID.ContentSamples.ProjectilesByType.TryGetValue(projectile.type, out Projectile sample)
+				&& sample.alpha >= 200)
+				projectile.alpha = System.Math.Max(0, projectile.alpha - 20);
 			// A fighter's following summons wait just behind them in the world (sentries stay where they were built)
 			int type = projectile.type;
 			bool dragonBody = type is Terraria.ID.ProjectileID.StardustDragon2 or Terraria.ID.ProjectileID.StardustDragon3 or Terraria.ID.ProjectileID.StardustDragon4;
