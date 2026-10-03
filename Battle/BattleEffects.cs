@@ -546,64 +546,49 @@ namespace MercyMode.Battle
 	}
 
 	/// <summary>
-	/// PACIFY: the enemy turns a sleepy blue and sinks a little as a few z's float up off it, then fades away with
-	/// blue sparkles (spared, asleep).
+	/// PACIFY: the same white spare effect as SPARE (its afterimages, flash and stars), with big white Z's coming off
+	/// the enemy, one after another, spiralling out around it as they fade.
 	/// </summary>
 	public class PacifyAnimation : BattleEffect
 	{
 		private readonly EnemySnapshot snap;
-		private readonly List<StarParticle> stars = new();
+		private readonly SpareAnimation spare;
 		private float t;
-		private const float Doze = 14f, Fade = 26f;
+		/// <summary>A Z every few frames for a while; each lives this long.</summary>
+		private const float ZEvery = 3f, ZFor = 24f, ZLife = 26f;
 
 		public PacifyAnimation(EnemySnapshot snap)
 		{
 			this.snap = snap;
-			DeltaruneAssets.Play("pacify", Terraria.ID.SoundID.Item29 with { Volume = 0.7f, Pitch = -0.3f });
+			spare = new SpareAnimation(snap);
 		}
 
 		public override void Step(float dt)
 		{
-			float next = t + dt;
-			// Blue sparkles drift up while it fades
-			if ((int)next != (int)t && next >= Doze && next < Doze + Fade && snap.Valid)
-			{
-				float w = snap.Frame.Width * snap.Scale, h = snap.Frame.Height * snap.Scale;
-				var pos = snap.Position + new Vector2(Main.rand.NextFloat(-w / 2f, w / 2f), Main.rand.NextFloat(-h / 2f, h / 2f));
-				stars.Add(new StarParticle(pos, new Vector2(0, -1.2f), Vector2.Zero, 0f, 10f, new Color(150, 190, 255), 8));
-			}
-			foreach (var s in stars)
-				s.Step(dt);
-			stars.RemoveAll(s => s.Done);
-			t = next;
-			// Over once the last sparkles have faded out on their own (not cut off mid-fade)
-			if (t >= Doze + Fade && stars.Count == 0)
+			spare.Step(dt);
+			t += dt;
+			if (spare.Done && t >= ZFor + ZLife)
 				Done = true;
 		}
 
 		public override void Draw()
 		{
+			spare.Draw();
 			if (!snap.Valid)
 				return;
-			Color sleepy = new(90, 120, 220);
-			float doze = Math.Min(1f, t / Doze);
-			float fade = MathHelper.Clamp((t - Doze) / Fade, 0f, 1f);
-			// Settles down a little as it falls asleep
-			Vector2 sink = new(0f, 4f * doze);
-			if (fade < 1f)
-				snap.Draw(sink, Color.Lerp(snap.Color, sleepy, doze) * (1f - fade));
-			// A few z's float up off it, one after another
-			float w = snap.Frame.Width * snap.Scale, h = snap.Frame.Height * snap.Scale;
-			for (int i = 0; i < 3; i++)
+			float r0 = Math.Max(snap.Frame.Width, snap.Frame.Height) * snap.Scale * 0.25f;
+			for (int i = 0; i * ZEvery < ZFor; i++)
 			{
-				float k = (t - i * 6f) / 24f;
-				if (k <= 0f || k >= 1f)
+				float age = t - i * ZEvery;
+				if (age <= 0f || age >= ZLife)
 					continue;
-				Vector2 z = snap.Position + new Vector2(w * 0.3f + k * 12f + i * 4f, -h * 0.4f - k * 24f);
-				DrDraw.Text("z", z.X, z.Y, Color.White * (1f - k), DrDraw.SmallFont, 0.7f + i * 0.2f);
+				float k = age / ZLife;
+				// Each one leaves at its own angle around the enemy, turning as it drifts out
+				float angle = i * 2.39996f + k * 2.2f;
+				Vector2 at = snap.Position + angle.ToRotationVector2() * (r0 + k * 46f) - new Vector2(8f, 12f);
+				float alpha = k < 0.15f ? k / 0.15f : 1f - (k - 0.15f) / 0.85f;
+				DrDraw.Text("Z", at.X, at.Y, Color.White * alpha, DrDraw.BigFont, 0.8f + 0.4f * k);
 			}
-			foreach (var s in stars)
-				s.Draw();
 		}
 	}
 
