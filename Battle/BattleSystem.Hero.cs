@@ -687,11 +687,16 @@ namespace MercyMode.Battle
 		/// <summary>Starts the battle-screen enemy's farewell from the last frame it was drawn.</summary>
 		private void PlayEnemySpared()
 		{
+			// A duel's opponent is a player, drawn live: no sprite snapshot to animate
+			if (duelWith >= 0)
+				return;
 			enemyOverride = new SpareAnimation(enemySnap);
 		}
 
 		private void PlayEnemyDeath()
 		{
+			if (duelWith >= 0)
+				return;
 			enemyOverride = new DeathAnimation(enemySnap);
 		}
 	}

@@ -80,6 +80,18 @@ namespace MercyMode.Battle.Net
 				BattleSystem.Instance?.OnEnterWorld();
 		}
 
+		public override void OnHurt(Player.HurtInfo info)
+		{
+			// Hit by another player with PvP on: both get the challenge prompt
+			if (Main.netMode != NetmodeID.MultiplayerClient || Player.whoAmI != Main.myPlayer || !info.PvP || BattleSystem.Active)
+				return;
+			if (ModContent.GetInstance<MercyConfig>()?.TurnBasedBattles == false)
+				return;
+			int from = info.DamageSource.SourcePlayerIndex;
+			if (from >= 0 && from < Main.maxPlayers && from != Player.whoAmI)
+				BattleNet.SendDuelOffer(from);
+		}
+
 		public override void PlayerDisconnect()
 		{
 			if (Main.netMode == NetmodeID.Server)
@@ -291,6 +303,13 @@ namespace MercyMode.Battle.Net
 			Player me = Main.LocalPlayer;
 			if (BattleSystem.Active || me.dead || BattleNet.RequestPending)
 				return;
+			// A PvP challenge comes first: the same key accepts it
+			if (BattleNet.ChallengeOpen)
+			{
+				if (!BattleNet.ChallengePressed && JoinPressed())
+					BattleNet.SendDuelPress();
+				return;
+			}
 			float best = float.MaxValue;
 			foreach (var (id, wb) in BattleNet.WorldBattles)
 			{
@@ -387,6 +406,18 @@ namespace MercyMode.Battle.Net
 					Utils.DrawBorderString(sb, "IN BATTLE", screen, PartyColors.Of(p), 0.7f, 0.5f, 1f);
 				}
 
+			if (BattleNet.ChallengeOpen)
+			{
+				string ck = JoinKeys().FirstOrDefault() ?? "Join Battle";
+				string foe = Main.player[BattleNet.ChallengeWith].name;
+				string cl = BattleNet.ChallengePressed
+					? $"Waiting for {foe} to accept... ({BattleNet.ChallengeCount}/2)"
+					: $"PRESS {ck.ToUpperInvariant()} TO CHALLENGE {foe.ToUpperInvariant()}! ({BattleNet.ChallengeCount}/2)";
+				var cpos = new Vector2(Main.screenWidth / 2f / Main.UIScale, Main.screenHeight * 0.72f / Main.UIScale);
+				float cp = 0.85f + 0.15f * (float)Math.Sin(Main.GameUpdateCount / 10f);
+				Utils.DrawBorderString(sb, cl, cpos, new Color(255, 90, 90) * cp, 1.1f, 0.5f, 0.5f);
+				return;
+			}
 			if (promptNpc == null)
 				return;
 			string key = JoinKeys().FirstOrDefault();

@@ -56,6 +56,7 @@ namespace MercyMode.Battle
 		{
 			deathPending = false;
 			battleLife = 0;
+			DuelOnDeath();
 			Bullets.Clear();
 			boxAfterimages.Clear();
 			soulShards.Clear();
