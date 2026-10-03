@@ -369,6 +369,7 @@ namespace MercyMode.Battle
 			beamTick = 0;
 			beamManaTick = 0;
 			beamSoundIn = 0;
+			beamAim = Vector2.Zero;
 			gunTimer = GunWindowTicks;
 			gunCooldown = 0;
 			gunShots = 0;
@@ -405,6 +406,8 @@ namespace MercyMode.Battle
 		/// <summary>0..1: how long the beam has been held (the prism's rays close in, it gets wider and hits harder).</summary>
 		private float beamCharge;
 		private int beamTimer, beamHits, beamTick, beamManaTick, beamSoundIn;
+		/// <summary>Where the beam ends now (it slides between targets).</summary>
+		private Vector2 beamAim;
 		private const int BeamWindowTicks = 200;
 		/// <summary>Ticks between the held beam's hits, and the most hits one turn.</summary>
 		private const int BeamHitEvery = 16;
@@ -440,12 +443,25 @@ namespace MercyMode.Battle
 			if (want && !beamOn)
 			{
 				// It starts up: the prism's sound, and the first hit comes quickly
-				AttackSfx.Vanilla(SoundID.Item15 with { Volume = 0.7f });
+				AttackSfx.Vanilla(SoundID.Item15 with { Volume = 1f });
 				beamTick = BeamHitEvery / 2;
 				beamSoundIn = 0;
 			}
 			beamOn = want;
+			float before = beamCharge;
 			beamCharge = beamOn ? Math.Min(1f, beamCharge + 1f / BeamChargeTicks) : Math.Max(0f, beamCharge - 0.04f);
+			// The rays meet: a flash and a rumble
+			if (before < 1f && beamCharge >= 1f)
+			{
+				AttackSfx.Vanilla(SoundID.Item15 with { Volume = 1f, Pitch = 0.5f });
+				AddEffect(new Shockwave(Muzzle(), fightWeapon.Item?.type == ItemID.LastPrism ? WeaponBeam.Rainbow(0f) : new Color(90, 220, 255), 34f));
+			}
+			if (beamOn && beamCharge >= 1f && time % 6 == 0)
+				ShakeScreen(1f);
+			// The aim slides to the target (a new one when the last went down) instead of jumping
+			NPC aimAt = Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : encounter.Alive ? encounter.StrikeTarget() : null;
+			Vector2 want2 = aimAt != null ? PartSpot(aimAt) : beamAim;
+			beamAim = beamAim == Vector2.Zero ? want2 : Vector2.Lerp(beamAim, want2, 0.12f);
 			SetHeroPose(HeroPose.AttackReady);
 			if (beamOn)
 			{
@@ -453,13 +469,14 @@ namespace MercyMode.Battle
 				// The prism's hum, quicker as it charges (Terraria's does the same)
 				if (--beamSoundIn <= 0)
 				{
-					AttackSfx.Vanilla(SoundID.Item15 with { Volume = 0.35f + 0.25f * beamCharge, Pitch = -0.2f + 0.5f * beamCharge });
+					AttackSfx.Vanilla(SoundID.Item15 with { Volume = 0.6f + 0.4f * beamCharge, Pitch = -0.3f + 0.6f * beamCharge, MaxInstances = 4 });
 					beamSoundIn = (int)MathHelper.Lerp(24f, 7f, beamCharge);
 				}
 				if (--beamTick <= 0)
 				{
 					beamTick = BeamHitEvery;
 					beamHits++;
+					AttackSfx.Vanilla(SoundID.Item12 with { Volume = 0.35f, Pitch = 0.2f * beamCharge });
 					hitsTried++;
 					// Harder the longer it's held: a good press at first, a perfect one at full charge
 					int points = (int)MathHelper.Lerp(90f, 150f, beamCharge);
@@ -501,13 +518,18 @@ namespace MercyMode.Battle
 		{
 			if (!beamMode || phase != Phase.FightBar || beamCharge <= 0.01f || encounter == null)
 				return;
-			NPC aim = Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : null;
-			Vector2 to = PartSpot(aim);
 			bool prism = fightWeapon.Item?.type == ItemID.LastPrism;
 			float alpha = beamOn ? 1f : beamCharge;
-			WeaponBeam.Draw(Muzzle(), to, 0.5f, prism, alpha, 0.45f + 0.75f * beamCharge, 1.6f - 1.3f * beamCharge);
-			if (beamOn && time % 3 == 0)
-				Sparks.Burst(this, to + Main.rand.NextVector2Circular(10f, 10f), 2, prism ? WeaponBeam.Rainbow(Main.rand.NextFloat()) : new Color(90, 220, 255), 2f);
+			Vector2 from = Muzzle();
+			WeaponBeam.Held(from, beamAim, beamCharge, prism, alpha);
+			if (beamOn && time % 2 == 0)
+			{
+				Color c = prism ? WeaponBeam.Rainbow(Main.rand.NextFloat()) : new Color(90, 220, 255);
+				// Sparks where it burns, and motes drifting off along it
+				Sparks.Burst(this, beamAim + Main.rand.NextVector2Circular(10f, 10f), 2, c, 2.5f);
+				Vector2 along = Vector2.Lerp(from, beamAim, Main.rand.NextFloat());
+				AddEffect(new Sparks(along, Main.rand.NextVector2Circular(0.6f, 0.6f), c, 2f, 0f, 0.05f));
+			}
 		}
 
 		/// <summary>The beam's bar: the prompt, the time left, its charge and the hits.</summary>

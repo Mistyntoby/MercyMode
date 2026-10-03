@@ -46,6 +46,8 @@ namespace MercyMode.Battle.Net
 
 		private sealed class Challenge
 		{
+			/// <summary>Each challenge's own number: a client's "I pressed" belongs to one, never to the next.</summary>
+			public int Id;
 			public int A, B;
 			public bool PressedA, PressedB;
 			public uint Expires;
@@ -54,6 +56,7 @@ namespace MercyMode.Battle.Net
 		}
 
 		private static readonly List<Challenge> challenges = new();
+		private static int nextChallengeId = 1;
 		/// <summary>Server: who is dueling whom (both directions).</summary>
 		private static readonly Dictionary<int, int> duelPartner = new();
 
@@ -108,7 +111,7 @@ namespace MercyMode.Battle.Net
 			{
 				// One challenge per player at a time: a newer one replaces theirs
 				challenges.RemoveAll(x => x.Has(attacker) || x.Has(victim));
-				c = new Challenge { A = attacker, B = victim };
+				c = new Challenge { Id = nextChallengeId++, A = attacker, B = victim };
 				challenges.Add(c);
 			}
 			c.Expires = Main.GameUpdateCount + ChallengeTicks;
@@ -132,8 +135,21 @@ namespace MercyMode.Battle.Net
 				return;
 			}
 			challenges.Remove(c);
+			// Both pressed the key from outside any battle, so a battle or duel the server still lists them in is
+			// left over (one ended without the server hearing): clear it rather than fail without a word
+			foreach (int p in new[] { c.A, c.B })
+			{
+				DropStale(p);
+				if (duelPartner.ContainsKey(p))
+					ServerEndDuel(p);
+			}
 			if (!CanDuel(c.A) || !CanDuel(c.B))
+			{
+				// Still can't (one died, left...): close both prompts
+				c.Expires = Main.GameUpdateCount;
+				SendChallenge(c);
 				return;
+			}
 			duelPartner[c.A] = c.B;
 			duelPartner[c.B] = c.A;
 			// The one who was hit goes first
@@ -147,6 +163,7 @@ namespace MercyMode.Battle.Net
 			foreach (var (me, other, pressed) in new[] { (c.A, c.B, c.PressedA), (c.B, c.A, c.PressedB) })
 			{
 				ModPacket p = Packet(Msg.ChallengeState);
+				p.Write(c.Id);
 				p.Write((byte)other);
 				p.Write((byte)c.Count);
 				p.Write(pressed);
@@ -193,6 +210,7 @@ namespace MercyMode.Battle.Net
 
 		/// <summary>The open challenge: with whom, how many pressed, whether we did, until when (-1: none).</summary>
 		public static int ChallengeWith = -1;
+		public static int ChallengeId;
 		public static int ChallengeCount;
 		public static bool ChallengePressed;
 		public static uint ChallengeUntil;
@@ -251,17 +269,20 @@ namespace MercyMode.Battle.Net
 			{
 				case Msg.ChallengeState:
 				{
+					int id = r.ReadInt32();
 					int other = r.ReadByte();
 					int count = r.ReadByte();
 					bool pressed = r.ReadBoolean();
 					int ticks = r.ReadInt32();
 					if (BattleSystem.Active)
 						break;
-					if (ChallengeWith != other)
-						ChallengePressed = false;
+					// A new challenge (even with the same player): nothing pressed yet, whatever the last one had.
+					// The same one: the server's word, plus a press of ours it may not have heard yet
+					bool same = id == ChallengeId;
+					ChallengePressed = pressed || same && ChallengePressed;
+					ChallengeId = id;
 					ChallengeWith = other;
-					ChallengeCount = count;
-					ChallengePressed |= pressed;
+					ChallengeCount = Math.Max(count, ChallengePressed && !pressed ? Math.Min(2, count + 1) : count);
 					ChallengeUntil = Main.GameUpdateCount + (uint)ticks;
 					break;
 				}

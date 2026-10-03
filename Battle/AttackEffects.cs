@@ -280,36 +280,77 @@ namespace MercyMode.Battle
 		public static Color Rainbow(float offset) =>
 			Main.hslToRgb(((float)(Main.GlobalTimeWrappedHourly * 0.8f) + offset) % 1f, 1f, 0.6f);
 
-		/// <param name="progress">0..1 through the beam's life: thin while it charges, full, then fading.</param>
+		/// <param name="progress">0..1 through a fired beam's life: its rays close in, it fires, then fades.</param>
 		public static void Draw(Vector2 from, Vector2 to, float progress, bool prism, float alpha) => Draw(from, to, progress, prism, alpha, 1f, 1f);
 
-		/// <param name="widthMul">How thick (a held beam grows with its charge).</param>
-		/// <param name="spread">How far apart the Last Prism's rays start (they close in as it charges).</param>
+		/// <summary>A fired beam (an effect or a duel piece): it charges up over the first part of its life, then fades out.</summary>
 		public static void Draw(Vector2 from, Vector2 to, float progress, bool prism, float alpha, float widthMul, float spread)
 		{
-			float width = (progress < 0.2f ? MathHelper.Lerp(1f, 10f, progress / 0.2f) : progress > 0.75f ? 10f * (1f - (progress - 0.75f) / 0.25f) : 10f) * widthMul;
-			float a = alpha * (progress > 0.85f ? 1f - (progress - 0.85f) / 0.15f : 1f);
-			Vector2 dir = to - from;
-			if (dir.LengthSquared() < 1f)
+			float charge = MathHelper.Clamp(progress / 0.3f, 0f, 1f);
+			float fade = progress > 0.8f ? 1f - (progress - 0.8f) / 0.2f : 1f;
+			Held(from, to, charge, prism, alpha * fade * Math.Min(1f, widthMul + 0.3f));
+		}
+
+		/// <summary>
+		/// A held beam at some charge. The Last Prism: six glowing rays out of the prism, each in its own colour, swirling
+		/// as they close in on the target; at full charge they merge into one thick rainbow beam. Others: one bright beam.
+		/// </summary>
+		public static void Held(Vector2 from, Vector2 to, float charge, bool prism, float alpha)
+		{
+			if (alpha <= 0.01f || Main.dedServ)
 				return;
-			Vector2 n = Vector2.Normalize(dir);
-			Vector2 side = new(-n.Y, n.X);
-			Vector2 start = from;
-			if (prism)
+			Vector2 d = to - from;
+			float len = d.Length();
+			if (len < 1f)
+				return;
+			Vector2 n = d / len;
+			float t = (float)Main.GlobalTimeWrappedHourly * 60f;
+			float c = MathHelper.Clamp(charge, 0f, 1f);
+			DrDraw.Additive(() =>
 			{
-				// Six thin rays fan out of the prism and meet a little way along
-				Vector2 meet = from + n * Math.Min(60f, dir.Length() * 0.3f);
-				for (int i = 0; i < 6; i++)
+				if (prism)
 				{
-					float off = (i - 2.5f) * 7f * spread;
-					DrDraw.Line(from + side * off, meet, 2f, Rainbow(i / 6f) * a);
+					// The rays: spread wide at first, closing in (and swirling faster) as it charges
+					float spreadAngle = MathHelper.Lerp(0.38f, 0f, (float)Math.Pow(c, 0.8f));
+					float w = 2.5f + 4f * c;
+					for (int i = 0; i < 6; i++)
+					{
+						float phase = t * (0.06f + 0.14f * c) + i * MathHelper.Pi / 3f;
+						float angle = (float)Math.Sin(phase) * spreadAngle;
+						Vector2 end = from + n.RotatedBy(angle) * len;
+						Color col = Rainbow(i / 6f) * alpha;
+						DrDraw.Line(from, end, w * 3.2f, col * 0.22f);
+						DrDraw.Line(from, end, w * 1.4f, col * 0.55f);
+						DrDraw.Line(from, end, Math.Max(1f, w * 0.45f), Color.White * (0.55f * alpha));
+					}
+					// Merged: one thick rainbow beam, pulsing
+					if (c > 0.85f)
+					{
+						float k = (c - 0.85f) / 0.15f;
+						float pulse = 1f + 0.12f * (float)Math.Sin(t * 0.5f);
+						float big = 15f * k * pulse;
+						Color rb = Rainbow(0f) * alpha;
+						DrDraw.Line(from, to, big * 2.4f, rb * 0.25f);
+						DrDraw.Line(from, to, big * 1.3f, rb * 0.6f);
+						DrDraw.Line(from, to, big * 0.55f, Color.White * (0.9f * alpha * k));
+					}
+					DrDraw.Glow(from, 12f + 14f * c, Rainbow(0.1f) * (0.8f * alpha));
+					DrDraw.Glow(from, 6f + 6f * c, Color.White * (0.9f * alpha));
+					DrDraw.Glow(to, 14f + 22f * c, Rainbow(0.5f) * (0.7f * alpha));
+					DrDraw.Glow(to, 6f + 10f * c, Color.White * (0.8f * alpha));
 				}
-				start = meet;
-			}
-			Color outer = prism ? Rainbow(0f) : new Color(90, 220, 255);
-			DrDraw.Line(start, to, width * 1.8f, outer * (0.35f * a));
-			DrDraw.Line(start, to, width, outer * (0.8f * a));
-			DrDraw.Line(start, to, Math.Max(1f, width * 0.4f), Color.White * a);
+				else
+				{
+					float pulse = 1f + 0.1f * (float)Math.Sin(t * 0.6f);
+					float w = (4f + 10f * c) * pulse;
+					Color cy = new Color(90, 220, 255) * alpha;
+					DrDraw.Line(from, to, w * 2.6f, cy * 0.25f);
+					DrDraw.Line(from, to, w * 1.3f, cy * 0.6f);
+					DrDraw.Line(from, to, w * 0.5f, Color.White * (0.9f * alpha));
+					DrDraw.Glow(from, 10f + 10f * c, cy * 0.9f);
+					DrDraw.Glow(to, 12f + 18f * c, cy * 0.8f);
+				}
+			});
 		}
 
 		/// <summary>Whether an area touches the beam (a line of the given half-width).</summary>

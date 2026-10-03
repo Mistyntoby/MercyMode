@@ -407,7 +407,7 @@ namespace MercyMode.Battle
 				return;
 			bool prism = duelOppBeamItem == ItemID.LastPrism;
 			Vector2 to = HeroFeetNow + new Vector2(0f, -40f);
-			WeaponBeam.Draw(DuelOppHand, to, 0.5f, prism, 1f, 0.45f + 0.75f * duelOppBeamCharge, 1.6f - 1.3f * duelOppBeamCharge);
+			WeaponBeam.Held(DuelOppHand, to, duelOppBeamCharge, prism, 1f);
 			if (time % 3 == 0)
 				Sparks.Burst(this, to + Main.rand.NextVector2Circular(10f, 10f), 2, prism ? WeaponBeam.Rainbow(Main.rand.NextFloat()) : new Color(90, 220, 255), 2f);
 		}
