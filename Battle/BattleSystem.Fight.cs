@@ -1372,6 +1372,10 @@ namespace MercyMode.Battle
 					Vector2 oldPosition = p.position;
 					float oldScale = p.scale;
 					int oldFrame = p.frame, oldDir = p.spriteDirection;
+					float oldRotation = p.rotation;
+					// Upright: a tilt it had while flying in the world would stay frozen on it
+					if (!p.sentry)
+						p.rotation = 0f;
 					// Frozen, its AI doesn't animate it: run through its frames here, facing the enemy
 					int frames = Main.projFrames[p.type];
 					if (frames > 1)
@@ -1395,6 +1399,7 @@ namespace MercyMode.Battle
 						p.position = oldPosition;
 						p.scale = oldScale;
 						p.frame = oldFrame;
+						p.rotation = oldRotation;
 						p.spriteDirection = oldDir;
 						Array.Copy(oldTrail, p.oldPos, oldTrail.Length);
 					}
