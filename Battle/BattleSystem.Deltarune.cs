@@ -186,6 +186,9 @@ namespace MercyMode.Battle
 
 		internal static string BubblePlain(string text) => text == null ? "" : ParseBubble(text).plain;
 
+		/// <summary>Lines up to this long ("Blorp!", "Braaains...") get the small bubble.</summary>
+		private const int ShortBubbleChars = 14;
+
 		/// <summary>Where a letter sits off its place right now for its effect (in battle pixels).</summary>
 		private Vector2 LetterOffset(TextFx fx, int index)
 		{
@@ -232,8 +235,10 @@ namespace MercyMode.Battle
 
 				// Wrapped to the bubble's width (Deltarune's bubbles: the dialogue font at full size, black on white)
 				// Deltarune's bubbles: big text, roomy, up to about half the screen wide for long lines
-				const string font = DrDraw.BigFont;
-				const float scale = 0.9f, pad = 12f, tail = 12f;
+				// Short lines get Deltarune's small bubble (small text, snug); longer ones the big one
+				bool small = BubblePlain(en.Bubble).Length <= ShortBubbleChars;
+				string font = small ? DrDraw.SmallFont : DrDraw.BigFont;
+				float scale = small ? 1f : 0.9f, pad = small ? 8f : 12f, tail = small ? 10f : 12f;
 				float lineH = DrDraw.LineHeight(font) * scale;
 				float half = 24f;
 				WithEnemy(en, () =>
@@ -245,7 +250,7 @@ namespace MercyMode.Battle
 				// (The box isn't open yet while they talk, so a bubble can reach across the middle of the screen)
 				float room = at.X - half - 8f - tail - 8f;
 				float maxW = MathHelper.Clamp(room - pad * 2f, 100f, 290f);
-				var (plain, fx) = ParseBubble(en.Bubble);
+				(string plain, TextFx[] fx) = ParseBubble(en.Bubble);
 				var lines = new List<string>();
 				string line = "";
 				foreach (string word in plain.Split(' '))
@@ -268,7 +273,7 @@ namespace MercyMode.Battle
 				h = (float)Math.Round(h);
 				float bx = (float)Math.Round(Math.Max(4f, at.X - half - 8f - tail - w)), by = (float)Math.Round(Math.Clamp(at.Y - h / 2f, 4f, ScreenHeight - PanelHeight - h - 4f));
 				// A square notch cut from each corner, like Deltarune's
-				const float notch = 3f;
+				float notch = small ? 2f : 3f;
 				DrDraw.Rect(bx + notch, by, w - notch * 2f, h, Color.White * alpha);
 				DrDraw.Rect(bx, by + notch, notch, h - notch * 2f, Color.White * alpha);
 				DrDraw.Rect(bx + w - notch, by + notch, notch, h - notch * 2f, Color.White * alpha);
