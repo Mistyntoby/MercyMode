@@ -17,6 +17,49 @@ namespace MercyMode.Battle
 	public static class DrDraw
 	{
 		public static SpriteBatch Sb;
+		/// <summary>The battle screen's transform the batch is begun with (for switching blend modes mid-draw).</summary>
+		public static Matrix Transform = Matrix.Identity;
+
+		/// <summary>Draws with additive blending (glows), then goes back to the battle's normal batch.</summary>
+		public static void Additive(Action draw)
+		{
+			Sb.End();
+			Sb.Begin(SpriteSortMode.Deferred, BlendState.Additive, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, Transform);
+			try
+			{
+				draw();
+			}
+			finally
+			{
+				Sb.End();
+				Sb.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, Transform);
+			}
+		}
+
+		private static Texture2D glow;
+
+		/// <summary>A soft round glow (made once): bright in the middle, fading to nothing at the edge.</summary>
+		public static void Glow(Vector2 at, float radius, Color color)
+		{
+			if (Main.dedServ || radius <= 0f)
+				return;
+			if (glow == null || glow.IsDisposed)
+			{
+				const int size = 64;
+				glow = new Texture2D(Main.instance.GraphicsDevice, size, size);
+				var data = new Color[size * size];
+				for (int y = 0; y < size; y++)
+					for (int x = 0; x < size; x++)
+					{
+						float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(size / 2f)) / (size / 2f);
+						float a = MathHelper.Clamp(1f - d, 0f, 1f);
+						a *= a;
+						data[y * size + x] = Color.White * a;
+					}
+				glow.SetData(data);
+			}
+			Sb.Draw(glow, at, null, color, 0f, new Vector2(32f), radius / 32f, SpriteEffects.None, 0f);
+		}
 
 		private static readonly Rectangle Pixel = new(0, 0, 1, 1);
 

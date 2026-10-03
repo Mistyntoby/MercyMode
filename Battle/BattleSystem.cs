@@ -1663,6 +1663,7 @@ namespace MercyMode.Battle
 			ComputeScreenTransform();
 			float scale = drScale, ox = drOx, oy = drOy;
 			Matrix m = ShakeMatrix * Matrix.CreateScale(scale, scale, 1f) * Matrix.CreateTranslation(ox, oy, 0f);
+			DrDraw.Transform = m;
 
 			sb.End();
 			sb.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, m);
