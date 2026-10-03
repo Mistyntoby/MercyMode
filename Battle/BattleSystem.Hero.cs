@@ -502,7 +502,7 @@ namespace MercyMode.Battle
 						break;
 				}
 			}
-			if (!ally && hurtTimer >= 0 && shadow == 0f && pose != HeroPose.Defend)
+			if ((!ally && hurtTimer >= 0 || ally && duelDrawingHurt) && shadow == 0f && pose != HeroPose.Defend)
 				bodyFrame = legFrame = 5;
 			// Walking (an ally leaving the battle): Terraria's walk cycle, body and legs together
 			if (walkFrame >= 0)

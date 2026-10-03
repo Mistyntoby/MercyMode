@@ -58,13 +58,35 @@ namespace MercyMode.Battle
 				Description = "Useless\nanalysis",
 				Run = b => new List<string> { $"* {P.name} - HP {Math.Max(0, Npc.life)}/{Npc.lifeMax} DF {P.statDefense}\n* Another adventurer. Definitely armed." },
 			},
-			MercyAct("Talk", "Talk it\nout", 40f, $"* You tried to talk {P.name} down."),
-			MercyAct("Compliment", "Say something\nnice", 34f, $"* You complimented {P.name}'s gear."),
-			MercyAct("Handshake", "Offer a\nhandshake", 50f, $"* You offered {P.name} a handshake."),
+			AskAct("Talk", "Talk it\nout", 40f, $"* You tried to talk {P.name} down."),
+			AskAct("Compliment", "Say something\nnice", 34f, $"* You complimented {P.name}'s gear."),
+			AskAct("Handshake", "Offer a\nhandshake", 50f, $"* You offered {P.name} a handshake."),
 			HealPrayerAct(),
 		};
 
 		public override EnemyAttack NextAttack(BattleSystem battle) => battle.NewDuelAttack();
+
+		/// <summary>A MERCY act the other player has to accept: asked now, the MERCY comes with their yes.</summary>
+		private ActOption AskAct(string name, string description, float mercy, string line) => new()
+		{
+			Name = name,
+			Description = description,
+			Run = b =>
+			{
+				b.DuelAskMercy(name, mercy, line);
+				return new List<string> { line };
+			},
+		};
+
+		/// <summary>They said yes: the MERCY (halved for each repeat of the same act, like any act). Lines to show.</summary>
+		public List<string> Accepted(string act, float amount)
+		{
+			float gained = GainMercy(act, amount);
+			var lines = new List<string> { $"* {P.name} accepted!" + (gained > 0 ? "" : "\n* But it didn't change much.") };
+			if (Mercy >= 100f)
+				lines.Add($"* {P.name} doesn't want to fight anymore.");
+			return lines;
+		}
 	}
 
 	public partial class BattleSystem
@@ -117,6 +139,8 @@ namespace MercyMode.Battle
 			duelRemoteSoulSet = false;
 			duelSentHp = -1;
 			duelLive = null;
+			duelAskPending = false;
+			duelOppHurt = -1;
 			SyncDuelProxy();
 			duelEnc = new DuelEncounter
 			{
@@ -169,12 +193,108 @@ namespace MercyMode.Battle
 					w.Write((short)Player.statDefense);
 				});
 			}
+			if (duelOppHurt >= 0 && ++duelOppHurt > 30)
+				duelOppHurt = -1;
 			if (phase is Phase.EnemyIntro or Phase.EnemyTurn or Phase.EnemyOutro && time % 2 == 0)
 				BattleNet.SendDuel(BattleNet.DuelKind.Soul, w =>
 				{
 					w.Write((short)soul.X);
 					w.Write((short)soul.Y);
+					// 0x80 grazing, 0x40 the dark frame of the hit-invincibility blink
+					w.Write((byte)((grazeTimer > 0 ? 0x80 : 0) | (inv > 0 && inv / SoulBlinkTicks % 2 == 1 ? 0x40 : 0)));
 				});
+		}
+
+		// ================================================================== MERCY acts, answered by the other player
+
+		/// <summary>Our act waits on their answer (what it was, how much MERCY, how long we've waited).</summary>
+		private bool duelAskPending;
+		private string duelAskAct;
+		private float duelAskAmount;
+		/// <summary>The act they used on us, waiting for our answer; the cursor (0 accept, 1 refuse).</summary>
+		private string duelPromptText;
+		private int duelPromptChoice;
+		private const int MercyAnswerTicks = 30 * 60;
+
+		internal void DuelAskMercy(string act, float amount, string line)
+		{
+			if (duelWith < 0 || duelOver)
+				return;
+			duelAskPending = true;
+			duelAskAct = act;
+			duelAskAmount = amount;
+			// As they read it: "Alex offered you a handshake." (us by name first, then them as "you")
+			string them = Main.player[duelWith].name;
+			string text = Narration.ThirdPerson(line, Player.name).Replace(them + "'s", "your").Replace(them, "you");
+			BattleNet.SendDuel(BattleNet.DuelKind.MercyAsk, w => w.Write(text));
+		}
+
+		private void UpdateMercyWait()
+		{
+			// No answer for a long while (they're away): taken as a no, so the duel goes on
+			if (phaseTicks > MercyAnswerTicks + 10 * 60)
+				OnMercyAnswer(false);
+		}
+
+		private void OnMercyAnswer(bool yes)
+		{
+			if (!duelAskPending)
+				return;
+			duelAskPending = false;
+			string name = Main.player[duelWith].name;
+			var lines = yes && duelEnc != null ? duelEnc.Accepted(duelAskAct, duelAskAmount)
+				: new List<string> { $"* {name} refused." };
+			Sfx(yes ? "boost" : "cantselect");
+			if (phase == Phase.MercyWait)
+				ShowMessages(lines, StartEnemyTurn);
+		}
+
+		private void UpdateMercyPrompt()
+		{
+			if (Pressed(Keys.Left) || Pressed(Keys.Right))
+			{
+				duelPromptChoice = 1 - duelPromptChoice;
+				Sfx("menumove");
+			}
+			bool timedOut = phaseTicks > MercyAnswerTicks;
+			if (!Confirm && !timedOut)
+				return;
+			bool yes = duelPromptChoice == 0 && !timedOut;
+			Sfx("select");
+			BattleNet.SendDuel(BattleNet.DuelKind.MercyAnswer, w => w.Write(yes));
+			SetText(yes ? "* You accepted." : "* You refused.");
+			SetPhase(Phase.DuelWait);
+		}
+
+		private void DrawMercyPrompt(float y)
+		{
+			DrDraw.Text(duelPromptText ?? "", 30, y, Color.White);
+			float oy = y + 66;
+			string[] options = { "ACCEPT", "REFUSE" };
+			for (int i = 0; i < 2; i++)
+			{
+				float ox = 80 + i * 230;
+				DrDraw.Text(options[i], ox, oy, Color.White);
+				if (i == duelPromptChoice)
+					DrawHeartCursor(ox - 25, oy + 10);
+			}
+			int left = Math.Max(0, (MercyAnswerTicks - phaseTicks + 59) / 60);
+			if (left <= 10)
+				DrDraw.Text($"{left}s", 560, oy, new Color(255, 220, 64), DrDraw.SmallFont);
+		}
+
+		/// <summary>Drawing the duel opponent mid-flinch (their hurt frame).</summary>
+		private bool duelDrawingHurt;
+
+		/// <summary>Ticks since the opponent was hit in their box (their flinch on our screen), -1: not hurt.</summary>
+		private int duelOppHurt = -1;
+
+		/// <summary>A bullet of theirs hit our SOUL: they see the number and us flinch.</summary>
+		private void DuelSendHurt(int dealt)
+		{
+			if (duelWith < 0 || duelOver)
+				return;
+			BattleNet.SendDuel(BattleNet.DuelKind.Hurt, w => w.Write(dealt));
 		}
 
 		/// <summary>Our turn's over (our box closed): the other one chooses, and we wait.</summary>
@@ -286,11 +406,50 @@ namespace MercyMode.Battle
 					duelDef = r.ReadInt16();
 					break;
 				case BattleNet.DuelKind.Soul:
+				{
 					duelRemoteSoul = new Vector2(r.ReadInt16(), r.ReadInt16());
+					byte flags = r.ReadByte();
 					if (!duelRemoteSoulSet)
 						soul = duelRemoteSoul;
 					duelRemoteSoulSet = true;
+					// Their graze flash and hit blink, on the SOUL we draw while building
+					if (phase == Phase.Build)
+					{
+						if ((flags & 0x80) != 0)
+							grazeTimer = Math.Max(grazeTimer, 3 * TicksPerFrame);
+						inv = (flags & 0x40) != 0 ? SoulBlinkTicks : 0;
+					}
 					break;
+				}
+				case BattleNet.DuelKind.MercyAsk:
+				{
+					string line = r.ReadString();
+					// Only while we wait on them (anything else: no answer possible, so it's a no)
+					if (duelOver || phase != Phase.DuelWait)
+					{
+						BattleNet.SendDuel(BattleNet.DuelKind.MercyAnswer, w => w.Write(false));
+						break;
+					}
+					duelPromptText = line + "\n* Accept it?";
+					duelPromptChoice = 0;
+					Sfx("menumove");
+					SetPhase(Phase.MercyPrompt);
+					break;
+				}
+				case BattleNet.DuelKind.MercyAnswer:
+					OnMercyAnswer(r.ReadBoolean());
+					break;
+				case BattleNet.DuelKind.Hurt:
+				{
+					int dealt = r.ReadInt32();
+					if (duelOver || phase != Phase.Build)
+						break;
+					// Their flinch and the number off them, like ours when we're hit
+					Sfx("hurt");
+					duelOppHurt = 0;
+					EnemyNumber(dealt, Color.White, at: EnemyPosNow);
+					break;
+				}
 				case BattleNet.DuelKind.Hit:
 				{
 					int damage = r.ReadInt32();
@@ -317,6 +476,10 @@ namespace MercyMode.Battle
 				case BattleNet.DuelKind.YourTurn:
 					if (!duelOver && phase is Phase.Build or Phase.DuelWait)
 					{
+						// Their SOUL's blink and graze were shown on ours: none of it carries into our box
+						inv = -1;
+						grazeTimer = 0;
+						duelOppHurt = -1;
 						Bullets.Clear();
 						boxTimer = 0;
 						duelMyTurn = true;
@@ -396,10 +559,15 @@ namespace MercyMode.Battle
 			Vector2 center = EnemyPosNow;
 			if (enemyShake > 0)
 				center.X += (enemyShake % 4 < 2 ? 1 : -1) * enemyShake / 2f;
+			// Hit in their box: they slide back and flinch, mirrored from ours (they face left)
+			if (duelOppHurt >= 0)
+				center.X += 20f - Math.Min(2f, duelOppHurt / (float)TicksPerFrame / 2f) * 10f;
 			Vector2 feet = center + new Vector2(0f, o.height / 2f * scale);
 			float bob = (float)Math.Round(Math.Sin((time + 40) / 20f)) * glide;
 			HeroLight = glide >= 1f ? Color.White : Color.Lerp(Lighting.GetColor(o.Center.ToTileCoordinates()), Color.White, glide);
+			duelDrawingHurt = duelOppHurt >= 0;
 			DrawPlayerPose(sb, m, o, feet + new Vector2(0f, bob), scale, HeroPose.Idle, 0f, 0f, ally: true, facing: -1);
+			duelDrawingHurt = false;
 			HeroLight = Color.White;
 			DrawSlash(center);
 		}

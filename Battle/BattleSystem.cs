@@ -25,7 +25,7 @@ namespace MercyMode.Battle
 	/// </summary>
 	public partial class BattleSystem : ModSystem
 	{
-		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting, PartySelect, SummonSelect, DuelWait, Build }
+		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting, PartySelect, SummonSelect, DuelWait, Build, MercyWait, MercyPrompt }
 		private enum Choice { Fight, Act, Item, Spare, Defend }
 
 		public static BattleSystem Instance => ModContent.GetInstance<BattleSystem>();
@@ -621,6 +621,8 @@ namespace MercyMode.Battle
 				case Phase.Death: UpdateSoulDeath(); break;
 				case Phase.Waiting: UpdateWaiting(); break;
 				case Phase.Build: UpdateBuild(); break;
+				case Phase.MercyWait: UpdateMercyWait(); break;
+				case Phase.MercyPrompt: UpdateMercyPrompt(); break;
 			}
 			SendSoul();
 			UpdateDuel();
@@ -1208,6 +1210,13 @@ namespace MercyMode.Battle
 
 		private void StartEnemyTurn()
 		{
+			// A duel's MERCY act: the other player answers first
+			if (duelAskPending)
+			{
+				SetText($"* Waiting for {Main.player[duelWith].name} to answer...");
+				SetPhase(Phase.MercyWait);
+				return;
+			}
 			// Nobody left (another party member finished the last one while this player read a message)
 			if (battleOver || LivingEnemies.Count == 0)
 			{
@@ -1476,6 +1485,7 @@ namespace MercyMode.Battle
 			hurtTimer = 0;
 			shake = 4;
 			HeroNumber((int)dealt, Color.White);
+			DuelSendHurt((int)dealt);
 		}
 
 		private void Graze(Bullet b, MercyPlayer mp)
@@ -1980,10 +1990,14 @@ namespace MercyMode.Battle
 				case Phase.Message:
 				case Phase.Waiting:
 				case Phase.DuelWait:
+				case Phase.MercyWait:
 					DrDraw.Text(text.Substring(0, Math.Min(text.Length, (int)textShown)), 30, textY, Color.White);
 					break;
 				case Phase.Build:
 					DrawBuildPalette();
+					break;
+				case Phase.MercyPrompt:
+					DrawMercyPrompt(textY);
 					break;
 				case Phase.WeaponSelect:
 					DrawWeaponSelect(textY);

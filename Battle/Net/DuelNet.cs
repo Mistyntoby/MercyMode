@@ -28,6 +28,9 @@ namespace MercyMode.Battle.Net
 			Text, // a line of my text box
 			Spared, // I spared you
 			Died, // my SOUL broke
+			Hurt, // a bullet hit my SOUL for this much (the builder sees the number and the flinch)
+			MercyAsk, // I used a MERCY act on you: accept or refuse (its text)
+			MercyAnswer, // my answer to your MERCY act
 		}
 
 		/// <summary>How long a challenge stays open after the hit (refreshed by more hits).</summary>
