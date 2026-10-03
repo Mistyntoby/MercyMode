@@ -30,6 +30,13 @@ namespace MercyMode.Battle
 			/// <summary>Spared or defeated: no longer targeted or attacking (its animation may still be playing).</summary>
 			public bool Out;
 			public bool Living => !Out && E.Alive;
+			/// <summary>The frame shown for it, and since when (frames change at a steady pace, not every tick).</summary>
+			public Rectangle ShownFrame;
+			public int ShownFrameAt;
+			/// <summary>Terraria's own frame last tick, and how much it's been flickering (high: hold still).</summary>
+			public Rectangle RawFrame;
+			public int RawFrameTick = -1;
+			public float FrameJitter;
 			/// <summary>Its speech bubble this turn, and when it started.</summary>
 			public string Bubble;
 			public int BubbleAt;
@@ -48,6 +55,8 @@ namespace MercyMode.Battle
 		private readonly List<BattleEnemy> enemies = new();
 		/// <summary>The enemy FIGHT, ACT and SPARE are aimed at; <see cref="encounter"/> is its encounter.</summary>
 		private BattleEnemy targetEnemy;
+		/// <summary>The fewest ticks between two of an enemy's frames on the battle screen.</summary>
+		private const int EnemyFrameTicks = 8;
 		/// <summary>The enemy the per-enemy fields below refer to: the target, or the one being drawn or stepped.</summary>
 		private BattleEnemy focus;
 

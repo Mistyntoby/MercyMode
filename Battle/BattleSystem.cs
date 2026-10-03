@@ -1828,6 +1828,35 @@ namespace MercyMode.Battle
 			Rectangle frame = npc.frame.Width > 0 && npc.frame.Height > 0
 				? npc.frame
 				: new Rectangle(0, 0, tex.Width, frameHeight);
+			// Terraria keeps picking frames for a frozen NPC every tick, and one frozen mid-move (a slime caught in the
+			// air) can flip between frames every tick: follow its frame only at a steady animation pace
+			if (focus != null)
+			{
+				if (focus.ShownFrame.Height == 0 || frame.Height != focus.ShownFrame.Height || frame.Width != focus.ShownFrame.Width)
+				{
+					focus.ShownFrame = frame;
+					focus.ShownFrameAt = time;
+				}
+				// How often Terraria's frame has been changing lately (once per tick, however often this is drawn)
+				if (time != focus.RawFrameTick)
+				{
+					focus.FrameJitter = Math.Max(0f, focus.FrameJitter - 0.15f);
+					if (frame != focus.RawFrame)
+						focus.FrameJitter += 1f;
+					focus.RawFrame = frame;
+					focus.RawFrameTick = time;
+				}
+				// Flipping every few ticks (stuck mid-jump): hold still on what's shown
+				if (focus.FrameJitter > 2.5f)
+				{
+				}
+				else if (frame != focus.ShownFrame && time - focus.ShownFrameAt >= EnemyFrameTicks)
+				{
+					focus.ShownFrame = frame;
+					focus.ShownFrameAt = time;
+				}
+				frame = focus.ShownFrame;
+			}
 			if (phase == Phase.EnemyTurn && enemyAttackEnergy > 0.18f && frameCount > 1)
 			{
 				// The vanilla Eye's extra frames are eye-opening states, not attack poses.
