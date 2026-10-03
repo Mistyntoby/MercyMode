@@ -64,7 +64,8 @@ namespace MercyMode.Battle
 				DrDraw.Text(label, x + 15 - DrDraw.Measure(label, DrDraw.SmallFont) * 0.35f, y + 33, Color.White * a, DrDraw.SmallFont, 0.7f);
 				return;
 			}
-			Texture2D tex = spr.Frames.Length >= 3 ? spr.Frame(2) : WhiteMask.Of(spr.Frame(1));
+			// Only the button's coloured parts light up (outline, icon, name), not its black inside
+			Texture2D tex = spr.Frames.Length >= 3 ? spr.Frame(2) : WhiteMask.OfBright(spr.Frame(1));
 			DrDraw.Sb.Draw(tex, new Vector2(x, y), null, Color.White * a, 0f, spr.Origin, 1f, SpriteEffects.None, 0f);
 		}
 

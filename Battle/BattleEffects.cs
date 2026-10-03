@@ -44,8 +44,39 @@ namespace MercyMode.Battle
 			return mask;
 		}
 
+		private static readonly Dictionary<Texture2D, Texture2D> brightCache = new();
+
+		/// <summary>
+		/// White only where the texture is coloured: its dark and black parts (a button's black inside) stay see-through.
+		/// </summary>
+		public static Texture2D OfBright(Texture2D tex)
+		{
+			if (tex == null)
+				return null;
+			if (brightCache.TryGetValue(tex, out var mask) && !mask.IsDisposed)
+				return mask;
+			var data = new Color[tex.Width * tex.Height];
+			tex.GetData(data);
+			for (int i = 0; i < data.Length; i++)
+			{
+				Color c = data[i];
+				int bright = Math.Max(c.R, Math.Max(c.G, c.B));
+				// (Premultiplied: compare the colour to its own alpha)
+				bool lit = c.A > 0 && bright > c.A * 0.25f;
+				byte a = lit ? c.A : (byte)0;
+				data[i] = new Color(a, a, a, a);
+			}
+			mask = new Texture2D(Main.graphics.GraphicsDevice, tex.Width, tex.Height);
+			mask.SetData(data);
+			brightCache[tex] = mask;
+			return mask;
+		}
+
 		public static void Clear()
 		{
+			foreach (var m in brightCache.Values)
+				m.Dispose();
+			brightCache.Clear();
 			foreach (var m in cache.Values)
 				m.Dispose();
 			cache.Clear();
