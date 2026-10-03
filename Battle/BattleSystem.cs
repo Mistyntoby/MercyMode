@@ -1697,6 +1697,7 @@ namespace MercyMode.Battle
 					DrawBox();
 					DrawTPBar();
 					DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f, top + height + BackgroundBleed);
+					DrawBuffs();
 				}
 				DrawBuildOverlay();
 				DrawSoulDeath(left - BackgroundBleed, top - BackgroundBleed, width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
