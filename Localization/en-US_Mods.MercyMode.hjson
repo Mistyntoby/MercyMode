@@ -6,6 +6,7 @@ Keybinds: {
 	BattleDown.DisplayName: Battle: Down
 	BattleLeft.DisplayName: Battle: Left
 	BattleRight.DisplayName: Battle: Right
+	BattleBuffs.DisplayName: Battle: Show / Hide Buffs
 }
 
 Configs: {

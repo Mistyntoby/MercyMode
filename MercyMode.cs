@@ -15,6 +15,8 @@ namespace MercyMode
 	public class MercyMode : Mod
 	{
 		public static ModKeybind JoinBattleKey;
+		/// <summary>Shows or hides the buff list in the battle's panel.</summary>
+		public static ModKeybind BuffsKey;
 		/// <summary>Battle keys by the Deltarune key they stand for (Z confirm, X back/slow, arrows).</summary>
 		public static Dictionary<Keys, ModKeybind> BattleKeys;
 
@@ -82,6 +84,7 @@ namespace MercyMode
 		public override void Load()
 		{
 			JoinBattleKey = KeybindLoader.RegisterKeybind(this, "JoinBattle", "J");
+			BuffsKey = KeybindLoader.RegisterKeybind(this, "BattleBuffs", "B");
 			// The battle screen's keys, rebindable in Settings > Controls
 			BattleKeys = new Dictionary<Keys, ModKeybind>
 			{
@@ -97,6 +100,7 @@ namespace MercyMode
 		public override void Unload()
 		{
 			JoinBattleKey = null;
+			BuffsKey = null;
 			BattleKeys = null;
 		}
 
