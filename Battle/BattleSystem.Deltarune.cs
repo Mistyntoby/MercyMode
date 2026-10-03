@@ -21,6 +21,26 @@ namespace MercyMode.Battle
 		/// <summary>Deltarune's blue for a TIRED enemy's name.</summary>
 		private static readonly Color TiredBlue = new(60, 160, 255);
 
+		/// <summary>The spare star after a spareable enemy's name (spr_sparestar, or a drawn star).</summary>
+		private void DrawSpareMark(float x, float y)
+		{
+			if (DrDraw.Sprite("spr_sparestar", (int)(time / 8), x, y, Color.White, 1f))
+				return;
+			Color yellow = new(255, 255, 0);
+			DrDraw.Rect(x + 6, y + 1, 4, 14, yellow);
+			DrDraw.Rect(x + 1, y + 6, 14, 4, yellow);
+			DrDraw.Rect(x + 4, y + 4, 8, 8, yellow);
+		}
+
+		/// <summary>The TIRED mark: spr_tiredmark, or little blue z's.</summary>
+		private void DrawTiredMark(float x, float y)
+		{
+			if (DrDraw.Sprite("spr_tiredmark", (int)(time / 10), x, y, Color.White, 1f))
+				return;
+			DrDraw.Text("z", x, y + 6, TiredBlue, DrDraw.SmallFont, 0.7f);
+			DrDraw.Text("Z", x + 7, y, TiredBlue, DrDraw.SmallFont, 0.9f);
+		}
+
 		// ---- PACIFY ----
 
 		/// <summary>PACIFY on a TIRED target: it falls asleep and is spared. Returns the lines to show.</summary>

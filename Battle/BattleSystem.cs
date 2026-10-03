@@ -2239,6 +2239,18 @@ namespace MercyMode.Battle
 					DrDraw.GradientText(name, 80, rowY, new Color(255, 255, 0), TiredBlue);
 				else
 					DrDraw.Text(name, 80, rowY, nameColor);
+				// Deltarune's marks after the name: a star when it can be spared, z's when it's TIRED
+				if (!row.Locked)
+				{
+					float mx = 80 + DrDraw.Measure(name, DrDraw.BigFont) + 8;
+					if (spareable)
+					{
+						DrawSpareMark(mx, rowY + 2);
+						mx += 22;
+					}
+					if (e.Tired)
+						DrawTiredMark(mx, rowY + 2);
+				}
 				float hp = row.Part != null
 					? MathHelper.Clamp(row.Part.life / (float)Math.Max(1, row.Part.lifeMax), 0f, 1f)
 					: MathHelper.Clamp(e.LifeRatio, 0f, 1f);
@@ -2265,6 +2277,9 @@ namespace MercyMode.Battle
 				float ey = y + (i / 2) * 30;
 				Color c = entries[i].greyed ? new Color(128, 128, 128) : colors != null && i < colors.Count && colors[i] is Color own ? own : Color.White;
 				DrDraw.Text(entries[i].name, x, ey, c);
+				// PACIFY that would work gets the TIRED mark beside it
+				if (colors != null && i < colors.Count && colors[i] == TiredBlue && !entries[i].greyed)
+					DrawTiredMark(x + DrDraw.Measure(entries[i].name, DrDraw.BigFont) + 6, ey + 2);
 				if (i == listIndex)
 					DrawHeartCursor(x - 25, ey + 10);
 			}

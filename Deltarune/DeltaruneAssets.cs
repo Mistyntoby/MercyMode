@@ -100,7 +100,7 @@ namespace MercyMode.Deltarune
 			"spr_pressfront", "spr_pressspot", "spr_attackspot", "spr_attack_cut1",
 			"spr_tensionbar", "spr_tensionfilling", "spr_tensionmarker", "spr_tplogo",
 			"spr_grazeappear", "spr_hpname", "spr_numbersfontbig", "spr_numbersfontbig_gold",
-			"spr_ponman_eyebullet", "spr_smallbullet", "spr_healsparkle", "spr_sparestar",
+			"spr_ponman_eyebullet", "spr_smallbullet", "spr_healsparkle", "spr_sparestar", "spr_tiredmark",
 			"bg_battleback1", "spr_battlemsg", "spr_heartoutline", "spr_heartoutline2", "spr_sparestar_anim", "spr_lightfairy",
 			"spr_heartbreak", "spr_heartshards", "spr_headkris",
 			"spr_yellowheart", "spr_yheart_shot", "spr_yheart_bigshot", "spr_yheart_charge", "spr_yheart_shot_hit",
