@@ -182,6 +182,7 @@ namespace MercyMode.Lab
 				("soul-yellow", SoulYellow),
 				("desperation", Desperation),
 				("attacks-enemies", AttacksEnemies),
+				("attacks-signatures", AttacksSignatures),
 				("attacks-armies", AttacksArmies),
 				("attacks-bosses", AttacksBosses),
 				("boss-kill", () => BossKill(NPCID.EyeofCthulhu)),
@@ -916,6 +917,23 @@ namespace MercyMode.Lab
 			};
 			foreach (var (label, type) in families)
 				yield return SweepAttacks(label, 7, type);
+		}
+
+		/// <summary>Enemies with their own attack (EnemySignatures): turn 0 is theirs.</summary>
+		private IEnumerable AttacksSignatures()
+		{
+			var types = new (string, int)[]
+			{
+				("skeleton", NPCID.Skeleton), ("angry bones", NPCID.AngryBones), ("cave bat", NPCID.CaveBat), ("hellbat", NPCID.Hellbat),
+				("hornet", NPCID.Hornet), ("eater of souls", NPCID.EaterofSouls), ("face monster", NPCID.FaceMonster), ("ice slime", NPCID.IceSlime),
+				("fire imp", NPCID.FireImp), ("lava slime", NPCID.LavaSlime), ("jellyfish", NPCID.BlueJellyfish), ("shark", NPCID.Shark),
+				("possessed armor", NPCID.PossessedArmor), ("wraith", NPCID.Wraith), ("pixie", NPCID.Pixie), ("mummy", NPCID.Mummy),
+				("werewolf", NPCID.Werewolf), ("meteor head", NPCID.MeteorHead), ("granite", NPCID.GraniteFlyer), ("bone serpent", NPCID.BoneSerpentHead),
+				("tim", NPCID.Tim), ("ghost", NPCID.Ghost), ("demon", NPCID.Demon), ("crab", NPCID.Crab), ("vulture", NPCID.Vulture),
+				("bee", NPCID.Bee),
+			};
+			foreach (var (label, type) in types)
+				yield return SweepAttacks(label, 1, type);
 		}
 
 		private IEnumerable AttacksArmies()

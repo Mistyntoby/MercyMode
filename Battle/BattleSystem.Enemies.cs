@@ -30,6 +30,9 @@ namespace MercyMode.Battle
 			/// <summary>Spared or defeated: no longer targeted or attacking (its animation may still be playing).</summary>
 			public bool Out;
 			public bool Living => !Out && E.Alive;
+			/// <summary>Its speech bubble this turn, and when it started.</summary>
+			public string Bubble;
+			public int BubbleAt;
 		}
 
 		private struct EnemyTrail
@@ -141,6 +144,9 @@ namespace MercyMode.Battle
 			{
 				// A duel: the other player, through the proxy NPC
 				Encounter e = duelWith >= 0 && duelEnc != null ? duelEnc : EncounterRegistry.Create(npcs[i]);
+				// A recruit (spared enough times before) is friendlier from the start
+				if (e is EnemyEncounter && IsRecruited(npcs[i]))
+					e.SetMercyQuiet(Math.Max(e.Mercy, RecruitMercy));
 				if (npcs.Count > 1)
 				{
 					e.Slot = spots[i].center;
@@ -288,7 +294,11 @@ namespace MercyMode.Battle
 			foreach (BattleEnemy a in attackers)
 			{
 				EnemyAttack part = null;
-				WithEnemy(a, () => part = a.E.NextAttack(this));
+				// What it says as the box opens (Deltarune's speech bubbles)
+				a.Bubble = a.E.Bubble(a.E.Turn);
+				a.BubbleAt = time;
+				// Every third turn (the first included), an enemy with its own attack uses that instead of its family's
+				WithEnemy(a, () => part = (a.E is EnemyEncounter ee && a.E.Turn % 3 == 0 ? ee.SignatureAttack(this) : null) ?? a.E.NextAttack(this));
 				a.E.Turn++;
 				parts.Add(new OwnedAttack(a, part));
 			}

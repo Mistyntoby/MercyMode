@@ -1158,18 +1158,23 @@ namespace MercyMode.Battle
 					Net.BattleNet.SendSpare(encounter.Npc);
 				else
 					encounter.Spare();
+				// A regular enemy spared enough times becomes a RECRUIT
+				string recruit = RecordRecruit(who.E);
+				var said = recruit != null ? new List<string> { spared, recruit } : new List<string> { spared };
 				if (LivingEnemies.Count == 0)
 				{
 					battleOver = true;
 					SetHeroPose(HeroPose.Victory);
-					ShowMessages(new[] { spared }, StartOutro);
+					ShowMessages(said, StartOutro);
 					return;
 				}
 				// Others are still fighting: the squad reacts, then it's their turn
 				string squad = OnEnemySpared(who);
+				if (squad != null)
+					said.Add(squad);
 				RetargetIfNeeded();
 				SetHeroPose(HeroPose.Act);
-				ShowMessages(squad != null ? new[] { spared, squad } : new[] { spared }, StartEnemyTurn);
+				ShowMessages(said, StartEnemyTurn);
 				return;
 			}
 			SetHeroPose(HeroPose.Act);
@@ -1675,6 +1680,7 @@ namespace MercyMode.Battle
 				DrawBackground(left - BackgroundBleed, top - BackgroundBleed,
 					width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
 				DrawEnemy(sb, m);
+				DrawBubbles();
 				DrawAllies(sb, m);
 				// Summons behind the player
 				DrawMinions(sb, m);
@@ -2189,7 +2195,7 @@ namespace MercyMode.Battle
 				float rowY = y + (i - first) * 30;
 				bool spareable = e.Mercy >= 100f;
 				string name = row.Part != null ? e.PartName(row.Part) : e.Name;
-				Color nameColor = row.Locked ? new Color(128, 128, 128) : spareable ? new Color(255, 255, 0) : Color.White;
+				Color nameColor = row.Locked ? new Color(128, 128, 128) : spareable ? new Color(255, 255, 0) : e.Tired ? TiredBlue : Color.White;
 				DrDraw.Text(name, 80, rowY, nameColor);
 				float hp = row.Part != null
 					? MathHelper.Clamp(row.Part.life / (float)Math.Max(1, row.Part.lifeMax), 0f, 1f)

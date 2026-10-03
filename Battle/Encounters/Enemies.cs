@@ -33,7 +33,7 @@ namespace MercyMode.Battle.Encounters
 	}
 
 	/// <summary>Shared rules for regular enemies: shorter turns, quicker MERCY, simple text.</summary>
-	public abstract class EnemyEncounter : Encounter
+	public abstract partial class EnemyEncounter : Encounter
 	{
 		/// <summary>Most chapter 1 enemy turns are 120 frames.</summary>
 		protected const int TurnTicks = 120 * BattleConstants.TicksPerFrame;
@@ -56,9 +56,29 @@ namespace MercyMode.Battle.Encounters
 				return $"* {Name} seems ready to leave.";
 			if (Enraged && Turn % 2 == 0)
 				return $"* {Name} is furious about its fallen comrade.";
+			if (Tired)
+				return $"* {Name} looks TIRED.";
 			if (LifeRatio < 0.35f)
 				return $"* {Name} looks hurt.";
 			return string.Format(Lines[Turn % Lines.Length], Name);
+		}
+
+		/// <summary>Worn out: badly hurt, or an ACT wore it out. PACIFY puts it to sleep.</summary>
+		public bool WornOut;
+		public override bool Tired => Mercy < 100f && (WornOut || LifeRatio < 0.34f);
+
+		/// <summary>The lines it says in its speech bubble (the family's, unless it has its own).</summary>
+		protected virtual string[] Bubbles => new[] { "...", "Hm.", "Not today." };
+
+		public override string Bubble(int turn)
+		{
+			string[] lines = SignatureBubbles() ?? Bubbles;
+			if (lines == null || lines.Length == 0)
+				return null;
+			// Hurt or tired: it says so instead now and then
+			if (Tired && turn % 2 == 1)
+				return "...so... tired...";
+			return lines[turn % lines.Length];
 		}
 
 		public override List<ActOption> Acts(BattleSystem battle)
@@ -68,8 +88,23 @@ namespace MercyMode.Battle.Encounters
 			for (int i = 0; i < ActList.Length; i++)
 				acts.Add(MercyAct(ActList[i].name, ActList[i].desc, amounts[Math.Min(i, 2)], string.Format(ActList[i].line, Name)));
 			acts.Add(HealPrayerAct());
+			acts.Add(PacifyAct());
 			return acts;
 		}
+
+		/// <summary>Deltarune's PACIFY: a TIRED enemy falls asleep and is spared; anything else shrugs it off.</summary>
+		protected ActOption PacifyAct() => new()
+		{
+			Name = "Pacify",
+			Description = "Spare a\nTIRED foe",
+			TPCost = 16f,
+			Run = b =>
+			{
+				if (!Tired)
+					return new List<string> { $"* You cast PACIFY...\n* But {Name} wasn't TIRED." };
+				return b.PacifyTarget();
+			},
+		};
 
 		/// <summary>The enemy's own sprite as a bullet, about <paramref name="size"/> px across.</summary>
 		protected Bullet Self(Vector2 p, Vector2 v, float size = 26f, float damage = 1f)
@@ -88,6 +123,7 @@ namespace MercyMode.Battle.Encounters
 
 	public class SlimeEnemy : EnemyEncounter
 	{
+		protected override string[] Bubbles => new[] { "*jiggle*", "Blorp!", "Squish squish.", "Hug? HUG!" };
 		protected override string CheckText => "* Bouncy. Sticky. Surprisingly polite.";
 		protected override string[] Lines => new[] {
 			"* {0} jiggles expectantly.",
@@ -116,6 +152,7 @@ namespace MercyMode.Battle.Encounters
 
 	public class FighterEnemy : EnemyEncounter
 	{
+		protected override string[] Bubbles => new[] { "Hhhrrgh.", "*shambles*", "...out of my way.", "Grrr." };
 		protected override string CheckText => "* It just keeps walking toward you. Always has.";
 		protected override string[] Lines => new[] {
 			"* {0} shuffles closer.",
@@ -138,6 +175,7 @@ namespace MercyMode.Battle.Encounters
 
 	public class FlierEnemy : EnemyEncounter
 	{
+		protected override string[] Bubbles => new[] { "*flutter*", "Up here!", "Catch me if you can!", "*whoosh*" };
 		protected override string CheckText => "* Flaps around a lot. Has never once landed.";
 		protected override string[] Lines => new[] {
 			"* {0} circles overhead.",
@@ -160,6 +198,7 @@ namespace MercyMode.Battle.Encounters
 
 	public class CasterEnemy : EnemyEncounter
 	{
+		protected override string[] Bubbles => new[] { "Behold!", "Magic time!", "Abracadabra!", "Feel my power!" };
 		protected override string CheckText => "* Knows some magic. Very proud of it.";
 		protected override string[] Lines => new[] {
 			"* {0} mutters an incantation.",
@@ -185,6 +224,7 @@ namespace MercyMode.Battle.Encounters
 
 	public class WormEnemy : EnemyEncounter
 	{
+		protected override string[] Bubbles => new[] { "*rumble*", "Hssss...", "The ground is mine.", "Nom nom dirt." };
 		protected override string CheckText => "* Lives underground. Eats dirt. Living the dream.";
 		protected override string[] Lines => new[] {
 			"* {0} wriggles menacingly.",
@@ -226,6 +266,7 @@ namespace MercyMode.Battle.Encounters
 
 	public class WaterEnemy : EnemyEncounter
 	{
+		protected override string[] Bubbles => new[] { "*blub*", "Splash!", "Stay out of my water!", "Glub glub." };
 		protected override string CheckText => "* Lives in the water. Doesn't like visitors in it.";
 		protected override string[] Lines => new[] {
 			"* {0} circles you in the water.",
@@ -251,6 +292,7 @@ namespace MercyMode.Battle.Encounters
 
 	public class SpiderEnemy : EnemyEncounter
 	{
+		protected override string[] Bubbles => new[] { "*skitter*", "Caught you.", "Stick around!", "Eight legs, no mercy." };
 		protected override string CheckText => "* Too many legs. Very good at walls.";
 		protected override string[] Lines => new[] {
 			"* {0} skitters across the ceiling.",
@@ -275,6 +317,7 @@ namespace MercyMode.Battle.Encounters
 
 	public class MimicEnemy : EnemyEncounter
 	{
+		protected override string[] Bubbles => new[] { "Not a chest!", "*CHOMP*", "Loot? LOOT!", "Surprise!" };
 		protected override string CheckText => "* It's a chest. It's not a chest. It's hungry.";
 		protected override string[] Lines => new[] {
 			"* {0} pretends to be furniture.",
@@ -300,6 +343,7 @@ namespace MercyMode.Battle.Encounters
 
 	public class ChargerEnemy : EnemyEncounter
 	{
+		protected override string[] Bubbles => new[] { "*snort*", "CHARGE!", "Out of the way!", "Faster!" };
 		protected override string CheckText => "* Only knows one move: forward. Very fast.";
 		protected override string[] Lines => new[] {
 			"* {0} paws at the ground.",
@@ -322,6 +366,7 @@ namespace MercyMode.Battle.Encounters
 
 	public class SpiritEnemy : EnemyEncounter
 	{
+		protected override string[] Bubbles => new[] { "Ooooh...", "Can you hear me?", "So cold...", "Remember me..." };
 		protected override string CheckText => "* Not quite here. Not quite gone.";
 		protected override string[] Lines => new[] {
 			"* {0} flickers.",
@@ -344,6 +389,7 @@ namespace MercyMode.Battle.Encounters
 
 	public class BladeEnemy : EnemyEncounter
 	{
+		protected override string[] Bubbles => new[] { "*shing*", "En garde!", "Sharp, aren't I?", "*hum*" };
 		protected override string CheckText => "* A sword with no one holding it. Clearly doesn't need anyone.";
 		protected override string[] Lines => new[] {
 			"* {0} spins in the air.",
@@ -366,6 +412,7 @@ namespace MercyMode.Battle.Encounters
 
 	public class SnapperEnemy : EnemyEncounter
 	{
+		protected override string[] Bubbles => new[] { "*snap*", "Come closer...", "CHOMP!", "Hungry." };
 		protected override string CheckText => "* Doesn't move. Doesn't need to. Bites anything that does.";
 		protected override string[] Lines => new[] {
 			"* {0} snaps at the air.",
@@ -388,6 +435,7 @@ namespace MercyMode.Battle.Encounters
 
 	public class GenericEnemy : EnemyEncounter
 	{
+		protected override string[] Bubbles => new[] { "...", "Hm.", "Let's go.", "Here I come!" };
 		protected override string CheckText => "* It doesn't look friendly. But it doesn't look evil either.";
 		protected override string[] Lines => new[] {
 			"* {0} is waiting for you to make a move.",
