@@ -711,6 +711,11 @@ namespace MercyMode.Battle
 			foreach (Keys b in MercyMode.BoundKeys(k))
 				if (Main.keyState.IsKeyDown(b) && !Main.oldKeyState.IsKeyDown(b))
 					return true;
+			// Mouse buttons bound in Controls (not while the duel builder uses the mouse to place pieces)
+			if (Instance?.phase != Phase.Build)
+				foreach (int mb in MercyMode.BoundMouse(k))
+					if (MercyMode.MouseDown(mb) && !MercyMode.MouseDown(mb, old: true))
+						return true;
 			return false;
 		}
 
@@ -720,6 +725,9 @@ namespace MercyMode.Battle
 				return false;
 			foreach (Keys b in MercyMode.BoundKeys(k))
 				if (Main.keyState.IsKeyDown(b))
+					return true;
+			foreach (int mb in MercyMode.BoundMouse(k))
+				if (MercyMode.MouseDown(mb))
 					return true;
 			return false;
 		}
@@ -1484,7 +1492,8 @@ namespace MercyMode.Battle
 			// scr_damage: the hero flinches, the screen shakes, the number pops off the hero
 			hurtTimer = 0;
 			shake = 4;
-			HeroNumber((int)dealt, Color.White);
+			// A duel: the number in the colour of the player whose attack it was
+			HeroNumber((int)dealt, duelWith >= 0 ? DuelOppDamageColor : Color.White);
 			DuelSendHurt((int)dealt);
 		}
 
@@ -1598,6 +1607,8 @@ namespace MercyMode.Battle
 		{
 			if (phase == Phase.None || Main.gameMenu)
 				return;
+			// The duel builder scrolls its weapons with the wheel (kept before it's taken from the hotbar)
+			buildScroll += PlayerInput.ScrollWheelDelta;
 			PlayerInput.ScrollWheelDelta = 0;
 			PlayerInput.ScrollWheelDeltaForUI = 0;
 			foreach (TriggersSet set in new[] { PlayerInput.Triggers.Current, PlayerInput.Triggers.JustPressed })

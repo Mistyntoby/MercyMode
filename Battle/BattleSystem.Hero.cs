@@ -413,6 +413,11 @@ namespace MercyMode.Battle
 					Main.instance.LoadItem(weapon.type);
 					p.ItemCheck_ApplyUseStyle(p.mount.PlayerOffsetHitbox, weapon, Item.GetDrawHitbox(weapon.type, p));
 					bodyFrame = VanillaUseBodyFrame(p, weapon);
+					// Terraria's mid-swing spot sits the hilt a little above and behind the hand, which a still pose at
+					// battle size shows: down into the fist
+					if (weapon.useStyle == ItemUseStyleID.Swing && p.itemAnimation >= p.itemAnimationMax * 0.333f
+						&& p.itemAnimation < p.itemAnimationMax * 0.666f)
+						p.itemLocation += new Vector2(3f * facing, 7f);
 				}
 				else
 				{
@@ -513,7 +518,7 @@ namespace MercyMode.Battle
 
 			// Where the player's hitbox bottom-centre lands on the battle screen; world offsets scale around it
 			// The stab leans the whole body in a little
-			feet.X += stabLean * scale / BattleCharacterScale;
+			feet.X += stabLean * facing * scale / BattleCharacterScale;
 			Vector2 anchorWorld = p.position + new Vector2(p.width / 2f, p.height);
 			Vector2 ToBattle(Vector2 world) => feet + (world - anchorWorld) * scale;
 
@@ -545,11 +550,17 @@ namespace MercyMode.Battle
 					}
 					else
 					{
-						// Blade sprites point up-right (-45 degrees); turn them to follow the arm, handle in the hand
+						// Blade sprites point up-right (-45 degrees); turn them to follow the arm, handle in the hand.
+						// Facing left the arm is mirrored, so the blade is too: flipped, handle at its bottom-right
 						Vector2 along = manualRotation.ToRotationVector2();
+						bool left = facing < 0;
+						if (left)
+							along.X = -along.X;
 						Vector2 grip = hand + along * manualThrust * scale / BattleCharacterScale;
-						DrDraw.Sb.Draw(tex, grip, src, Color.White * (1f - shadow), manualRotation + MathHelper.PiOver4,
-							new Vector2(0, src.Height), scale * 0.85f, SpriteEffects.None, 0f);
+						DrDraw.Sb.Draw(tex, grip, src, Color.White * (1f - shadow),
+							left ? -manualRotation - MathHelper.PiOver4 : manualRotation + MathHelper.PiOver4,
+							left ? new Vector2(src.Width, src.Height) : new Vector2(0, src.Height), scale * 0.85f,
+							left ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
 						if (stabStreak > 0f && shadow < 0.5f)
 						{
 							// A thin white streak off the point of the blade
