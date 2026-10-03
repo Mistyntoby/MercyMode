@@ -359,7 +359,13 @@ namespace MercyMode.Battle
 			gunCooldown = 0;
 			gunShots = 0;
 			summonPendingTicks = -1;
+			summonStrikeTicks = -1;
 			gunShotTime = -100;
+			// The FIGHT is on: what was picked stays (a dismissal happens now, a called summon is kept)
+			if (unsummonPending)
+				Unsummon();
+			unsummonPending = false;
+			calledSummon = 0;
 			if (gunMode)
 			{
 				AddEffect(new Shockwave(HeroFeetNow + (HeroHeart - HeroFeet) + new Vector2(SoulSize / 2f), SoulMode.Yellow.Color(), 30f));
@@ -712,7 +718,8 @@ namespace MercyMode.Battle
 			for (int i = boltBursts.Count - 1; i >= 0; i--)
 				if (--boltBursts[i].Timer <= 0)
 					boltBursts.RemoveAt(i);
-			if (phaseTicks > FightPostTicks)
+			// The summon's attack plays out before the FIGHT fades
+			if (phaseTicks > FightPostTicks && summonPendingTicks < 0 && summonStrikeTicks < 0)
 				fightFade += FightFadePerTick;
 			if (fightFade < 1f)
 				return;
@@ -864,15 +871,44 @@ namespace MercyMode.Battle
 		/// </summary>
 		private int SummonDamage(Projectile p)
 		{
-			int d = Math.Max(p.damage, p.originalDamage);
+			// The base (before the player's summon bonuses), then the bonuses, like a staff's damage in the inventory
+			int baseDamage = p.originalDamage;
 			if (p.type == ProjectileID.AbigailMinion)
 				foreach (Projectile c in Main.ActiveProjectiles)
 					if (c.owner == p.owner && c.type == ProjectileID.AbigailCounter)
-						d = Math.Max(d, Math.Max(c.damage, c.originalDamage));
+						baseDamage = Math.Max(baseDamage, c.originalDamage);
+			if (baseDamage > 0)
+				return Math.Max(1, (int)Main.player[p.owner].GetTotalDamage(DamageClass.Summon).ApplyTo(baseDamage));
+			int d = p.damage;
 			if (d <= 0 && p.type == ProjectileID.AbigailMinion)
 				d = 10;
 			return d;
 		}
+
+		/// <summary>Minions that shoot (and what), drawn flying from them to the enemy; the rest lunge at it.</summary>
+		private static readonly Dictionary<int, int> SummonShots = new()
+		{
+			[ProjectileID.FlyingImp] = ProjectileID.ImpFireball,
+			[ProjectileID.Hornet] = ProjectileID.HornetStinger,
+			[ProjectileID.Retanimini] = ProjectileID.MiniRetinaLaser,
+			[ProjectileID.Pygmy] = ProjectileID.PygmySpear,
+			[ProjectileID.Pygmy2] = ProjectileID.PygmySpear,
+			[ProjectileID.Pygmy3] = ProjectileID.PygmySpear,
+			[ProjectileID.Pygmy4] = ProjectileID.PygmySpear,
+			[ProjectileID.UFOMinion] = ProjectileID.UFOLaser,
+			[ProjectileID.Tempest] = ProjectileID.MiniSharkron,
+			[ProjectileID.StardustCellMinion] = ProjectileID.StardustCellMinionShot,
+		};
+
+		/// <summary>The Stardust Dragon's body and tail: drawn and moved with its head.</summary>
+		private static bool IsDragonSegment(int type) =>
+			type is ProjectileID.StardustDragon2 or ProjectileID.StardustDragon3 or ProjectileID.StardustDragon4;
+
+		/// <summary>Where each of our summon kinds was last drawn on the battle screen (shots start there).</summary>
+		private readonly Dictionary<int, Vector2> summonSpots = new();
+		private int summonStrikeTicks = -1;
+		/// <summary>"No summon" picked: they're dismissed once the FIGHT really starts (backing out keeps them).</summary>
+		private bool unsummonPending;
 
 		/// <summary>The summon kind picked for this FIGHT (projectile type; 0 = none), and when it attacks.</summary>
 		private int chosenSummon = -1;
@@ -932,6 +968,7 @@ namespace MercyMode.Battle
 		private void OpenSummonSelect()
 		{
 			calledSummon = 0;
+			unsummonPending = false;
 			summonBefore = chosenSummon;
 			var entries = SummonEntries();
 			// Start on the one already fighting (or the first out); "No summon" if none is out
@@ -945,13 +982,23 @@ namespace MercyMode.Battle
 		/// <summary>Backing out of the target after picking a summon: the one just called goes away again.</summary>
 		private void BackToSummonSelect()
 		{
+			UndoCalledSummon();
+			OpenSummonSelect();
+		}
+
+		/// <summary>The summon called on this pick goes away again, and the pick before it is back.</summary>
+		private void UndoCalledSummon()
+		{
 			if (calledSummon > 0)
 				foreach (Projectile p in Main.ActiveProjectiles)
 					if (p.owner == Player.whoAmI && (p.type == calledSummon
-						|| calledSummon == ProjectileID.AbigailMinion && p.type == ProjectileID.AbigailCounter))
+						|| calledSummon == ProjectileID.AbigailMinion && p.type == ProjectileID.AbigailCounter
+						|| calledSummon == ProjectileID.StardustDragon1 && IsDragonSegment(p.type)))
 						p.Kill();
-			chosenSummon = summonBefore;
-			OpenSummonSelect();
+			if (calledSummon > 0 || unsummonPending)
+				chosenSummon = summonBefore;
+			calledSummon = 0;
+			unsummonPending = false;
 		}
 
 		private void DrawSummonSelect(float y)
@@ -1037,7 +1084,7 @@ namespace MercyMode.Battle
 				chosenSummon = calledSummon = CallSummon(pick.Call);
 			else
 			{
-				Unsummon();
+				unsummonPending = Minions().Count > 0;
 				chosenSummon = 0;
 			}
 			summonMenuShown = true;
@@ -1051,9 +1098,12 @@ namespace MercyMode.Battle
 			var source = Player.GetSource_ItemUse(item);
 			int damage = Player.GetWeaponDamage(item);
 			int kind = SummonKindOf(item);
-			int made = Projectile.NewProjectile(source, Player.Center, Vector2.Zero, item.shoot, damage, item.knockBack, Player.whoAmI);
-			if (made >= 0 && made < Main.maxProjectiles)
-				Main.projectile[made].originalDamage = item.damage;
+			if (!VanillaShoot(item, damage))
+			{
+				int made = Projectile.NewProjectile(source, Player.Center, Vector2.Zero, item.shoot, damage, item.knockBack, Player.whoAmI);
+				if (made >= 0 && made < Main.maxProjectiles)
+					Main.projectile[made].originalDamage = item.damage;
+			}
 			// Abigail's counter spawns her from its AI, which is frozen during the battle: call her too
 			if (kind != item.shoot && !Main.projectile.Any(p => p.active && p.owner == Player.whoAmI && p.type == kind))
 			{
@@ -1063,6 +1113,36 @@ namespace MercyMode.Battle
 			}
 			Sfx("boost");
 			return kind;
+		}
+
+		private static System.Reflection.MethodInfo shootMethod;
+		private static bool shootLooked;
+
+		/// <summary>
+		/// Uses the item's shot the way Terraria does (Player.ItemCheck_Shoot): whole Stardust Dragons, the right minion
+		/// setup, modded summons' own Shoot code. False if that isn't there (another tModLoader version) or it threw.
+		/// </summary>
+		private bool VanillaShoot(Item item, int damage)
+		{
+			if (!shootLooked)
+			{
+				shootLooked = true;
+				shootMethod = typeof(Player).GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)
+					.FirstOrDefault(mi => mi.Name == "ItemCheck_Shoot" && mi.GetParameters() is var ps && ps.Length == 3
+						&& ps[0].ParameterType == typeof(int) && ps[1].ParameterType == typeof(Item) && ps[2].ParameterType == typeof(int));
+			}
+			if (shootMethod == null)
+				return false;
+			int before = Main.projectile.Count(p => p.active && p.owner == Player.whoAmI);
+			try
+			{
+				shootMethod.Invoke(Player, new object[] { Player.whoAmI, item, damage });
+			}
+			catch (Exception e)
+			{
+				ModContent.GetInstance<MercyMode>().Logger.Warn("Calling a summon the vanilla way failed: " + e.InnerException?.Message);
+			}
+			return Main.projectile.Count(p => p.active && p.owner == Player.whoAmI) > before;
 		}
 
 		/// <summary>Dismisses the player's minions (sentries stay where they were built).</summary>
@@ -1081,13 +1161,34 @@ namespace MercyMode.Battle
 		{
 			if (summonPendingTicks >= 0 && --summonPendingTicks < 0)
 				SummonAttack();
+			if (summonStrikeTicks >= 0 && --summonStrikeTicks < 0)
+				SummonStrike();
 		}
 
+		/// <summary>The summon goes for it: a shot from where it's drawn, or a lunge; the hit lands when it gets there.</summary>
 		private void SummonAttack()
 		{
 			if (!encounter.Alive || ChosenSummon() is not Projectile chosen)
 				return;
-			summonLungeTime = time;
+			NPC target = encounter.TargetableParts && Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : encounter.StrikeTarget();
+			if (SummonShots.TryGetValue(chosen.type, out int shot))
+			{
+				Vector2 from = summonSpots.TryGetValue(chosen.type, out Vector2 at) ? at : HeroFeetNow + new Vector2(-20f, -60f);
+				AddEffect(new ShotProjectile(shot, from, PartSpot(target), 10f));
+				Sfx("attack");
+				summonStrikeTicks = 10;
+			}
+			else
+			{
+				summonLungeTime = time;
+				summonStrikeTicks = 12; // the top of the lunge
+			}
+		}
+
+		private void SummonStrike()
+		{
+			if (!encounter.Alive || ChosenSummon() is not Projectile chosen)
+				return;
 			int n = 0;
 			foreach (Projectile m in new[] { chosen })
 			{
@@ -1143,7 +1244,20 @@ namespace MercyMode.Battle
 		{
 			if (owner.dead)
 				return;
-			var mine = Main.projectile.Where(p => IsSummonOf(p, owner.whoAmI)).ToList();
+			// The dragon's tail first, its head last (on top)
+			var mine = Main.projectile.Where(p => IsSummonOf(p, owner.whoAmI))
+				.OrderBy(p => p.type switch
+				{
+					ProjectileID.StardustDragon4 => 0,
+					ProjectileID.StardustDragon3 => 1,
+					ProjectileID.StardustDragon2 => 2,
+					_ => 3,
+				}).ToList();
+			Projectile dragonHead = Main.projectile.FirstOrDefault(p => p.active && p.owner == owner.whoAmI && p.type == ProjectileID.StardustDragon1);
+			bool ours = owner.whoAmI == Player.whoAmI;
+			int since = ours ? time - summonLungeTime : -1;
+			int fighting = ours ? ChosenSummon()?.type ?? 0 : 0;
+			float lunge = since >= 0 && since < 24 ? (float)Math.Sin(since / 24f * Math.PI) : 0f;
 			if (mine.Count == 0)
 				return;
 			Vector2 anchorWorld = owner.Bottom;
@@ -1168,13 +1282,29 @@ namespace MercyMode.Battle
 					}
 					// Where it is relative to the player in the world, scaled onto the battle screen (kept close: one far
 					// away when the battle began would be off at the edge)
-					Vector2 rel = (p.Center - anchorWorld) * scale;
+					// The dragon's body follows its head's spot, keeping its shape
+					Projectile anchor = IsDragonSegment(p.type) && dragonHead != null ? dragonHead : p;
+					Vector2 rel = (anchor.Center - anchorWorld) * scale;
 					float maxRel = 70f * (scale / HeroScale);
 					if (rel.Length() > maxRel)
 						rel = Vector2.Normalize(rel) * maxRel;
+					rel += (p.Center - anchor.Center) * scale;
+					// Our chosen one's attack: a lunge at the enemy and back (shooters stay put and fire)
+					int kind = anchor.type;
+					if (lunge > 0f && kind == fighting && !p.sentry && !SummonShots.ContainsKey(kind) && encounter != null)
+						rel += (encounter.ScreenCenter - (feet + rel)) * lunge * 0.85f;
+					if (ours && p == anchor)
+						summonSpots[p.type] = feet + rel;
 					Vector2 shift = Main.screenPosition + feet + rel - p.Center;
 					Vector2 oldPosition = p.position;
 					float oldScale = p.scale;
+					int oldFrame = p.frame, oldDir = p.spriteDirection;
+					// Frozen, its AI doesn't animate it: run through its frames here, facing the enemy
+					int frames = Main.projFrames[p.type];
+					if (frames > 1)
+						p.frame = (time / 5 + p.whoAmI) % frames;
+					if (!p.sentry && !IsDragonSegment(p.type) && p.type != ProjectileID.StardustDragon1)
+						p.spriteDirection = 1;
 					var oldTrail = (Vector2[])p.oldPos.Clone();
 					p.position += shift;
 					for (int i = 0; i < p.oldPos.Length; i++)
@@ -1189,6 +1319,8 @@ namespace MercyMode.Battle
 					{
 						p.position = oldPosition;
 						p.scale = oldScale;
+						p.frame = oldFrame;
+						p.spriteDirection = oldDir;
 						Array.Copy(oldTrail, p.oldPos, oldTrail.Length);
 					}
 				}
@@ -1216,7 +1348,7 @@ namespace MercyMode.Battle
 			at.Y += (float)Math.Sin(time / 20f) * 3f;
 			// Her attack: a quick lunge at the enemy and back
 			// Only our own lunge (an ally's isn't sent); the time check also skips a lunge left from an earlier battle
-			int since = p.owner == Player.whoAmI ? time - summonLungeTime : -1;
+			int since = p.owner == Player.whoAmI && ChosenSummon()?.type == p.type ? time - summonLungeTime : -1;
 			float lunge = since >= 0 && since < 24 ? (float)Math.Sin(since / 24f * Math.PI) : 0f;
 			if (lunge > 0f && encounter != null)
 				at = Vector2.Lerp(at, encounter.ScreenCenter, lunge * 0.85f);
