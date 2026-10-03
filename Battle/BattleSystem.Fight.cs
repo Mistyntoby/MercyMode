@@ -172,6 +172,9 @@ namespace MercyMode.Battle
 		{
 			if (phase == Phase.WeaponSelect && listIndex < weaponOptions.Count)
 				return weaponOptions[listIndex].Item;
+			// Building a duel attack: the weapon of the piece picked
+			if (phase == Phase.Build && pieceOptions.Count > 0)
+				return pieceOptions[Math.Clamp(piecePick, 0, pieceOptions.Count - 1)].Item;
 			// The weapon of the FIGHT going on; otherwise the one picked (not last turn's)
 			if (phase is Phase.FightBar or Phase.FightResult && fightWeapon != null)
 				return fightWeapon.Item;
@@ -642,7 +645,10 @@ namespace MercyMode.Battle
 
 			Sfx("damage");
 			if (!hit.Ranged)
+			{
 				slashTimer = 0;
+				DuelSendFire(fightWeapon?.Item?.type ?? 0, 0, null);
+			}
 			else
 				AddEffect(new ShotImpact(spot + Main.rand.NextVector2Circular(14f, 14f)));
 			enemyShake = 18;
@@ -1648,6 +1654,7 @@ namespace MercyMode.Battle
 			Vector2 to = PartSpot(aim) + Main.rand.NextVector2Circular(14f, 14f);
 			AddEffect(new MuzzleFlash(from));
 			AddEffect(new ShotProjectile(projectile, from, to, 10f));
+			DuelSendFire(w.Item?.type ?? 0, projectile, null);
 		}
 	}
 

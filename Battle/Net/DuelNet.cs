@@ -31,6 +31,8 @@ namespace MercyMode.Battle.Net
 			Hurt, // a bullet hit my SOUL for this much (the builder sees the number and the flinch)
 			MercyAsk, // I used a MERCY act on you: accept or refuse (its text)
 			MercyAnswer, // my answer to your MERCY act
+			Pose, // how I stand and what I hold (so you see me pick and ready a weapon)
+			Fire, // I swung or shot: item, projectile, where at (x -1: at you)
 		}
 
 		/// <summary>How long a challenge stays open after the hit (refreshed by more hits).</summary>
