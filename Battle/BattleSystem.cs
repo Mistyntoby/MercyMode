@@ -1302,7 +1302,7 @@ namespace MercyMode.Battle
 		private void UpdateEnemyTalk()
 		{
 			var talking = enemies.Where(e => e.Living && !string.IsNullOrEmpty(e.Bubble)).ToList();
-			int longest = talking.Select(e => e.Bubble.Length).DefaultIfEmpty(0).Max();
+			int longest = talking.Select(e => BubblePlain(e.Bubble).Length).DefaultIfEmpty(0).Max();
 			int typed = longest * 2 + 4;
 			// Each one's voice as it starts (a little apart in a group), then soft blips while the words type out
 			for (int i = 0; i < talking.Count; i++)

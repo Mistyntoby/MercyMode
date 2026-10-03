@@ -137,6 +137,79 @@ namespace MercyMode.Battle
 		// ---- speech bubbles ----
 
 		/// <summary>
+		/// How a letter moves, like Deltarune's text writer: still, shaking in place (a jitter every couple of frames),
+		/// trembling (a bigger shake: scared, freezing, furious) or waving (a sine down the line: ghostly, sleepy, sing-song).
+		/// </summary>
+		internal enum TextFx : byte { None, Shake, Tremble, Wave }
+
+		/// <summary>
+		/// A bubble line with its effects marked inline, [shake]...[/shake], [tremble]...[/tremble] and [wave]...[/wave]:
+		/// the plain text, and each letter's effect.
+		/// </summary>
+		internal static (string plain, TextFx[] fx) ParseBubble(string text)
+		{
+			var plain = new System.Text.StringBuilder();
+			var fx = new List<TextFx>();
+			TextFx now = TextFx.None;
+			int i = 0;
+			while (i < text.Length)
+			{
+				if (text[i] == '[')
+				{
+					int end = text.IndexOf(']', i);
+					if (end > i)
+					{
+						string tag = text.Substring(i + 1, end - i - 1).ToLowerInvariant();
+						TextFx? set = tag switch
+						{
+							"shake" => TextFx.Shake,
+							"tremble" => TextFx.Tremble,
+							"wave" => TextFx.Wave,
+							"/shake" or "/tremble" or "/wave" => TextFx.None,
+							_ => null,
+						};
+						if (set is TextFx f)
+						{
+							now = f;
+							i = end + 1;
+							continue;
+						}
+					}
+				}
+				plain.Append(text[i]);
+				fx.Add(now);
+				i++;
+			}
+			return (plain.ToString(), fx.ToArray());
+		}
+
+		internal static string BubblePlain(string text) => text == null ? "" : ParseBubble(text).plain;
+
+		/// <summary>Where a letter sits off its place right now for its effect (in battle pixels).</summary>
+		private Vector2 LetterOffset(TextFx fx, int index)
+		{
+			switch (fx)
+			{
+				case TextFx.Shake:
+				case TextFx.Tremble:
+				{
+					// A new random spot every 2 frames, the same for every screen and draw of that moment
+					uint h = (uint)(index * 73856093) ^ (uint)((time / (2 * TicksPerFrame)) * 19349663);
+					h ^= h >> 13;
+					h *= 0x5bd1e995;
+					float amp = fx == TextFx.Tremble ? 2f : 1f;
+					float dx = ((h & 0xff) / 255f * 2f - 1f) * amp;
+					float dy = (((h >> 8) & 0xff) / 255f * 2f - 1f) * amp;
+					return new Vector2((float)Math.Round(dx), (float)Math.Round(dy));
+				}
+				case TextFx.Wave:
+					return new Vector2(0f, (float)Math.Round(Math.Sin(time * 0.12f + index * 0.55f) * 2f));
+				default:
+					return Vector2.Zero;
+			}
+		}
+
+		/// <summary>
 		/// Each enemy's speech bubble while its turn opens (Deltarune's): white, to its left, typing out, with a tail
 		/// pointing at it. Sleepy z's float off TIRED enemies.
 		/// </summary>
@@ -154,7 +227,7 @@ namespace MercyMode.Battle
 				if (age < 0)
 					continue;
 				float alpha = 1f;
-				int chars = Math.Min(en.Bubble.Length, age / 2 + 1);
+				int chars = Math.Min(BubblePlain(en.Bubble).Length, age / 2 + 1);
 
 				// Wrapped to the bubble's width (Deltarune's bubbles: the dialogue font at full size, black on white)
 				// Deltarune's bubbles: big text, roomy, up to about half the screen wide for long lines
@@ -171,9 +244,10 @@ namespace MercyMode.Battle
 				// (The box isn't open yet while they talk, so a bubble can reach across the middle of the screen)
 				float room = at.X - half - 8f - tail - 8f;
 				float maxW = MathHelper.Clamp(room - pad * 2f, 100f, 290f);
+				var (plain, fx) = ParseBubble(en.Bubble);
 				var lines = new List<string>();
 				string line = "";
-				foreach (string word in en.Bubble.Split(' '))
+				foreach (string word in plain.Split(' '))
 				{
 					string tryLine = line.Length == 0 ? word : line + " " + word;
 					if (DrDraw.Measure(tryLine, font) * scale > maxW && line.Length > 0)
@@ -204,16 +278,20 @@ namespace MercyMode.Battle
 					float half2 = 6f * (1f - i / tail);
 					DrDraw.Rect(bx + w + i, cy - half2, 1, half2 * 2f, Color.White * alpha);
 				}
-				// The text, typed out so far (whole lines at a time once a line is done)
-				int left = chars;
+				// The text, typed out so far, letter by letter with each letter's effect (shaking, waving...)
+				int index = 0;
 				float ty = by + pad * 0.6f;
 				foreach (string l in lines)
 				{
-					if (left <= 0)
+					for (int k = 0; k < l.Length && index + k < chars; k++)
+					{
+						float lx = bx + pad + DrDraw.Measure(l.Substring(0, k), font) * scale;
+						Vector2 off = LetterOffset(index + k < fx.Length ? fx[index + k] : TextFx.None, index + k);
+						DrDraw.Text(l[k].ToString(), lx + off.X, ty + off.Y, Color.Black * alpha, font, scale);
+					}
+					index += l.Length + 1;
+					if (index > chars)
 						break;
-					string part = l.Length <= left ? l : l.Substring(0, left);
-					DrDraw.Text(part, bx + pad, ty, Color.Black * alpha, font, scale);
-					left -= l.Length + 1;
 					ty += lineH;
 				}
 			}
