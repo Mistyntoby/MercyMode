@@ -125,11 +125,23 @@ namespace MercyMode.Battle
 			projectile.velocity = Vector2.Zero;
 			projectile.timeLeft++; // don't expire while frozen
 			// A fighter's following summons wait just behind them in the world (sentries stay where they were built)
-			if (ownSummon && !projectile.sentry && projectile.type != Terraria.ID.ProjectileID.AbigailCounter)
+			int type = projectile.type;
+			bool dragonBody = type is Terraria.ID.ProjectileID.StardustDragon2 or Terraria.ID.ProjectileID.StardustDragon3 or Terraria.ID.ProjectileID.StardustDragon4;
+			if (ownSummon && !projectile.sentry && type != Terraria.ID.ProjectileID.AbigailCounter && !dragonBody)
 			{
 				Player owner = Main.player[projectile.owner];
-				projectile.Center = owner.Center + new Vector2(-owner.direction * 30f, -14f);
-				projectile.direction = projectile.spriteDirection = owner.direction;
+				Vector2 to = owner.Center + new Vector2(-owner.direction * 30f, -14f);
+				Vector2 moved = to - projectile.Center;
+				projectile.Center = to;
+				// The Stardust Dragon's body and tail come along with its head, keeping its shape
+				if (type == Terraria.ID.ProjectileID.StardustDragon1)
+				{
+					foreach (Projectile seg in Main.ActiveProjectiles)
+						if (seg.owner == projectile.owner && seg.type is Terraria.ID.ProjectileID.StardustDragon2 or Terraria.ID.ProjectileID.StardustDragon3 or Terraria.ID.ProjectileID.StardustDragon4)
+							seg.Center += moved;
+				}
+				else
+					projectile.direction = projectile.spriteDirection = owner.direction;
 			}
 			return false;
 		}
