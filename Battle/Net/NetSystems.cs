@@ -295,7 +295,8 @@ namespace MercyMode.Battle.Net
 			foreach (var (id, wb) in BattleNet.WorldBattles)
 			{
 				// Full, already in it, or already won
-				if (wb.Players.Count >= BattleNet.MaxParty || wb.Players.Contains(me.whoAmI) || wb.Stage == BattleNet.Stage.Over)
+				// (Listed in it while not in a battle here means the server's list is stale: joining fixes that)
+				if (wb.Players.Count(i => i != me.whoAmI) >= BattleNet.MaxParty || wb.Stage == BattleNet.Stage.Over)
 					continue;
 				// Close to one of its enemies, or to one of the players fighting it (much further for a boss)
 				float reach = BattleNet.NpcsOf(id).Any(EncounterRegistry.IsBossFight) ? BattleNet.BossJoinRange : BattleNet.PromptRange;

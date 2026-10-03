@@ -822,6 +822,8 @@ namespace MercyMode.Battle.Net
 		internal static int ServerStartBattle(int requester, List<NPC> roots)
 		{
 			roots = roots.Where(n => n.active && n.life > 0 && !IsFrozen(n)).Distinct().ToList();
+			// Asking means their game has no battle open: any battle still listing them is stale (it blocked new ones)
+			DropStale(requester);
 			if (InBattle(requester) || roots.Count == 0)
 				return -1;
 
@@ -852,6 +854,7 @@ namespace MercyMode.Battle.Net
 		/// <summary>Server: a player pressed the join key near a battle. They watch until its next bullet box.</summary>
 		internal static void ServerJoin(int player, NPC npc)
 		{
+			DropStale(player);
 			NetBattle b = Find(BattleOf(npc));
 			if (b == null || b.Stage == Stage.Over || !NpcsOf(b.Id).Any() || InBattle(player) || b.Players.Count + b.Pending.Count >= MaxParty || Main.player[player].dead)
 				return;
@@ -859,6 +862,13 @@ namespace MercyMode.Battle.Net
 			SendJoin(b, player, spectate: true);
 			SendParty(b);
 			SendState(b);
+		}
+
+		/// <summary>A player asking for a battle isn't in one on their screen: take them out of any the server still lists.</summary>
+		private static void DropStale(int player)
+		{
+			foreach (NetBattle old in battles.Where(x => x.Players.Contains(player) || x.Pending.Contains(player)).ToList())
+				ServerLeave(player, old.Id);
 		}
 
 		internal static void ServerReady(int player, int id, int face, int weapon = 0)

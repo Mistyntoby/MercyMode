@@ -971,11 +971,20 @@ namespace MercyMode.Battle
 		{
 			Main.instance.LoadProjectile(p.type);
 			Texture2D tex = TextureAssets.Projectile[p.type].Value;
-			int frames = Math.Max(1, Main.projFrames[p.type]);
-			int frame = (time / 7) % frames;
-			var src = new Rectangle(0, tex.Height / frames * frame, tex.Width, tex.Height / frames);
+			// The sheet: column 0 is Abigail, columns 1-3 her flower at each level; rows are her animation
+			const int columns = 4;
+			int rows = Math.Max(1, Main.projFrames[p.type]);
+			int w = tex.Width / columns, h = tex.Height / rows;
+			// Idle: just the first frames (the rest are her attack)
+			int frame = (time / 9) % Math.Min(4, rows);
 			at.Y += (float)Math.Sin(time / 20f) * 3f;
-			DrDraw.Sb.Draw(tex, at, src, Color.White * 0.85f * FlyProgress(), 0f, src.Size() / 2f, scale, SpriteEffects.None, 0f);
+			float a = 0.9f * FlyProgress();
+			var body = new Rectangle(0, h * frame, w, h);
+			DrDraw.Sb.Draw(tex, at, body, Color.White * a, 0f, body.Size() / 2f, scale, SpriteEffects.None, 0f);
+			// Her flower, at its level (one per Abigail's Flower summoned, up to the third), over her
+			int level = Math.Clamp(Main.projectile.Count(q => q.active && q.owner == p.owner && q.type == ProjectileID.AbigailCounter), 1, columns - 1);
+			var flower = new Rectangle(w * level, h * frame, w, h);
+			DrDraw.Sb.Draw(tex, at, flower, Color.White * a, 0f, flower.Size() / 2f, scale, SpriteEffects.None, 0f);
 		}
 
 		private void FireShot(WeaponOption w, int projectile)
