@@ -98,7 +98,7 @@ namespace MercyMode.Battle
 		public override bool PreAI(Projectile projectile)
 		{
 			// Our own minions and sentries stay out of it (in multiplayer too): they fight in the battle, after FIGHT
-			bool ownSummon = BattleSystem.Active && projectile.owner == Main.myPlayer && (projectile.minion || projectile.sentry);
+			bool ownSummon = BattleSystem.Active && BattleSystem.IsSummonOf(projectile, Main.myPlayer);
 			// Multiplayer: other projectiles belong to their owners and the server; the world keeps going
 			if (!ownSummon && (!BattleSystem.Active || !MercyMode.IsSingleplayer))
 				return true;
@@ -111,11 +111,11 @@ namespace MercyMode.Battle
 
 		// Frozen minions can't hit anything in the world meanwhile (no kills heard in the background)
 		public override bool? CanHitNPC(Projectile projectile, NPC target) =>
-			BattleSystem.Active && projectile.owner == Main.myPlayer && (projectile.minion || projectile.sentry) ? false : null;
+			BattleSystem.Active && BattleSystem.IsSummonOf(projectile, Main.myPlayer) ? false : null;
 
 		// The battle screen draws them beside the player; the world copies stay hidden
 		public override bool PreDraw(Projectile projectile, ref Color lightColor) =>
-			!(BattleSystem.Active && projectile.owner == Main.myPlayer && projectile.minion);
+			BattleSystem.DrawingSummons || !(BattleSystem.Active && BattleSystem.IsSummonOf(projectile, Main.myPlayer));
 	}
 
 	/// <summary>Locks the player in place during a battle. Only the battle itself can hurt them.</summary>
