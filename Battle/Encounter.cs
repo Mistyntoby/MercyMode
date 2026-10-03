@@ -15,6 +15,8 @@ namespace MercyMode.Battle
 		public string Name;
 		/// <summary>Short text shown on the right while the act is highlighted.</summary>
 		public string Description = "";
+		/// <summary>Its colour in the ACT list (PACIFY is blue while the target is TIRED), or null for white.</summary>
+		public Microsoft.Xna.Framework.Color? Color;
 		/// <summary>TP cost in Mercy Mode's 0-100 TP. 0 for normal acts.</summary>
 		public float TPCost;
 		/// <summary>Runs the act and returns the lines to show. Each string is one text box.</summary>

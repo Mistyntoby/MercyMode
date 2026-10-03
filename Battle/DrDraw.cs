@@ -173,6 +173,19 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>Draws text like draw_text with the given Deltarune font. '\n' starts a new line.</summary>
+		/// <summary>Text fading from one colour to another along it (a name that's both spareable and TIRED).</summary>
+		public static void GradientText(string text, float x, float y, Color from, Color to, string font = BigFont, float scale = 1f)
+		{
+			if (string.IsNullOrEmpty(text))
+				return;
+			for (int i = 0; i < text.Length; i++)
+			{
+				float cx = x + Measure(text.Substring(0, i), font) * scale;
+				Color c = Color.Lerp(from, to, text.Length > 1 ? i / (float)(text.Length - 1) : 0f);
+				Text(text[i].ToString(), cx, y, c, font, scale);
+			}
+		}
+
 		public static void Text(string text, float x, float y, Color color, string font = BigFont, float scale = 1f)
 		{
 			DrFont f = DeltaruneAssets.Font(font);

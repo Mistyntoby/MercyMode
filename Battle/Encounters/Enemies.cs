@@ -65,7 +65,7 @@ namespace MercyMode.Battle.Encounters
 
 		/// <summary>Worn out: badly hurt, or an ACT wore it out. PACIFY puts it to sleep.</summary>
 		public bool WornOut;
-		public override bool Tired => Mercy < 100f && (WornOut || LifeRatio < 0.34f);
+		public override bool Tired => WornOut || LifeRatio < 0.34f;
 
 		/// <summary>The lines it says in its speech bubble (the family's, unless it has its own).</summary>
 		protected virtual string[] Bubbles => new[] { "...", "Hm.", "Not today." };
@@ -98,6 +98,8 @@ namespace MercyMode.Battle.Encounters
 			Name = "Pacify",
 			Description = "Spare a\nTIRED foe",
 			TPCost = 16f,
+			// Blue while it would work, like Deltarune's spell
+			Color = Tired ? new Color(60, 160, 255) : null,
 			Run = b =>
 			{
 				if (!Tired)

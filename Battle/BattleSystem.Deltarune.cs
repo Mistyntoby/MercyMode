@@ -145,7 +145,9 @@ namespace MercyMode.Battle
 				float h = lines.Count * lineH + pad * 1.5f;
 				// Beside the enemy at its own height, its tail pointing at it (its left edge, from how big it's drawn)
 				float bx = Math.Max(4f, at.X - half - 8f - tail - w), by = Math.Clamp(at.Y - h / 2f, 4f, ScreenHeight - PanelHeight - h - 4f);
-				DrDraw.Rect(bx, by, w, h, Color.White * alpha);
+				// A pixel off each corner, like Deltarune's
+				DrDraw.Rect(bx + 1, by, w - 2, h, Color.White * alpha);
+				DrDraw.Rect(bx, by + 1, w, h - 2, Color.White * alpha);
 				// The tail: a white triangle from the bubble's right side toward the enemy
 				float cy = Math.Clamp(at.Y, by + 8f, by + h - 8f);
 				for (int i = 0; i < (int)tail; i++)
