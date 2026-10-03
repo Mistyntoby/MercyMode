@@ -139,7 +139,8 @@ namespace MercyMode.Battle
 			var spots = Formation(npcs.Count);
 			for (int i = 0; i < npcs.Count; i++)
 			{
-				Encounter e = EncounterRegistry.Create(npcs[i]);
+				// A duel: the other player, through the proxy NPC
+				Encounter e = duelWith >= 0 && duelEnc != null ? duelEnc : EncounterRegistry.Create(npcs[i]);
 				if (npcs.Count > 1)
 				{
 					e.Slot = spots[i].center;

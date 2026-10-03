@@ -15,6 +15,8 @@ namespace MercyMode
 	public class MercyMode : Mod
 	{
 		public static ModKeybind JoinBattleKey;
+		/// <summary>Shows or hides the buff list in the battle's panel.</summary>
+		public static ModKeybind BuffsKey;
 		/// <summary>Battle keys by the Deltarune key they stand for (Z confirm, X back/slow, arrows).</summary>
 		public static Dictionary<Keys, ModKeybind> BattleKeys;
 
@@ -46,12 +48,43 @@ namespace MercyMode
 			foreach (string k in AssignedKeys(bind))
 				if (Enum.TryParse(k, out Keys key))
 					list.Add(key);
+			// Only mouse buttons bound: no key at all (not the default letter, which would still work)
+			if (list.Count == 0 && BoundMouse(deltaruneKey).Count > 0)
+				return list;
 			return list.Count > 0 ? list : new[] { deltaruneKey };
+		}
+
+		/// <summary>The mouse buttons (1 left, 2 right, 3 middle, 4-5 side) bound to one of the battle's keys.</summary>
+		public static List<int> BoundMouse(Keys deltaruneKey)
+		{
+			var list = new List<int>();
+			if (BattleKeys == null || !BattleKeys.TryGetValue(deltaruneKey, out ModKeybind bind) || Main.dedServ)
+				return list;
+			foreach (string k in AssignedKeys(bind))
+				if (k.StartsWith("Mouse") && int.TryParse(k.Substring(5), out int n) && n >= 1 && n <= 5)
+					list.Add(n);
+			return list;
+		}
+
+		/// <summary>Whether a mouse button (1-5) is down now, or was last tick.</summary>
+		public static bool MouseDown(int button, bool old = false)
+		{
+			var s = old ? Terraria.GameInput.PlayerInput.MouseInfoOld : Terraria.GameInput.PlayerInput.MouseInfo;
+			var state = button switch
+			{
+				1 => s.LeftButton,
+				2 => s.RightButton,
+				3 => s.MiddleButton,
+				4 => s.XButton1,
+				_ => s.XButton2,
+			};
+			return state == Microsoft.Xna.Framework.Input.ButtonState.Pressed;
 		}
 
 		public override void Load()
 		{
 			JoinBattleKey = KeybindLoader.RegisterKeybind(this, "JoinBattle", "J");
+			BuffsKey = KeybindLoader.RegisterKeybind(this, "BattleBuffs", "B");
 			// The battle screen's keys, rebindable in Settings > Controls
 			BattleKeys = new Dictionary<Keys, ModKeybind>
 			{
@@ -67,6 +100,7 @@ namespace MercyMode
 		public override void Unload()
 		{
 			JoinBattleKey = null;
+			BuffsKey = null;
 			BattleKeys = null;
 		}
 

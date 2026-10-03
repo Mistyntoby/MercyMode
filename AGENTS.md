@@ -32,7 +32,7 @@ dotnet tModLoader.dll -tmlsavedirectory "C:\Users\Nico\tml-lab" -skipselect "nic
 ```
 
 - Headless lab (automated battle tests, no window): `tools/lab/lab.sh test [scenario,...|all]` on Linux or `.\tools\lab\lab.ps1 test` on Windows. It builds, runs scripted battles on a throwaway dedicated server and exits 0 when every scenario passes. It covers battle rules, not drawing or sound. Scenarios live in `Lab/LabSystem.cs`; see MODLOG "Headless lab". `lab.ps1 client` opens the windowed lab below.
-- Apart from the headless lab there is no test project. The verified test loop is to build, update the lab `.tmod` using the copy command above, launch the lab, then use the in-game chat command `/mmbattle kit` and `/mmbattle` (or `/mmbattle npc <id|name>`) to test. `/mmbattle` starts the Eye of Cthulhu battle; use `/mmbattle end` to end a test battle.
+- Apart from the headless lab there is no test project. The verified test loop is to build, update the lab `.tmod` using the copy command above, launch the lab, then use the in-game chat command `/mmbattle kit` and `/mmbattle eye` (or `/mmbattle npc <id|name>`) to test. `/mmbattle` lists the commands; `/mmbattle eye` starts the Eye of Cthulhu battle; use `/mmbattle end` to end a test battle.
 - `MODLOG.md` contains further lab setup, test commands, and recorded manual verification details. The recorded commands assume the named local tModLoader install, lab folder, character, and world still exist.
 
 ## 3. Project structure
@@ -58,6 +58,7 @@ dotnet tModLoader.dll -tmlsavedirectory "C:\Users\Nico\tml-lab" -skipselect "nic
   - `Encounters/Armies.cs` — event armies (goblins, pirates, moons, Martians...).
   - `BattleCommand.cs` — `/mmbattle` developer/test commands.
   - `Net/BattleNet.cs`, `Net/NetSystems.cs`, `BattleSystem.Net.cs` — multiplayer party battles (server round: choose, act in order, shared bullet box; colours; join prompt; outside view).
+  - `Net/DuelNet.cs`, `BattleSystem.Duel.cs` — PvP duels: a PvP hit opens a challenge (join key, 0/2 → 2/2); alternate turns against the other player (drawn live, backed by a stand-in NPC at index 200 that is never synced); the waiting player builds the bullet box attack live from pieces based on their weapons; real death, or SPARE at 100% MERCY.
 - `Deltarune/` — local Deltarune asset discovery/loading, `/drassets`, and GameMaker `data.win` reader.
   - `DeltaruneAssets.cs` — discovers a local install and loads sprites, fonts, sounds, and music with fallbacks.
   - `DataWin.cs` — binary asset reader; its file header records the UndertaleModTool/GPL-3.0 basis.
