@@ -626,6 +626,7 @@ namespace MercyMode.Battle
 			}
 			SendSoul();
 			UpdateDuel();
+			UpdateBuffDrawer();
 		}
 
 		/// <summary>The parts of obj_battlecontroller / obj_tensionbar that count in Deltarune frames.</summary>
@@ -1697,7 +1698,7 @@ namespace MercyMode.Battle
 					DrawBox();
 					DrawTPBar();
 					DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f, top + height + BackgroundBleed);
-					DrawBuffs();
+					DrawBuffs(left - BackgroundBleed, width + BackgroundBleed * 2f);
 				}
 				DrawBuildOverlay();
 				DrawSoulDeath(left - BackgroundBleed, top - BackgroundBleed, width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
