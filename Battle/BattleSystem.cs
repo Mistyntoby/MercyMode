@@ -2276,12 +2276,12 @@ namespace MercyMode.Battle
 				// "(Tired)" right after them when it's TIRED
 				if (!row.Locked && (spareable || e.Tired))
 				{
-					float mx = 80 + DrDraw.Measure(name + " ", DrDraw.BigFont);
+					float mx = 80 + DrDraw.Measure(name + " ", DrDraw.BigFont) + 8;
 					if (spareable)
-						mx += DrawSpareMark(mx, rowY + 2) + 2;
+						mx += DrawSpareMark(mx, rowY + 4) + 2;
 					if (e.Tired)
 					{
-						mx += DrawTiredMark(mx, rowY + 2);
+						mx += DrawTiredMark(mx, rowY + 6);
 						DrDraw.Text("(Tired)", mx, rowY, new Color(128, 128, 128));
 					}
 				}
