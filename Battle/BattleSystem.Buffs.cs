@@ -122,7 +122,13 @@ namespace MercyMode.Battle
 			DrDraw.Rect(x, top, DrawerWidth + 8f, height + 6f, Color.Black * alpha);
 			DrDraw.Outline(x, top, DrawerWidth, height, PanelLine * alpha, 2);
 			DrDraw.Text("BUFFS", x + 6, top + 2, new Color(160, 160, 160) * alpha, DrDraw.SmallFont, 0.6f);
-			DrDraw.Text("[B]", x + DrawerWidth - 26, top + 2, new Color(110, 110, 110) * alpha, DrDraw.SmallFont, 0.55f);
+			// The key that hides it (whatever it's bound to), as a hint
+			string key = MercyMode.AssignedKeys(MercyMode.BuffsKey).FirstOrDefault() ?? "";
+			if (key.Length > 0)
+			{
+				string hint = $"HIDE: {key.ToUpperInvariant()}";
+				DrDraw.Text(hint, x + DrawerWidth - 8 - DrDraw.Measure(hint, DrDraw.SmallFont) * 0.6f, top + 2, new Color(140, 140, 140) * alpha, DrDraw.SmallFont, 0.6f);
+			}
 
 			int visible = VisibleBuffRows;
 			float listTop = top + 16f;
