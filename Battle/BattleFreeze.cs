@@ -133,10 +133,13 @@ namespace MercyMode.Battle
 			// A fighter's following summons wait just behind them in the world (sentries stay where they were built)
 			int type = projectile.type;
 			bool dragonBody = type is Terraria.ID.ProjectileID.StardustDragon2 or Terraria.ID.ProjectileID.StardustDragon3 or Terraria.ID.ProjectileID.StardustDragon4;
-			if (ownSummon && !projectile.sentry && type != Terraria.ID.ProjectileID.AbigailCounter && !dragonBody)
+			if (ownSummon && !projectile.sentry && type is not (Terraria.ID.ProjectileID.AbigailCounter or Terraria.ID.ProjectileID.StormTigerGem) && !dragonBody)
 			{
 				Player owner = Main.player[projectile.owner];
 				Vector2 to = owner.Center + new Vector2(-owner.direction * 30f, -14f);
+				// Walkers (slimes, spiders, the tiger) stand on the ground beside them instead of floating
+				if (projectile.tileCollide)
+					to.Y = owner.Bottom.Y - projectile.height / 2f;
 				Vector2 moved = to - projectile.Center;
 				projectile.Center = to;
 				// The Stardust Dragon's body and tail come along with its head, keeping its shape
@@ -149,7 +152,8 @@ namespace MercyMode.Battle
 				else
 				{
 					projectile.direction = owner.direction;
-					projectile.rotation = 0f; // upright while it waits, not tilted from flying
+					if (!BattleSystem.KeepsRotation(type))
+						projectile.rotation = 0f; // upright while it waits, not tilted from flying
 					projectile.spriteDirection = owner.direction * FacingRight(type);
 				}
 			}
