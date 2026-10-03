@@ -415,3 +415,11 @@ Resolution 640x480. All sizes below in those pixels.
 - 2026-10-02 (0.6): removed the outside-battle ACT/SPARE/Heal Prayer keybinds, the world TP gauge/SOUL overlay (MercyUI) and world grazing; TP is only built in battles now.
 - 2026-10-02 (0.9): allies glide in/out, cheer on a win, walk off left when leaving mid-battle; party pull-in 20 tiles from the starter, join prompt 25 tiles from the battle; buildIgnore keeps notes/scripts out of the .tmod; Workshop description refreshed.
 - 2026-10-02 (0.10): GPL-3.0 LICENSE; battle keys rebindable (MercyMode.BattleKeys, Deltarune keys mapped in Pressed/Held); party pull-in 7 tiles, prompt 8 tiles; won battles go to Stage.Over (no join, no IN BATTLE, no more turns: fixed a stray MISS from a queued FIGHT after the win); YOU WON! auto-continues after 5 s; allies always walk off when they leave first (also when they leave the game); 5 s no-battle grace after entering a world; FIGHT bar bolts/bursts fade with the bar; no waiting text when alone.
+
+## PvP duels (0.59, untested with real clients)
+
+- Start: a PvP hit makes the victim's client send DuelOffer; the server opens a 10 s challenge for both (50 tile range). Both press the Join Battle key (n/2) and the server sends DuelStart; the one who was hit goes first.
+- The server only relays (DuelRelay) between the two and sends DuelEnd when one leaves or disconnects.
+- The opponent is a stand-in NPC at Main.npc[200] (never updated, drawn or synced) so FIGHT, HP bars, MERCY and the glide reuse the enemy code. It is never struck; the hit goes to the other player as real damage (their defense already counted on the attacker's side). FIGHT and pieces do half damage against players.
+- Turns alternate: A chooses and acts, then A dodges while B builds the attack live (click to place, drag to aim, ink meter, 15 s, DONE). Then B chooses, and so on. Pieces come from the builder's weapons (slash, thrust, arrows, spray, orb, minion, bounce, shot) and warn for 36 ticks before firing.
+- Losing is a real death (Terraria's PvP death). SPARE at 100% MERCY ends it peacefully for both.

@@ -25,7 +25,7 @@ namespace MercyMode.Battle
 	/// </summary>
 	public partial class BattleSystem : ModSystem
 	{
-		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting, PartySelect, SummonSelect }
+		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting, PartySelect, SummonSelect, DuelWait, Build }
 		private enum Choice { Fight, Act, Item, Spare, Defend }
 
 		public static BattleSystem Instance => ModContent.GetInstance<BattleSystem>();
@@ -251,7 +251,7 @@ namespace MercyMode.Battle
 			}
 			playerPosition = Player.position;
 			// Multiplayer: from outside, the party lines up on the enemy's left, facing it (only where there's room)
-			if (Net.BattleNet.Online)
+			if (Net.BattleNet.Online && duelWith < 0)
 				LineUpForOutsiders(root);
 			battleLife = Player.statLife;
 			CreatePlayerHeadPortrait();
@@ -331,6 +331,7 @@ namespace MercyMode.Battle
 			npcVelocities.Clear();
 			projVelocities.Clear();
 			Net.BattleNet.LeaveBattle();
+			EndDuel();
 
 			music?.Stop();
 			music?.Dispose();
@@ -423,6 +424,12 @@ namespace MercyMode.Battle
 				SetTarget(null);
 				Bullets.Clear();
 			}
+			// Out of the world mid-duel: nothing of it carries into the next battle (the server ends it on disconnect)
+			duelWith = -1;
+			duelEnc = null;
+			duelLive = null;
+			DuelProxy.active = false;
+			Net.BattleNet.ChallengeWith = -1;
 		}
 
 		private void SetPhase(Phase p)
@@ -461,7 +468,9 @@ namespace MercyMode.Battle
 				then();
 				return;
 			}
-			SetText(messages.Dequeue());
+			string first = messages.Dequeue();
+			DuelShareText(first);
+			SetText(first);
 			SetPhase(Phase.Message);
 		}
 
@@ -523,7 +532,7 @@ namespace MercyMode.Battle
 			foreach (BattleEnemy en in enemies)
 			{
 				// (Our own killing blow marks it in ResolveHit; in a party someone else's lands any time, even mid-bar)
-				if (!en.Out && !en.E.Alive && (Net.BattleNet.Online || !(en == targetEnemy && phase is Phase.FightBar or Phase.FightResult)))
+				if (!en.Out && !en.E.Alive && duelWith < 0 && (Net.BattleNet.Online || !(en == targetEnemy && phase is Phase.FightBar or Phase.FightResult)))
 				{
 					en.Out = true;
 					// Multiplayer: another party member finished it off
@@ -611,8 +620,10 @@ namespace MercyMode.Battle
 				case Phase.Outro: UpdateOutro(); break;
 				case Phase.Death: UpdateSoulDeath(); break;
 				case Phase.Waiting: UpdateWaiting(); break;
+				case Phase.Build: UpdateBuild(); break;
 			}
 			SendSoul();
+			UpdateDuel();
 		}
 
 		/// <summary>The parts of obj_battlecontroller / obj_tensionbar that count in Deltarune frames.</summary>
@@ -787,6 +798,12 @@ namespace MercyMode.Battle
 			// Downed (multiplayer): back up once the HP is above zero; until then the turn is skipped
 			if (downed && !RecoverDowned())
 				return;
+			// A duel: the other player's turn first (we wait, then build their attack)
+			if (duelWith >= 0 && !duelMyTurn)
+			{
+				EnterDuelWait();
+				return;
+			}
 			SetPhase(Phase.Menu);
 		}
 
@@ -1113,6 +1130,11 @@ namespace MercyMode.Battle
 
 		private void DoSpare()
 		{
+			if (duelWith >= 0)
+			{
+				DuelSpare();
+				return;
+			}
 			faceAction = FaceSpare;
 			string spared = $"* {Player.name} spared {encounter.Name}!";
 			if (encounter.Mercy >= 100f)
@@ -1174,7 +1196,9 @@ namespace MercyMode.Battle
 				return;
 			if (messages.Count > 0)
 			{
-				SetText(messages.Dequeue());
+				string next = messages.Dequeue();
+				DuelShareText(next);
+				SetText(next);
 				return;
 			}
 			afterMessages?.Invoke();
@@ -1246,6 +1270,7 @@ namespace MercyMode.Battle
 			AddEffect(new HeartBurst(HeroHeart));
 			disableSlow = Held(Keys.X);
 			SetPhase(Phase.EnemyIntro);
+			DuelBoxOpened();
 		}
 
 		/// <summary>The bullet box: the normal square, opening into <see cref="FullScreenArena"/> for full-screen attacks.</summary>
@@ -1460,7 +1485,7 @@ namespace MercyMode.Battle
 			{
 				b.Grazed = true;
 				tension = b.GrazePoints;
-				if (turnTimer >= GrazeTurnCutMinTicks)
+				if (turnTimer >= GrazeTurnCutMinTicks && duelWith < 0)
 					turnTimer -= b.TimePoints * TicksPerFrame;
 				grazeTimer = GrazeFlashTicks;
 				DeltaruneAssets.PlayIfLoaded("graze");
@@ -1469,7 +1494,7 @@ namespace MercyMode.Battle
 			{
 				// grazepoints / 20 per frame = / 40 per tick
 				tension = b.GrazePoints / GrazeHoldDivisor / TicksPerFrame;
-				if (turnTimer >= GrazeTurnCutMinTicks)
+				if (turnTimer >= GrazeTurnCutMinTicks && duelWith < 0)
 					turnTimer -= b.TimePoints / GrazeHoldDivisor;
 				if (grazeTimer >= 0 && grazeTimer < 4 * TicksPerFrame)
 					grazeTimer = 3 * TicksPerFrame;
@@ -1500,7 +1525,10 @@ namespace MercyMode.Battle
 			if (boxTimer <= 0 && phaseTicks >= 15 * TicksPerFrame)
 			{
 				inv = -1;
-				BeginPlayerTurn();
+				if (duelWith >= 0)
+					DuelBoxClosed();
+				else
+					BeginPlayerTurn();
 			}
 		}
 
@@ -1646,6 +1674,7 @@ namespace MercyMode.Battle
 					DrawTPBar();
 					DrawPanel(left - BackgroundBleed, width + BackgroundBleed * 2f, top + height + BackgroundBleed);
 				}
+				DrawBuildOverlay();
 				DrawSoulDeath(left - BackgroundBleed, top - BackgroundBleed, width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
 			}
 			finally
@@ -1702,6 +1731,11 @@ namespace MercyMode.Battle
 			{
 				enemyOverride.Draw();
 				DrawSlash(enemySnap.Position);
+				return;
+			}
+			if (duelWith >= 0)
+			{
+				DrawDuelOpponent(sb, m);
 				return;
 			}
 			if (encounter != null && encounter.DrawWithTerraria)
@@ -1785,7 +1819,7 @@ namespace MercyMode.Battle
 
 		private void DrawBox()
 		{
-			if (phase != Phase.EnemyIntro && phase != Phase.EnemyTurn && phase != Phase.EnemyOutro)
+			if (phase != Phase.EnemyIntro && phase != Phase.EnemyTurn && phase != Phase.EnemyOutro && phase != Phase.Build)
 				return;
 
 			float t = boxTimer / BoxGrowTicks;
@@ -1945,7 +1979,11 @@ namespace MercyMode.Battle
 				case Phase.Menu:
 				case Phase.Message:
 				case Phase.Waiting:
+				case Phase.DuelWait:
 					DrDraw.Text(text.Substring(0, Math.Min(text.Length, (int)textShown)), 30, textY, Color.White);
+					break;
+				case Phase.Build:
+					DrawBuildPalette();
 					break;
 				case Phase.WeaponSelect:
 					DrawWeaponSelect(textY);

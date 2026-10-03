@@ -22,7 +22,7 @@ namespace MercyMode.Battle.Net
 	/// key near a battle watch until its next bullet box, then fight. Enemy HP needs nothing extra: FIGHT uses
 	/// <see cref="NPC.SimpleStrikeNPC"/>, which Terraria syncs.
 	/// </summary>
-	public static class BattleNet
+	public static partial class BattleNet
 	{
 		private enum Msg : byte
 		{
@@ -51,6 +51,12 @@ namespace MercyMode.Battle.Net
 			PlayerColor, // both ways: a player's party colour choice
 			PartyHp, // c→s→party: my HP in the battle (Terraria's own sync drifts: other clients guess regen)
 			HealAlly, // c→s→target: an ITEM used on a partner
+			DuelOffer, // c→s: a player hit me with PvP on (the challenge prompt opens for both)
+			DuelPress, // c→s: I pressed the challenge key
+			ChallengeState, // s→c: a challenge with this player, n/2 pressed
+			DuelStart, // s→c: the duel begins (opponent, who goes first)
+			DuelRelay, // c→s→opponent: anything in the duel (HP, hits, SOUL, attack pieces, turns, text)
+			DuelEnd, // c→s: I'm out of the duel; s→c: your opponent is
 		}
 
 		/// <summary>Over: every enemy is gone (won); nobody can join and it isn't shown as a battle any more.</summary>
@@ -343,7 +349,8 @@ namespace MercyMode.Battle.Net
 
 		public static void SendAddMercy(NPC npc, float delta)
 		{
-			if (!Online || delta == 0f)
+			// (A duel's opponent is a stand-in NPC the server doesn't have)
+			if (!Online || delta == 0f || npc.whoAmI >= Main.maxNPCs)
 				return;
 			ModPacket p = Packet(Msg.AddMercy);
 			p.Write((short)npc.whoAmI);
@@ -418,6 +425,12 @@ namespace MercyMode.Battle.Net
 			BattleSystem battle = BattleSystem.Instance;
 			switch (msg)
 			{
+				case Msg.ChallengeState:
+				case Msg.DuelStart:
+				case Msg.DuelRelay:
+				case Msg.DuelEnd:
+					HandleDuelClient(msg, r);
+					break;
 				case Msg.JoinBattle:
 				{
 					int id = r.ReadInt32();
@@ -691,6 +704,12 @@ namespace MercyMode.Battle.Net
 				}
 				case Msg.RequestJoin:
 					ServerJoin(from, Main.npc[r.ReadInt16()]);
+					break;
+				case Msg.DuelOffer:
+				case Msg.DuelPress:
+				case Msg.DuelRelay:
+				case Msg.DuelEnd:
+					HandleDuelServer(msg, r, from);
 					break;
 				case Msg.Ready:
 					ServerReady(from, r.ReadInt32(), r.ReadByte(), r.ReadInt32());
@@ -1089,6 +1108,7 @@ namespace MercyMode.Battle.Net
 
 		public static void ServerDisconnect(int player)
 		{
+			ServerDuelDisconnect(player);
 			foreach (NetBattle b in battles.Where(x => x.Players.Contains(player) || x.Pending.Contains(player)).ToList())
 				ServerLeave(player, b.Id);
 		}
@@ -1096,6 +1116,7 @@ namespace MercyMode.Battle.Net
 		/// <summary>Server, every tick: timeouts, players who vanished, battles whose enemies are all gone.</summary>
 		public static void ServerUpdate()
 		{
+			ServerDuelUpdate();
 			// Every few seconds, everyone hears again which NPCs are held (a missed packet let an enemy run loose)
 			bool resend = Main.GameUpdateCount % 300 == 0;
 			foreach (NetBattle b in battles.ToList())

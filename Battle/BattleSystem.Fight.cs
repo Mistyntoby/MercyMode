@@ -629,8 +629,15 @@ namespace MercyMode.Battle
 				HitDirection = Player.direction,
 				DamageType = fightWeapon.Item?.DamageType ?? DamageClass.Melee,
 			};
-			int dealt = target.StrikeNPC(strike);
-			if (Main.netMode != NetmodeID.SinglePlayer)
+			// Against a player: half, like the attack pieces (a full FIGHT turn would one-shot most characters)
+			if (IsDuelProxy(target))
+				strike.Damage = Math.Max(1, (int)(strike.Damage * DuelFightScale));
+			// (The stand-in is never struck: its number is the hit itself, and it makes no sound in the world)
+			int dealt = IsDuelProxy(target) ? strike.Damage : target.StrikeNPC(strike);
+			// A duel: the stand-in for the other player isn't on the server; the hit goes to them instead
+			if (IsDuelProxy(target))
+				DuelSendHit(dealt, hit.Crit);
+			else if (Main.netMode != NetmodeID.SinglePlayer)
 				NetMessage.SendStrikeNPC(target, in strike);
 
 			Sfx("damage");
@@ -1342,8 +1349,12 @@ namespace MercyMode.Battle
 					HitDirection = Player.direction,
 					DamageType = DamageClass.Summon,
 				};
-				int dealt = target.StrikeNPC(strike);
-				if (Main.netMode != NetmodeID.SinglePlayer)
+				if (IsDuelProxy(target))
+					strike.Damage = Math.Max(1, (int)(strike.Damage * DuelFightScale));
+				int dealt = IsDuelProxy(target) ? strike.Damage : target.StrikeNPC(strike);
+				if (IsDuelProxy(target))
+					DuelSendHit(dealt, false);
+				else if (Main.netMode != NetmodeID.SinglePlayer)
 					NetMessage.SendStrikeNPC(target, in strike);
 				EnemyNumber(dealt, HeroDamageColor, -1, yOffset: -18f * (hitsLanded + n), at: spot);
 				Net.BattleNet.SendPartyHit(target, dealt, false);
