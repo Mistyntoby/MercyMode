@@ -1159,9 +1159,7 @@ namespace MercyMode.Battle
 					Net.BattleNet.SendSpare(encounter.Npc);
 				else
 					encounter.Spare();
-				// A regular enemy spared enough times becomes a RECRUIT
-				string recruit = RecordRecruit(who.E);
-				var said = recruit != null ? new List<string> { spared, recruit } : new List<string> { spared };
+				var said = new List<string> { spared };
 				if (LivingEnemies.Count == 0)
 				{
 					battleOver = true;

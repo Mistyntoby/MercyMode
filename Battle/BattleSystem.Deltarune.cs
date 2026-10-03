@@ -14,8 +14,7 @@ namespace MercyMode.Battle
 {
 	/// <summary>
 	/// Deltarune's extras on top of the battle: enemies talk in speech bubbles as their turn starts, TIRED enemies (blue
-	/// names) can be put to sleep with PACIFY, and regular enemies spared enough times become RECRUITS, friendlier
-	/// from then on.
+	/// names) can be put to sleep with PACIFY.
 	/// </summary>
 	public partial class BattleSystem
 	{
@@ -87,8 +86,6 @@ namespace MercyMode.Battle
 			else
 				encounter.Spare();
 			var lines = new List<string> { $"* You cast PACIFY!\n* {name} fell asleep!" };
-			if (RecordRecruit(who.E) is string recruit)
-				lines.Add(recruit);
 			if (LivingEnemies.Count == 0)
 			{
 				battleOver = true;
@@ -98,36 +95,6 @@ namespace MercyMode.Battle
 				lines.Add(squad);
 			RetargetIfNeeded();
 			return lines;
-		}
-
-		// ---- RECRUITS ----
-
-		/// <summary>Spares of the same kind of enemy (variants together) that make it a recruit.</summary>
-		public const int RecruitNeeded = 4;
-
-		/// <summary>One kind of enemy for recruiting: its banner groups the variants (every zombie is one recruit).</summary>
-		private static int RecruitKey(NPC npc)
-		{
-			int banner = npc.BannerID();
-			return banner > 0 ? banner : npc.type;
-		}
-
-		/// <summary>A regular enemy was spared: one more toward recruiting its kind. The line to show, or null.</summary>
-		private string RecordRecruit(Encounter e)
-		{
-			if (e is not EnemyEncounter || duelWith >= 0 || e.Npc == null)
-				return null;
-			var rp = Player.GetModPlayer<RecruitPlayer>();
-			int key = RecruitKey(e.Npc);
-			int now = rp.Add(key);
-			if (now < RecruitNeeded)
-				return $"* {e.Name}: RECRUIT {now}/{RecruitNeeded}";
-			if (now == RecruitNeeded)
-			{
-				Sfx("mercyadd");
-				return $"* {e.Name} became your RECRUIT!";
-			}
-			return null;
 		}
 
 		// ---- speech bubbles ----
@@ -296,35 +263,6 @@ namespace MercyMode.Battle
 					ty += lineH;
 				}
 			}
-		}
-	}
-
-	/// <summary>How many of each kind of enemy this character has spared (for RECRUITS), saved with the character.</summary>
-	public class RecruitPlayer : ModPlayer
-	{
-		private Dictionary<int, int> spared = new();
-
-		public int Count(int key) => spared.TryGetValue(key, out int n) ? n : 0;
-
-		public int Add(int key)
-		{
-			spared[key] = Count(key) + 1;
-			return spared[key];
-		}
-
-		public override void SaveData(TagCompound tag)
-		{
-			tag["recruitKeys"] = spared.Keys.ToList();
-			tag["recruitCounts"] = spared.Values.ToList();
-		}
-
-		public override void LoadData(TagCompound tag)
-		{
-			spared = new Dictionary<int, int>();
-			var keys = tag.GetList<int>("recruitKeys");
-			var counts = tag.GetList<int>("recruitCounts");
-			for (int i = 0; i < Math.Min(keys.Count, counts.Count); i++)
-				spared[keys[i]] = counts[i];
 		}
 	}
 }
