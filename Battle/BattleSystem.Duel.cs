@@ -202,6 +202,9 @@ namespace MercyMode.Battle
 			}
 			if (duelOppHurt >= 0 && ++duelOppHurt > 30)
 				duelOppHurt = -1;
+			SendBeamState();
+			if (!duelOppBeamOn)
+				duelOppBeamCharge = Math.Max(0f, duelOppBeamCharge - 0.04f);
 			// How we stand and what we hold, whenever it changes (the swing itself goes as a Fire)
 			HeroPose pose = heroPose == HeroPose.Attack ? HeroPose.AttackReady : heroPose;
 			int held = heroPose is HeroPose.Item or HeroPose.ItemReady ? usedItemType : WeaponForDisplay()?.type ?? 0;
@@ -367,6 +370,46 @@ namespace MercyMode.Battle
 			if (duelOppAttackAt != 0 && sinceAttack < 30)
 				return (HeroPose.Attack, sinceAttack / (float)TicksPerFrame);
 			return (duelOppPose, (Main.GameUpdateCount - duelOppPoseSince) / (float)TicksPerFrame);
+		}
+
+		/// <summary>The opponent's held beam (their Last Prism in FIGHT), aimed at us.</summary>
+		private bool duelOppBeamOn;
+		private float duelOppBeamCharge;
+		private int duelOppBeamItem;
+		private bool duelSentBeamOn;
+		private uint duelOppBeamSeen;
+
+		private void SendBeamState()
+		{
+			if (duelWith < 0 || duelOver)
+				return;
+			bool on = beamMode && beamOn && phase == Phase.FightBar;
+			if (on == duelSentBeamOn && (!on || time % 8 != 0))
+				return;
+			duelSentBeamOn = on;
+			BattleNet.SendDuel(BattleNet.DuelKind.BeamState, w =>
+			{
+				w.Write(on);
+				w.Write(beamCharge);
+				w.Write(fightWeapon?.Item?.type ?? 0);
+			});
+		}
+
+		/// <summary>Their beam, from their prism to us.</summary>
+		private void DrawDuelOppBeam()
+		{
+			if (duelWith < 0)
+				return;
+			// A lost "off" message can't leave it on for good
+			if (duelOppBeamOn && Main.GameUpdateCount - duelOppBeamSeen > 40)
+				duelOppBeamOn = false;
+			if (!duelOppBeamOn)
+				return;
+			bool prism = duelOppBeamItem == ItemID.LastPrism;
+			Vector2 to = HeroFeetNow + new Vector2(0f, -40f);
+			WeaponBeam.Draw(DuelOppHand, to, 0.5f, prism, 1f, 0.45f + 0.75f * duelOppBeamCharge, 1.6f - 1.3f * duelOppBeamCharge);
+			if (time % 3 == 0)
+				Sparks.Burst(this, to + Main.rand.NextVector2Circular(10f, 10f), 2, prism ? WeaponBeam.Rainbow(Main.rand.NextFloat()) : new Color(90, 220, 255), 2f);
 		}
 
 		/// <summary>Drawing the duel opponent mid-flinch (their hurt frame).</summary>
@@ -560,6 +603,20 @@ namespace MercyMode.Battle
 						attack.Soul = mode;
 					AddEffect(new Shockwave(SoulCenter, mode.Color(), 30f));
 					Sfx("boost");
+					break;
+				}
+				case BattleNet.DuelKind.BeamState:
+				{
+					duelOppBeamOn = r.ReadBoolean();
+					duelOppBeamCharge = r.ReadSingle();
+					duelOppBeamItem = r.ReadInt32();
+					duelOppBeamSeen = Main.GameUpdateCount;
+					if (duelOppBeamOn)
+					{
+						Net.BattleNet.AllyWeapons[duelWith] = duelOppBeamItem;
+						if (time % 12 == 0)
+							AttackSfx.Vanilla(SoundID.Item15 with { Volume = 0.3f + 0.2f * duelOppBeamCharge, Pitch = -0.2f + 0.5f * duelOppBeamCharge });
+					}
 					break;
 				}
 				case BattleNet.DuelKind.Hurt:
@@ -792,7 +849,10 @@ namespace MercyMode.Battle
 		/// <summary>How far a beam piece reaches.</summary>
 		private const float BeamLength = 700f;
 
-		private static Color PieceColor(DuelPiece pc) => pc.Kind switch
+		private static Color PieceColor(DuelPiece pc) => KindColor(pc.Kind);
+
+		/// <summary>The colour of a kind of weapon's sparks (the same in battles against monsters and in duels).</summary>
+		private static Color KindColor(PieceKind kind) => kind switch
 		{
 			PieceKind.Arrow => new Color(220, 190, 140),
 			PieceKind.Spray => new Color(255, 230, 120),

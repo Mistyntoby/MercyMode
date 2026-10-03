@@ -1678,6 +1678,8 @@ namespace MercyMode.Battle
 				DrawMinions(sb, m);
 				DrawHero(sb, m);
 				DrawSwingSlash();
+				DrawFightBeam();
+				DrawDuelOppBeam();
 				DrawEffects();
 				if (arenaBlend > 0f)
 				{
@@ -2273,15 +2275,17 @@ namespace MercyMode.Battle
 			DrDraw.Outline(x + 79, y + 1, FightBoxWidth + 1, 35, blue);
 			// Guns have no line to hit, so no press spot
 			// In a party the press spot takes our colour too, like the others' rows
-			if (!gunMode && !DrDraw.Sprite("spr_pressspot", 0, x + 80, y, Net.BattleNet.InParty ? KrisCyan : Color.White, 1f, 0f, alpha))
+			if (!gunMode && !beamMode && !DrDraw.Sprite("spr_pressspot", 0, x + 80, y, Net.BattleNet.InParty ? KrisCyan : Color.White, 1f, 0f, alpha))
 				DrDraw.Rect(x + 80, y, 10, 38, new Color(0, 0, 255) * alpha);
 
 			if (gunMode)
 				DrawGunBar(x, y, alpha);
+			if (beamMode)
+				DrawBeamBar(x, y, alpha);
 			// The ghosts the bolts left behind (they stay where they were left and fade)
 			foreach (BoltGhost g in boltGhosts)
 			{
-				if (gunMode)
+				if (gunMode || beamMode)
 					break;
 				float gx = x + 80 + g.Ahead * BoltSpeed;
 				if (gx > x + 80 + FightBoxWidth + 4)
@@ -2292,7 +2296,7 @@ namespace MercyMode.Battle
 			}
 			foreach (FightBolt bolt in bolts)
 			{
-				if (gunMode)
+				if (gunMode || beamMode)
 					break;
 				if (!bolt.Alive)
 					continue;
