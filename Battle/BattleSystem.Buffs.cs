@@ -123,7 +123,8 @@ namespace MercyMode.Battle
 			DrDraw.Outline(x, top, DrawerWidth, height, PanelLine * alpha, 2);
 			DrDraw.Text("BUFFS", x + 6, top + 2, new Color(160, 160, 160) * alpha, DrDraw.SmallFont, 0.6f);
 			// The key that hides it (whatever it's bound to), as a hint
-			string key = MercyMode.AssignedKeys(MercyMode.BuffsKey).FirstOrDefault() ?? "";
+			// (Never rebound: Terraria lists no keys for it yet, but B is what works)
+			string key = MercyMode.AssignedKeys(MercyMode.BuffsKey).FirstOrDefault() ?? "B";
 			if (key.Length > 0)
 			{
 				string hint = $"HIDE: {key.ToUpperInvariant()}";
