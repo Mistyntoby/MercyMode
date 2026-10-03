@@ -1621,9 +1621,10 @@ namespace MercyMode.Battle
 					width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
 				DrawEnemy(sb, m);
 				DrawAllies(sb, m);
+				// Summons behind the player
+				DrawMinions(sb, m);
 				DrawHero(sb, m);
 				DrawSwingSlash();
-				DrawMinions();
 				DrawEffects();
 				if (arenaBlend > 0f)
 				{

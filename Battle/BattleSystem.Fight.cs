@@ -825,12 +825,26 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>The player's minions, one of each kind: they join in after a FIGHT that landed.</summary>
+		/// <summary>
+		/// Anything of the player's that fights for them: minions, sentries, and summons Terraria doesn't flag as minions
+		/// (Abigail). Also used to freeze them in the world during the battle.
+		/// </summary>
+		public static bool IsSummonOf(Projectile p, int owner) => p.active && p.owner == owner && !p.hostile
+			&& (p.minion || p.sentry || Main.projPet[p.type] && p.damage > 0 || p.DamageType.CountsAsClass(DamageClass.Summon) && !ProjectileID.Sets.IsAWhip[p.type]);
+
+		/// <summary>Bookkeeping projectiles that stand for a summon but aren't it (Abigail's flower counter), and dragon tails.</summary>
+		private static readonly HashSet<int> NotAttackers = new()
+		{
+			ProjectileID.AbigailCounter, ProjectileID.StardustDragon2, ProjectileID.StardustDragon3, ProjectileID.StardustDragon4,
+		};
+
+		/// <summary>The player's minions, one of each kind that attacks: they join in after a FIGHT that landed.</summary>
 		private List<Projectile> Minions()
 		{
 			var seen = new HashSet<int>();
 			var list = new List<Projectile>();
 			foreach (Projectile p in Main.ActiveProjectiles)
-				if (p.owner == Player.whoAmI && p.minion && p.damage > 0 && seen.Add(p.type))
+				if (IsSummonOf(p, Player.whoAmI) && p.damage > 0 && !NotAttackers.Contains(p.type) && seen.Add(p.type))
 					list.Add(p);
 			return list;
 		}
@@ -848,7 +862,9 @@ namespace MercyMode.Battle
 				int count = Main.projectile.Count(p => p.active && p.owner == Player.whoAmI && p.type == m.type);
 				NPC target = encounter.TargetableParts && Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : encounter.StrikeTarget();
 				Vector2 spot = PartSpot(target);
-				AddEffect(new ShotProjectile(m.type, MinionSpot(n), spot, 12f));
+				// The hit lands on the enemy (the summon itself stays drawn beside the player)
+				Sparks.Burst(this, spot + Main.rand.NextVector2Circular(12f, 12f), 8, new Color(180, 140, 255), 2.6f);
+				AddEffect(new Shockwave(spot, new Color(180, 140, 255), 26f));
 				var strike = new NPC.HitInfo
 				{
 					Damage = AfterDefense(Math.Max(1, (int)Math.Round(m.damage * count * DamageScale)), target),
@@ -879,21 +895,60 @@ namespace MercyMode.Battle
 		private Vector2 MinionSpot(int n) => HeroFeetNow + new Vector2(70f + n * 18f, -110f + (n % 2) * 26f + (float)Math.Sin((time + n * 30) / 18f) * 4f);
 
 		/// <summary>The player's minions floating beside them in the battle.</summary>
-		private void DrawMinions()
+		/// <summary>True while the battle screen draws the player's summons (their world copies are hidden otherwise).</summary>
+		public static bool DrawingSummons;
+
+		/// <summary>
+		/// The player's summons on the battle screen, drawn by Terraria itself (their own frames, colours and segments),
+		/// placed around the player as they are in the world, at the battle's scale.
+		/// </summary>
+		private void DrawMinions(SpriteBatch sb, Matrix m)
 		{
 			if (Player.dead)
 				return;
-			int n = 0;
-			foreach (Projectile m in Minions())
+			var mine = Main.projectile.Where(p => IsSummonOf(p, Player.whoAmI)).ToList();
+			if (mine.Count == 0)
+				return;
+			float scale = HeroScaleNow;
+			Vector2 anchorWorld = Player.Bottom;
+			// A little behind the player, so a summon hovering on them doesn't cover them
+			Vector2 feet = HeroFeetNow + new Vector2(-26f, -6f) * (scale / HeroScale);
+			sb.End();
+			sb.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, m);
+			DrawingSummons = true;
+			DrawingHero = true; // full-bright, like the player (Lighting hook)
+			try
 			{
-				Main.instance.LoadProjectile(m.type);
-				Texture2D tex = TextureAssets.Projectile[m.type].Value;
-				int frames = Math.Max(1, Main.projFrames[m.type]);
-				int frame = (time / 8) % frames;
-				var src = new Rectangle(0, tex.Height / frames * frame, tex.Width, tex.Height / frames);
-				Vector2 at = Vector2.Lerp(WorldToBattle(m.Center), MinionSpot(n), FlyProgress());
-				DrDraw.Sb.Draw(tex, at, src, Color.White * FlyProgress(), 0f, src.Size() / 2f, HeroScaleNow * 0.8f, SpriteEffects.None, 0f);
-				n++;
+				foreach (Projectile p in mine)
+				{
+					// Where it is relative to the player in the world, scaled onto the battle screen
+					Vector2 shift = Main.screenPosition + feet + (p.Center - anchorWorld) * scale - p.Center;
+					Vector2 oldPosition = p.position;
+					float oldScale = p.scale;
+					var oldTrail = (Vector2[])p.oldPos.Clone();
+					p.position += shift;
+					for (int i = 0; i < p.oldPos.Length; i++)
+						if (p.oldPos[i] != Vector2.Zero)
+							p.oldPos[i] += shift;
+					p.scale *= scale;
+					try
+					{
+						Main.instance.DrawProj(p.whoAmI);
+					}
+					finally
+					{
+						p.position = oldPosition;
+						p.scale = oldScale;
+						Array.Copy(oldTrail, p.oldPos, oldTrail.Length);
+					}
+				}
+			}
+			finally
+			{
+				DrawingSummons = false;
+				DrawingHero = false;
+				sb.End();
+				sb.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, m);
 			}
 		}
 
