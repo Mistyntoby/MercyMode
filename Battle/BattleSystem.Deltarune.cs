@@ -115,8 +115,18 @@ namespace MercyMode.Battle
 				float alpha = age > life - 15 ? (life - age) / 15f : 1f;
 				int chars = Math.Min(en.Bubble.Length, age / 2 + 1);
 
-				// Wrapped to the bubble's width
-				const float scale = 0.6f, maxW = 120f, lineH = 12f;
+				// Wrapped to the bubble's width (Deltarune's bubbles: the dialogue font at full size, black on white)
+				const float scale = 1f, lineH = 17f, pad = 8f, tail = 10f;
+				float half = 24f;
+				WithEnemy(en, () =>
+				{
+					float sc = EnemyScaleNow(out _, out Rectangle frame);
+					if (frame.Width > 0)
+						half = MathHelper.Clamp(frame.Width * sc / 2f, 16f, 70f);
+				});
+				// As wide as fits between the bullet box and the enemy (narrower, taller bubbles when it's tight)
+				float room = at.X - half - 8f - tail - (Box.Right + 8f);
+				float maxW = MathHelper.Clamp(room - pad * 2f, 90f, 190f);
 				var lines = new List<string>();
 				string line = "";
 				foreach (string word in en.Bubble.Split(' '))
@@ -131,22 +141,27 @@ namespace MercyMode.Battle
 						line = tryLine;
 				}
 				lines.Add(line);
-				float w = Math.Min(maxW, lines.Max(l => DrDraw.Measure(l, DrDraw.SmallFont) * scale)) + 12f;
-				float h = lines.Count * lineH + 8f;
-				float bx = Math.Max(4f, at.X - 46f - w), by = Math.Max(4f, at.Y - 44f - h / 2f);
+				float w = Math.Min(maxW, lines.Max(l => DrDraw.Measure(l, DrDraw.SmallFont) * scale)) + pad * 2f;
+				float h = lines.Count * lineH + pad * 1.5f;
+				// Beside the enemy at its own height, its tail pointing at it (its left edge, from how big it's drawn)
+				float bx = Math.Max(4f, at.X - half - 8f - tail - w), by = Math.Clamp(at.Y - h / 2f, 4f, ScreenHeight - PanelHeight - h - 4f);
 				DrDraw.Rect(bx, by, w, h, Color.White * alpha);
-				// The tail, pointing at the enemy
-				for (int i = 0; i < 6; i++)
-					DrDraw.Rect(bx + w + i, by + h / 2f - 3f + i * 0.5f, 1, 6f - i, Color.White * alpha);
+				// The tail: a white triangle from the bubble's right side toward the enemy
+				float cy = Math.Clamp(at.Y, by + 8f, by + h - 8f);
+				for (int i = 0; i < (int)tail; i++)
+				{
+					float half2 = 6f * (1f - i / tail);
+					DrDraw.Rect(bx + w + i, cy - half2, 1, half2 * 2f, Color.White * alpha);
+				}
 				// The text, typed out so far (whole lines at a time once a line is done)
 				int left = chars;
-				float ty = by + 4f;
+				float ty = by + pad * 0.75f;
 				foreach (string l in lines)
 				{
 					if (left <= 0)
 						break;
 					string part = l.Length <= left ? l : l.Substring(0, left);
-					DrDraw.Text(part, bx + 6f, ty, Color.Black * alpha, DrDraw.SmallFont, scale);
+					DrDraw.Text(part, bx + pad, ty, Color.Black * alpha, DrDraw.SmallFont, scale);
 					left -= l.Length + 1;
 					ty += lineH;
 				}
