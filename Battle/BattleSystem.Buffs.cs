@@ -66,7 +66,7 @@ namespace MercyMode.Battle
 
 			if (Main.dedServ || Main.drawingPlayerChat)
 				return;
-			if (MercyMode.BuffsKey?.JustPressed == true)
+			if (BuffsKeyPressed())
 			{
 				buffsWanted = !buffsWanted;
 				Sfx("menumove");
@@ -176,6 +176,30 @@ namespace MercyMode.Battle
 				DrDraw.Rect(x + DrawerWidth - 7, trackTop, 3, trackH, Color.White * (0.12f * alpha));
 				DrDraw.Rect(x + DrawerWidth - 7, thumbY, 3, thumbH, Color.White * (0.7f * alpha));
 			}
+		}
+
+		/// <summary>
+		/// The show/hide key, read straight from the keyboard (or mouse): the battle locks the player's controls, and
+		/// with them Terraria's own keybind triggers.
+		/// </summary>
+		private static bool BuffsKeyPressed()
+		{
+			if (Main.editSign || Main.editChest || Main.gameMenu || !Main.hasFocus)
+				return false;
+			var keys = MercyMode.AssignedKeys(MercyMode.BuffsKey);
+			if (keys.Count == 0)
+				keys.Add("B");
+			foreach (string k in keys)
+			{
+				if (Enum.TryParse(k, out Microsoft.Xna.Framework.Input.Keys key))
+				{
+					if (Main.keyState.IsKeyDown(key) && !Main.oldKeyState.IsKeyDown(key))
+						return true;
+				}
+				else if (k.StartsWith("Mouse") && int.TryParse(k.Substring(5), out int b) && MercyMode.MouseDown(b) && !MercyMode.MouseDown(b, old: true))
+					return true;
+			}
+			return false;
 		}
 
 		private static string FormatBuffTime(int ticks)
