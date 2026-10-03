@@ -191,8 +191,57 @@ namespace MercyMode.Battle.Net
 		}
 
 		/// <summary>The bullet box seen from outside: sparks from the enemies at the fighters.</summary>
+		/// <summary>Where each lunging enemy really stands (put back after each lunge).</summary>
+		private static readonly Dictionary<int, Vector2> lungeBase = new();
+		private const int LungeEvery = 80, LungeTicks = 18;
+
+		/// <summary>
+		/// The enemy's attacks, seen from outside: during the bullet box it lunges at the nearest fighter now and then.
+		/// Only this screen's picture of it moves; the server keeps it where it is.
+		/// </summary>
+		private static void UpdateLunges()
+		{
+			var lunging = new HashSet<int>();
+			foreach (var (id, wb) in BattleNet.WorldBattles)
+			{
+				if (id == BattleNet.MyBattle || wb.Stage != BattleNet.Stage.EnemyTurn || Main.GameUpdateCount - wb.StageTick > 60 * 15)
+					continue;
+				var fighters = wb.Players.Where(i => i >= 0 && i < Main.maxPlayers && Main.player[i].active).Select(i => Main.player[i]).ToList();
+				foreach (NPC n in BattleNet.NpcsOf(id))
+				{
+					if (fighters.Count == 0)
+						break;
+					if (!lungeBase.TryGetValue(n.whoAmI, out Vector2 home))
+						lungeBase[n.whoAmI] = home = n.position;
+					lunging.Add(n.whoAmI);
+					Player target = fighters.OrderBy(pl => pl.DistanceSQ(n.Center)).First();
+					int t = (int)((Main.GameUpdateCount + n.whoAmI * 13) % LungeEvery);
+					float k = t < LungeTicks ? (float)Math.Sin(t / (float)LungeTicks * Math.PI) : 0f;
+					Vector2 toward = Vector2.Normalize(target.Center - n.Center + new Vector2(0.01f, 0f));
+					n.position = home + toward * (k * 14f);
+					n.direction = n.spriteDirection = target.Center.X < n.Center.X ? -1 : 1;
+					// The hit: a burst at the far end of the lunge
+					if (t == LungeTicks / 2)
+						for (int i = 0; i < 6; i++)
+						{
+							Dust d = Dust.NewDustDirect(n.Center + toward * (n.width / 2f), 4, 4, DustID.RainbowMk2, 0f, 0f, 0, Color.White, 1.2f);
+							d.noGravity = true;
+							d.velocity = toward.RotatedByRandom(0.6f) * 3f;
+						}
+				}
+			}
+			// Done lunging (turn over, battle over): back where they really are
+			foreach (int i in lungeBase.Keys.Where(k => !lunging.Contains(k)).ToList())
+			{
+				if (Main.npc[i].active)
+					Main.npc[i].position = lungeBase[i];
+				lungeBase.Remove(i);
+			}
+		}
+
 		public static void Update()
 		{
+			UpdateLunges();
 			foreach (var (id, wb) in BattleNet.WorldBattles)
 			{
 				if (id == BattleNet.MyBattle || wb.Stage != BattleNet.Stage.EnemyTurn || Main.GameUpdateCount - wb.StageTick > 60 * 15)
