@@ -32,7 +32,7 @@ dotnet tModLoader.dll -tmlsavedirectory "C:\Users\Nico\tml-lab" -skipselect "nic
 ```
 
 - Headless lab (automated battle tests, no window): `tools/lab/lab.sh test [scenario,...|all]` on Linux or `.\tools\lab\lab.ps1 test` on Windows. It builds, runs scripted battles on a throwaway dedicated server and exits 0 when every scenario passes. It covers battle rules, not drawing or sound. Scenarios live in `Lab/LabSystem.cs`; see MODLOG "Headless lab". `lab.ps1 client` opens the windowed lab below.
-- Apart from the headless lab there is no test project. The verified test loop is to build, update the lab `.tmod` using the copy command above, launch the lab, then use the in-game chat command `/mmbattle kit` and `/mmbattle` (or `/mmbattle npc <id|name>`) to test. `/mmbattle` starts the Eye of Cthulhu battle; use `/mmbattle end` to end a test battle.
+- Apart from the headless lab there is no test project. The verified test loop is to build, update the lab `.tmod` using the copy command above, launch the lab, then use the in-game chat command `/mmbattle kit` and `/mmbattle eye` (or `/mmbattle npc <id|name>`) to test. `/mmbattle` lists the commands; `/mmbattle eye` starts the Eye of Cthulhu battle; use `/mmbattle end` to end a test battle.
 - `MODLOG.md` contains further lab setup, test commands, and recorded manual verification details. The recorded commands assume the named local tModLoader install, lab folder, character, and world still exist.
 
 ## 3. Project structure
