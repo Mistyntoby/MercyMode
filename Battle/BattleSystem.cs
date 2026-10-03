@@ -25,7 +25,7 @@ namespace MercyMode.Battle
 	/// </summary>
 	public partial class BattleSystem : ModSystem
 	{
-		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting, PartySelect }
+		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting, PartySelect, SummonSelect }
 		private enum Choice { Fight, Act, Item, Spare, Defend }
 
 		public static BattleSystem Instance => ModContent.GetInstance<BattleSystem>();
@@ -600,6 +600,7 @@ namespace MercyMode.Battle
 				case Phase.ActSelect: UpdateActSelect(); break;
 				case Phase.ItemSelect: UpdateItemSelect(); break;
 				case Phase.PartySelect: UpdatePartySelect(); break;
+				case Phase.SummonSelect: UpdateSummonSelect(); break;
 				case Phase.FightBar: UpdateFightBar(); break;
 				case Phase.FightResult: UpdateFightResult(); break;
 				case Phase.Message: UpdateMessage(); break;
@@ -640,7 +641,7 @@ namespace MercyMode.Battle
 			if (Math.Abs(panelTarget - panel) < 0.75f)
 				panel = panelTarget;
 			panel = MathHelper.Clamp(panel, 0f, PanelHeight);
-			float liftTarget = phase is Phase.Menu or Phase.WeaponSelect or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect or Phase.PartySelect ? 32f : 0f;
+			float liftTarget = phase is Phase.Menu or Phase.WeaponSelect or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect or Phase.PartySelect or Phase.SummonSelect ? 32f : 0f;
 			partyLift = MathHelper.Lerp(partyLift, liftTarget, EasePerTick(liftTarget == 0f ? 0.68f : 0.5f));
 			if (Math.Abs(liftTarget - partyLift) < 0.5f)
 				partyLift = liftTarget;
@@ -1956,6 +1957,10 @@ namespace MercyMode.Battle
 				case Phase.PartySelect:
 					DrawHealTargets(textY);
 					break;
+				case Phase.SummonSelect:
+					DrawItemList(textY, SummonLabels());
+					DrDraw.Text("Who joins\nthe FIGHT?", 470, textY, new Color(128, 128, 128), DrDraw.BigFont, 0.8f);
+					break;
 				case Phase.ItemSelect:
 					var items = HealingItems();
 					DrawItemList(textY, items.Select(i => $"{i.name} x{i.count}").ToList());
@@ -1975,7 +1980,7 @@ namespace MercyMode.Battle
 		private void DrawPartyBox()
 		{
 			Rectangle r = PartyBox;
-			bool choosing = phase == Phase.Menu || phase == Phase.WeaponSelect || phase == Phase.EnemySelect || phase == Phase.ActSelect || phase == Phase.ItemSelect || phase == Phase.PartySelect;
+			bool choosing = phase == Phase.Menu || phase == Phase.WeaponSelect || phase == Phase.EnemySelect || phase == Phase.ActSelect || phase == Phase.ItemSelect || phase == Phase.PartySelect || phase == Phase.SummonSelect;
 			float buttonsY = ScreenHeight - panel + 5f;
 			float selectionAlpha = choosing ? 1f : MathHelper.Clamp(partyLift / 32f, 0f, 1f);
 

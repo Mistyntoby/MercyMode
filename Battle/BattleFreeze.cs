@@ -107,6 +107,13 @@ namespace MercyMode.Battle
 				return true;
 			projectile.velocity = Vector2.Zero;
 			projectile.timeLeft++; // don't expire while frozen
+			// A fighter's following summons wait just behind them in the world (sentries stay where they were built)
+			if (ownSummon && !projectile.sentry && projectile.type != Terraria.ID.ProjectileID.AbigailCounter)
+			{
+				Player owner = Main.player[projectile.owner];
+				projectile.Center = owner.Center + new Vector2(-owner.direction * 30f, -14f);
+				projectile.direction = projectile.spriteDirection = owner.direction;
+			}
 			return false;
 		}
 

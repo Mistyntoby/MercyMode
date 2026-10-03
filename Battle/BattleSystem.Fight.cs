@@ -217,6 +217,12 @@ namespace MercyMode.Battle
 			// Weapons on the hotbar get equipped for real
 			if (pick.Slot >= 0 && pick.Slot < 10)
 				Player.selectedItem = pick.Slot;
+			// Two or more kinds of summons out: which one fights alongside
+			if (Minions().Count >= 2)
+			{
+				OpenSummonSelect();
+				return;
+			}
 			OpenEnemySelect();
 		}
 
@@ -351,6 +357,7 @@ namespace MercyMode.Battle
 			gunTimer = GunWindowTicks;
 			gunCooldown = 0;
 			gunShots = 0;
+			summonPendingTicks = -1;
 			gunShotTime = -100;
 			if (gunMode)
 			{
@@ -448,6 +455,7 @@ namespace MercyMode.Battle
 
 		private void UpdateFightBar()
 		{
+			TickSummonAttack();
 			if (gunMode)
 			{
 				UpdateGunBar();
@@ -630,6 +638,9 @@ namespace MercyMode.Battle
 			EnemyNumber(dealt > 0 ? dealt : 0, hit.Crit ? HeroCritColor : HeroDamageColor, dealt > 0 ? -1 : DamageNumber.MissFrame,
 				yOffset: -18f * hitsLanded, at: spot);
 			hitsLanded++;
+			// The summon joins in right after the first hit lands (not on ACT, ITEM, SPARE or DEFEND)
+			if (hitsLanded == 1 && summonPendingTicks < 0 && ChosenSummon() != null)
+				summonPendingTicks = 8 * TicksPerFrame;
 			Net.BattleNet.SendPartyHit(target, dealt, hit.Crit);
 
 			if (encounter.TargetableParts && (!target.active || target.life <= 0 || !encounter.Members().Contains(target)))
@@ -696,9 +707,7 @@ namespace MercyMode.Battle
 		private void UpdateFightResult()
 		{
 			FadeBoltGhosts();
-			// The player's minions join in once their FIGHT landed (not after ACT, ITEM, SPARE or DEFEND)
-			if (phaseTicks == 6 * TicksPerFrame && hitsLanded > 0)
-				SummonAttack();
+			TickSummonAttack();
 			for (int i = boltBursts.Count - 1; i >= 0; i--)
 				if (--boltBursts[i].Timer <= 0)
 					boltBursts.RemoveAt(i);
@@ -844,18 +853,96 @@ namespace MercyMode.Battle
 			var seen = new HashSet<int>();
 			var list = new List<Projectile>();
 			foreach (Projectile p in Main.ActiveProjectiles)
-				if (IsSummonOf(p, Player.whoAmI) && p.damage > 0 && !NotAttackers.Contains(p.type) && seen.Add(p.type))
+				if (IsSummonOf(p, Player.whoAmI) && SummonDamage(p) > 0 && !NotAttackers.Contains(p.type) && seen.Add(p.type))
 					list.Add(p);
 			return list;
 		}
 
+		/// <summary>
+		/// A summon's damage: its own, the original before bonuses, or (Abigail) her flower counter's, which carries it.
+		/// </summary>
+		private int SummonDamage(Projectile p)
+		{
+			int d = Math.Max(p.damage, p.originalDamage);
+			if (p.type == ProjectileID.AbigailMinion)
+				foreach (Projectile c in Main.ActiveProjectiles)
+					if (c.owner == p.owner && c.type == ProjectileID.AbigailCounter)
+						d = Math.Max(d, Math.Max(c.damage, c.originalDamage));
+			if (d <= 0 && p.type == ProjectileID.AbigailMinion)
+				d = 10;
+			return d;
+		}
+
+		/// <summary>The summon kind picked for this FIGHT (projectile type; 0 = none), and when it attacks.</summary>
+		private int chosenSummon = -1;
+		private int summonPendingTicks = -1;
+		private int summonLungeTime = -1000;
+
+		/// <summary>The summon that fights this turn: the one picked, or the only kind there is.</summary>
+		private Projectile ChosenSummon()
+		{
+			var kinds = Minions();
+			if (kinds.Count == 0 || chosenSummon == 0)
+				return null;
+			return kinds.FirstOrDefault(k => k.type == chosenSummon) ?? kinds[0];
+		}
+
+		// ---- picking the summon (after the weapon, when there are two or more kinds) ----
+
+		private void OpenSummonSelect()
+		{
+			var kinds = Minions();
+			listIndex = Math.Max(0, kinds.FindIndex(k => k.type == chosenSummon));
+			if (chosenSummon == 0)
+				listIndex = kinds.Count;
+			SetPhase(Phase.SummonSelect);
+		}
+
+		private List<string> SummonLabels()
+		{
+			var labels = Minions().Select(k => $"{Lang.GetProjectileName(k.type).Value}  ({SummonDamage(k)})").ToList();
+			labels.Add("No summon");
+			return labels;
+		}
+
+		private void UpdateSummonSelect()
+		{
+			var kinds = Minions();
+			int count = kinds.Count + 1;
+			int before = listIndex;
+			if (Pressed(Microsoft.Xna.Framework.Input.Keys.Down) && listIndex + 1 < count)
+				listIndex++;
+			if (Pressed(Microsoft.Xna.Framework.Input.Keys.Up) && listIndex > 0)
+				listIndex--;
+			listIndex = Math.Clamp(listIndex, 0, count - 1);
+			if (listIndex != before)
+				Sfx("menumove");
+			if (Cancel)
+			{
+				OpenWeaponSelect();
+				return;
+			}
+			if (!Confirm)
+				return;
+			Sfx("select");
+			chosenSummon = listIndex < kinds.Count ? kinds[listIndex].type : 0;
+			OpenEnemySelect();
+		}
+
 		/// <summary>After the player's hits: every kind of minion they have out flies at the target and hits once.</summary>
+		private void TickSummonAttack()
+		{
+			if (summonPendingTicks >= 0 && --summonPendingTicks < 0)
+				SummonAttack();
+		}
+
 		private void SummonAttack()
 		{
-			if (!encounter.Alive)
+			if (!encounter.Alive || ChosenSummon() is not Projectile chosen)
 				return;
+			summonLungeTime = time;
 			int n = 0;
-			foreach (Projectile m in Minions())
+			foreach (Projectile m in new[] { chosen })
 			{
 				if (!encounter.Alive)
 					break;
@@ -867,7 +954,7 @@ namespace MercyMode.Battle
 				AddEffect(new Shockwave(spot, new Color(180, 140, 255), 26f));
 				var strike = new NPC.HitInfo
 				{
-					Damage = AfterDefense(Math.Max(1, (int)Math.Round(m.damage * count * DamageScale)), target),
+					Damage = AfterDefense(Math.Max(1, (int)Math.Round(SummonDamage(m) * Math.Max(1, count) * DamageScale)), target),
 					HitDirection = Player.direction,
 					DamageType = DamageClass.Summon,
 				};
@@ -927,7 +1014,7 @@ namespace MercyMode.Battle
 						continue;
 					if (p.type == ProjectileID.AbigailMinion)
 					{
-						DrawGhost(p, feet + new Vector2(-18f - abigail++ * 22f, -50f) * (scale / HeroScale), scale);
+						DrawGhost(p, feet + new Vector2(6f + abigail++ * 22f, -50f) * (scale / HeroScale), scale);
 						continue;
 					}
 					// Where it is relative to the player in the world, scaled onto the battle screen (kept close: one far
@@ -978,13 +1065,19 @@ namespace MercyMode.Battle
 			// Idle: just the first frames (the rest are her attack)
 			int frame = (time / 9) % Math.Min(4, rows);
 			at.Y += (float)Math.Sin(time / 20f) * 3f;
+			// Her attack: a quick lunge at the enemy and back
+			float lunge = time - summonLungeTime < 24 ? (float)Math.Sin((time - summonLungeTime) / 24f * Math.PI) : 0f;
+			if (lunge > 0f && encounter != null)
+				at = Vector2.Lerp(at, encounter.ScreenCenter, lunge * 0.85f);
 			float a = 0.9f * FlyProgress();
 			var body = new Rectangle(0, h * frame, w, h);
-			DrDraw.Sb.Draw(tex, at, body, Color.White * a, 0f, body.Size() / 2f, scale, SpriteEffects.None, 0f);
+			// Pale and faintly blue, like her glow in the world
+			DrDraw.Sb.Draw(tex, at, body, new Color(215, 230, 255) * a, 0f, body.Size() / 2f, scale, SpriteEffects.None, 0f);
 			// Her flower, at its level (one per Abigail's Flower summoned, up to the third), over her
 			int level = Math.Clamp(Main.projectile.Count(q => q.active && q.owner == p.owner && q.type == ProjectileID.AbigailCounter), 1, columns - 1);
 			var flower = new Rectangle(w * level, h * frame, w, h);
-			DrDraw.Sb.Draw(tex, at, flower, Color.White * a, 0f, flower.Size() / 2f, scale, SpriteEffects.None, 0f);
+			// The flower takes its colour as it's drawn (red, like Abigail's Flower)
+			DrDraw.Sb.Draw(tex, at, flower, new Color(255, 110, 130) * a, 0f, flower.Size() / 2f, scale, SpriteEffects.None, 0f);
 		}
 
 		private void FireShot(WeaponOption w, int projectile)
