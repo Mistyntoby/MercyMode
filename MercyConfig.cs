@@ -35,6 +35,26 @@ namespace MercyMode
 	{
 		public override ConfigScope Mode => ConfigScope.ClientSide;
 
+		/// <summary>
+		/// Which default changes this saved config has been through (not shown in the menu). 1: the battle volumes'
+		/// defaults went from 0.45 / 0.25 to 1, so a config still on the old defaults moves up with them.
+		/// </summary>
+		[Newtonsoft.Json.JsonProperty]
+		private int defaultsVersion;
+
+		public override void OnLoaded()
+		{
+			if (defaultsVersion < 1)
+			{
+				// Still exactly the old defaults: never touched, so they follow the new ones (a chosen value stays)
+				if (System.Math.Abs(BattleSoundVolume - 0.45f) < 0.001f)
+					BattleSoundVolume = 1f;
+				if (System.Math.Abs(BattleMusicVolume - 0.25f) < 0.001f)
+					BattleMusicVolume = 1f;
+				defaultsVersion = 1;
+			}
+		}
+
 		[DefaultValue(true)]
 		public bool TurnBasedBattles;
 
@@ -79,12 +99,12 @@ namespace MercyMode
 
 		[Range(0f, 1.5f)]
 		[Increment(0.05f)]
-		[DefaultValue(0.45f)]
+		[DefaultValue(1f)]
 		public float BattleSoundVolume;
 
 		[Range(0f, 1.5f)]
 		[Increment(0.05f)]
-		[DefaultValue(0.25f)]
+		[DefaultValue(1f)]
 		public float BattleMusicVolume;
 
 		[DefaultValue(MercySoundRedirect.Deltarune)]
