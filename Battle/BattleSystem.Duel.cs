@@ -107,6 +107,10 @@ namespace MercyMode.Battle
 
 		public static bool InDuel => Active && Instance.duelWith >= 0;
 
+		/// <summary>The opponent's damage numbers on us: their party colour, as light as ours are.</summary>
+		private Color DuelOppDamageColor => duelWith >= 0
+			? Color.Lerp(Net.PartyColors.Of(Main.player[duelWith]), Color.White, 0.5f) : Color.White;
+
 		/// <summary>FIGHT against a player does this share of its damage (the pieces do half their weapon's too).</summary>
 		private const float DuelFightScale = 0.5f;
 
@@ -438,7 +442,7 @@ namespace MercyMode.Battle
 			Sfx("hurt");
 			hurtTimer = 0;
 			shake = 4;
-			HeroNumber((int)dealt, Color.White);
+			HeroNumber((int)dealt, DuelOppDamageColor);
 		}
 
 		/// <summary>Our SOUL broke: the other player won.</summary>
@@ -547,7 +551,8 @@ namespace MercyMode.Battle
 					// Their flinch and the number off them, like ours when we're hit
 					Sfx("hurt");
 					duelOppHurt = 0;
-					EnemyNumber(dealt, Color.White, at: EnemyPosNow);
+					// Our attack hit them: our colour, like our FIGHT's numbers
+					EnemyNumber(dealt, HeroDamageColor, at: EnemyPosNow);
 					break;
 				}
 				case BattleNet.DuelKind.Hit:
@@ -736,9 +741,12 @@ namespace MercyMode.Battle
 			public PieceKind Kind;
 			public int Item, Proj, Damage;
 			public Vector2 At, Dir;
+			/// <summary>Extra ticks before it comes (a line sweeps, a rain falls one by one).</summary>
+			public int Delay;
 
 			public void Write(BinaryWriter w)
 			{
+				w.Write((short)Delay);
 				w.Write((byte)Kind);
 				w.Write(Item);
 				w.Write(Proj);
@@ -751,6 +759,7 @@ namespace MercyMode.Battle
 
 			public static DuelPiece Read(BinaryReader r) => new()
 			{
+				Delay = r.ReadInt16(),
 				Kind = (PieceKind)r.ReadByte(),
 				Item = r.ReadInt32(),
 				Proj = r.ReadInt32(),
@@ -805,6 +814,7 @@ namespace MercyMode.Battle
 			{
 				Position = pc.At,
 				Harmful = false,
+				StartDelay = pc.Delay,
 				Lifetime = PieceWarnTicks,
 				OnDraw = b =>
 				{
@@ -904,7 +914,7 @@ namespace MercyMode.Battle
 			}
 			foreach (Bullet b in bullets)
 			{
-				b.StartDelay = PieceWarnTicks;
+				b.StartDelay = PieceWarnTicks + pc.Delay;
 				b.DamageMult = Math.Max(1, pc.Damage);
 				b.OffscreenMargin = 120f;
 				Spawn(b);
@@ -1058,9 +1068,8 @@ namespace MercyMode.Battle
 				if (!best.TryGetValue(k, out Item have) || Player.GetWeaponDamage(it) > Player.GetWeaponDamage(have))
 					best[k] = it;
 			}
-			// Six fit in the panel: the strongest kinds
-			var keep = best.OrderByDescending(kv => Player.GetWeaponDamage(kv.Value)).Take(6).ToList();
-			foreach (var (k, it) in keep.OrderBy(kv => (int)kv.Key))
+			// Every kind (the palette scrolls)
+			foreach (var (k, it) in best.OrderBy(kv => (int)kv.Key))
 			{
 				int proj = it.shoot is > ProjectileID.None and not ProjectileID.AbigailCounter and not ProjectileID.StormTigerGem ? it.shoot : 0;
 				if (k == PieceKind.Arrow)
@@ -1092,6 +1101,8 @@ namespace MercyMode.Battle
 			dragFrom = null;
 			mouseWasDown = Main.mouseLeft;
 			buildPreview = new DuelAttack { Preview = true };
+			pieceFirst = Math.Clamp(Math.Min(pieceFirst, piecePick), Math.Max(0, piecePick - PiecesShown + 1), Math.Max(0, pieceOptions.Count - PiecesShown));
+			buildScroll = 0;
 			boxTimer = 0;
 			if (!duelRemoteSoulSet)
 				soul = new Vector2(BoxCenterX - SoulSize / 2f, BoxCenterY - SoulSize / 2f);
@@ -1112,8 +1123,125 @@ namespace MercyMode.Battle
 
 		private float PaletteTop => ScreenHeight - panel + 44f;
 
-		private Rectangle PieceButton(int i) => new(16 + i * 86, (int)PaletteTop, 82, 60);
-		private Rectangle DoneButton => new(540, (int)PaletteTop + 30, 84, 30);
+		/// <summary>Weapons shown at once in the palette (it scrolls when there are more).</summary>
+		private const int PiecesShown = 5;
+		private int pieceFirst;
+		/// <summary>Mouse wheel turned since the builder last looked (kept from PostUpdateInput).</summary>
+		private int buildScroll;
+
+		/// <summary>The palette slot of a piece (null: scrolled out of view).</summary>
+		private Rectangle? PieceButton(int i)
+		{
+			int slot = i - pieceFirst;
+			if (slot < 0 || slot >= PiecesShown)
+				return null;
+			return new Rectangle(28 + slot * 86, (int)PaletteTop - 6, 82, 56);
+		}
+
+		private Rectangle ScrollLeft => new(6, (int)PaletteTop + 12, 18, 22);
+		private Rectangle ScrollRight => new(460, (int)PaletteTop + 12, 18, 22);
+		private Rectangle ShapeButton(int i) => new(28 + i * 72, (int)PaletteTop + 56, 68, 24);
+		private Rectangle DoneButton => new(540, (int)PaletteTop + 50, 84, 30);
+
+		private void PickPiece(int i)
+		{
+			if (pieceOptions.Count == 0)
+				return;
+			piecePick = Math.Clamp(i, 0, pieceOptions.Count - 1);
+			// Keep it in view
+			if (piecePick < pieceFirst)
+				pieceFirst = piecePick;
+			if (piecePick >= pieceFirst + PiecesShown)
+				pieceFirst = piecePick - PiecesShown + 1;
+			pieceFirst = Math.Clamp(pieceFirst, 0, Math.Max(0, pieceOptions.Count - PiecesShown));
+			Sfx("menumove");
+		}
+
+		// ---- shapes: one weapon placed several times at once ----
+
+		internal enum Shape { Single, Line, Ring, Rain, Fan, Stream }
+
+		private Shape shape = Shape.Single;
+
+		private static readonly (Shape shape, string label, float costMul)[] Shapes =
+		{
+			(Shape.Single, "SINGLE", 1f),
+			(Shape.Line, "LINE", 2.4f),
+			(Shape.Ring, "RING", 3.2f),
+			(Shape.Rain, "RAIN", 2.8f),
+			(Shape.Fan, "FAN", 2.4f),
+			(Shape.Stream, "STREAM", 2.2f),
+		};
+
+		private static float CostMul(Shape s) => Shapes.First(x => x.shape == s).costMul;
+
+		private int ShapeCost(PieceOption o) => (int)Math.Ceiling(o.Cost * CostMul(shape));
+
+		/// <summary>
+		/// Where each piece of the shape goes, which way, and how long after the first: from where the mouse went down
+		/// (<paramref name="a"/>) to where it came up (<paramref name="b"/>). A plain click aims at the SOUL.
+		/// </summary>
+		private List<(Vector2 At, Vector2 Dir, int Delay)> ShapePieces(Vector2 a, Vector2 b)
+		{
+			var list = new List<(Vector2, Vector2, int)>();
+			Vector2 drag = b - a;
+			bool dragged = drag.Length() >= 8f;
+			Vector2 aim = dragged ? drag : SoulCenter - a;
+			if (aim.LengthSquared() < 0.01f)
+				aim = Vector2.UnitX;
+			aim.Normalize();
+			switch (shape)
+			{
+				case Shape.Line:
+				{
+					// Dragged: along the drag, firing across it toward the SOUL. Clicked: a line across the aim
+					Vector2 along = dragged ? Vector2.Normalize(drag) : new Vector2(-aim.Y, aim.X);
+					float length = dragged ? drag.Length() : 110f;
+					Vector2 start = dragged ? a : a - along * length / 2f;
+					Vector2 across = new(-along.Y, along.X);
+					if (Vector2.Dot(across, SoulCenter - (start + along * length / 2f)) < 0f)
+						across = -across;
+					for (int i = 0; i < 5; i++)
+						list.Add((start + along * (length * i / 4f), across, i * 6));
+					break;
+				}
+				case Shape.Ring:
+				{
+					// Around the spot, all closing in on it; the size is how far it was dragged
+					float radius = dragged ? MathHelper.Clamp(drag.Length(), 40f, 160f) : 80f;
+					for (int i = 0; i < 8; i++)
+					{
+						Vector2 off = (MathHelper.TwoPi * i / 8f).ToRotationVector2() * radius;
+						list.Add((a + off, -off, i * 3));
+					}
+					break;
+				}
+				case Shape.Rain:
+				{
+					// From above the box, spread around the spot, falling (or the way it was dragged)
+					Rectangle box = Box;
+					Vector2 fall = dragged ? aim : Vector2.UnitY;
+					for (int i = 0; i < 6; i++)
+					{
+						float x = a.X - 75f + i * 30f;
+						list.Add((new Vector2(x, box.Top - 24f), fall, (i * 7 + i * i * 3) % 30));
+					}
+					break;
+				}
+				case Shape.Fan:
+					for (int i = 0; i < 5; i++)
+						list.Add((a, aim.RotatedBy((i - 2) * 0.32f), 0));
+					break;
+				case Shape.Stream:
+					for (int i = 0; i < 4; i++)
+						list.Add((a, aim, i * 12));
+					break;
+				default:
+					list.Add((a, aim, 0));
+					break;
+			}
+			return list;
+		}
 
 		private void UpdateBuild()
 		{
@@ -1141,13 +1269,23 @@ namespace MercyMode.Battle
 				FinishBuild();
 				return;
 			}
-			// Number keys pick a piece too
+			// Number keys pick a weapon, the wheel scrolls through them
 			for (int i = 0; i < Math.Min(9, pieceOptions.Count); i++)
 				if (Main.keyState.IsKeyDown(Keys.D1 + i) && !Main.oldKeyState.IsKeyDown(Keys.D1 + i))
-				{
-					piecePick = i;
-					Sfx("menumove");
-				}
+					PickPiece(i);
+			if (buildScroll != 0)
+			{
+				PickPiece(piecePick + (buildScroll < 0 ? 1 : -1));
+				buildScroll = 0;
+			}
+			// Q / E: the shape
+			int shapeStep = (Main.keyState.IsKeyDown(Keys.E) && !Main.oldKeyState.IsKeyDown(Keys.E) ? 1 : 0)
+				- (Main.keyState.IsKeyDown(Keys.Q) && !Main.oldKeyState.IsKeyDown(Keys.Q) ? 1 : 0);
+			if (shapeStep != 0)
+			{
+				shape = (Shape)(((int)shape + shapeStep + Shapes.Length) % Shapes.Length);
+				Sfx("menumove");
+			}
 
 			Player.mouseInterface = true;
 			bool down = Main.mouseLeft;
@@ -1155,13 +1293,21 @@ namespace MercyMode.Battle
 			if (down && !mouseWasDown)
 			{
 				// The palette and the DONE button, or the start of a placement
-				int hit = Enumerable.Range(0, pieceOptions.Count).FirstOrDefault(i => PieceButton(i).Contains(mouse.ToPoint()), -1);
+				Point mp = mouse.ToPoint();
+				int hit = Enumerable.Range(0, pieceOptions.Count).FirstOrDefault(i => PieceButton(i)?.Contains(mp) == true, -1);
+				int shapeHit = Enumerable.Range(0, Shapes.Length).FirstOrDefault(i => ShapeButton(i).Contains(mp), -1);
 				if (hit >= 0)
+					PickPiece(hit);
+				else if (shapeHit >= 0)
 				{
-					piecePick = hit;
+					shape = Shapes[shapeHit].shape;
 					Sfx("menumove");
 				}
-				else if (DoneButton.Contains(mouse.ToPoint()))
+				else if (ScrollLeft.Contains(mp))
+					PickPiece(Math.Min(piecePick - 1, pieceFirst - 1));
+				else if (ScrollRight.Contains(mp))
+					PickPiece(Math.Max(piecePick + 1, pieceFirst + PiecesShown));
+				else if (DoneButton.Contains(mp))
 					FinishBuild();
 				else if (mouse.Y < PaletteTop - 10f)
 					dragFrom = mouse;
@@ -1182,22 +1328,20 @@ namespace MercyMode.Battle
 			if (pieceOptions.Count == 0)
 				return;
 			PieceOption o = pieceOptions[Math.Clamp(piecePick, 0, pieceOptions.Count - 1)];
-			if (buildInk < o.Cost)
+			int cost = ShapeCost(o);
+			if (buildInk < cost)
 			{
 				Sfx("cantselect");
 				return;
 			}
-			// A click aims at the SOUL; a drag sets the direction
-			Vector2 dir = to - at;
-			if (dir.Length() < 8f)
-				dir = SoulCenter - at;
-			if (dir.LengthSquared() < 0.01f)
-				dir = Vector2.UnitX;
-			dir.Normalize();
-			buildInk -= o.Cost;
-			var piece = new DuelPiece { Kind = o.Kind, Item = o.Item?.type ?? 0, Proj = o.Proj, Damage = o.Damage, At = at, Dir = dir };
-			BattleNet.SendDuel(BattleNet.DuelKind.Place, piece.Write);
-			buildPreview?.Incoming.Enqueue(piece);
+			buildInk -= cost;
+			// Every piece of the shape, to them and into our preview
+			foreach (var (pat, pdir, delay) in ShapePieces(at, to))
+			{
+				var piece = new DuelPiece { Kind = o.Kind, Item = o.Item?.type ?? 0, Proj = o.Proj, Damage = o.Damage, At = pat, Dir = pdir, Delay = delay };
+				BattleNet.SendDuel(BattleNet.DuelKind.Place, piece.Write);
+				buildPreview?.Incoming.Enqueue(piece);
+			}
 			// We swing or shoot it, here and on their screen
 			int shot = PieceShot(o);
 			SetHeroPose(HeroPose.Attack);
@@ -1239,15 +1383,19 @@ namespace MercyMode.Battle
 				return;
 			Vector2 mouse = MouseBattle();
 			PieceOption o = pieceOptions[Math.Clamp(piecePick, 0, pieceOptions.Count - 1)];
-			bool afford = buildInk >= o.Cost;
+			bool afford = buildInk >= ShapeCost(o);
 			Color c = afford ? Color.White : new Color(255, 80, 80);
-			if (dragFrom is Vector2 from)
+			if (mouse.Y >= PaletteTop - 10f && dragFrom == null)
+				return;
+			// Where every piece of the shape would go, and which way
+			Vector2 from = dragFrom ?? mouse;
+			if (dragFrom != null)
+				DrDraw.Line(from, mouse, 1f, c * 0.4f);
+			foreach (var (pat, pdir, _) in ShapePieces(from, dragFrom != null ? mouse : from))
 			{
-				DrDraw.Line(from, mouse, 2f, c * 0.8f);
-				DrDraw.Outline(from.X - 8, from.Y - 8, 16, 16, c, 2);
+				DrawPieceIcon(o, pat, 18f, 0.55f);
+				DrDraw.Line(pat, pat + Vector2.Normalize(pdir) * 22f, 2f, c * 0.7f);
 			}
-			else if (mouse.Y < PaletteTop - 10f)
-				DrawPieceIcon(o, mouse, 22f, 0.6f);
 		}
 
 		private void DrawPieceIcon(PieceOption o, Vector2 at, float size, float alpha)
@@ -1272,27 +1420,46 @@ namespace MercyMode.Battle
 				return;
 			}
 			// The hint goes at the top of the screen (the nameplate sits just above the panel)
-			const string hint = "BUILD YOUR ATTACK: click to place, drag to aim, 1-6 to pick";
-			DrDraw.Text(hint, ScreenWidth / 2f - DrDraw.Measure(hint, DrDraw.SmallFont) * 0.4f, 10, new Color(255, 220, 64), DrDraw.SmallFont, 0.8f);
-			for (int i = 0; i < pieceOptions.Count && i < 6; i++)
+			const string hint = "BUILD YOUR ATTACK: click to place, drag to aim/size  |  wheel or 1-9: weapon  |  Q/E: shape";
+			DrDraw.Text(hint, ScreenWidth / 2f - DrDraw.Measure(hint, DrDraw.SmallFont) * 0.35f, 10, new Color(255, 220, 64), DrDraw.SmallFont, 0.7f);
+			// Scroll arrows when there are more weapons than fit
+			if (pieceFirst > 0)
+				DrDraw.Text("<", ScrollLeft.X + 3, ScrollLeft.Y, Color.White, DrDraw.BigFont, 0.8f);
+			if (pieceFirst + PiecesShown < pieceOptions.Count)
+				DrDraw.Text(">", ScrollRight.X + 3, ScrollRight.Y, Color.White, DrDraw.BigFont, 0.8f);
+			// The shapes, with what they cost for the picked weapon
+			PieceOption picked = pieceOptions[Math.Clamp(piecePick, 0, pieceOptions.Count - 1)];
+			for (int i = 0; i < Shapes.Length; i++)
+			{
+				Rectangle r = ShapeButton(i);
+				bool sel = Shapes[i].shape == shape;
+				int cost = (int)Math.Ceiling(picked.Cost * Shapes[i].costMul);
+				bool afford = buildInk >= cost;
+				DrDraw.Rect(r.X, r.Y, r.Width, r.Height, sel ? new Color(10, 40, 60) : new Color(20, 20, 20));
+				DrDraw.Outline(r.X, r.Y, r.Width, r.Height, sel ? new Color(120, 200, 255) : new Color(90, 90, 90), sel ? 2 : 1);
+				DrDraw.Text(Shapes[i].label, r.X + 4, r.Y + 5, afford ? Color.White : new Color(128, 128, 128), DrDraw.SmallFont, 0.6f);
+				DrDraw.Text($"{cost}", r.Right - 20, r.Y + 5, afford ? new Color(120, 200, 255) : new Color(255, 80, 80), DrDraw.SmallFont, 0.6f);
+			}
+			for (int i = pieceFirst; i < pieceOptions.Count && i < pieceFirst + PiecesShown; i++)
 			{
 				PieceOption o = pieceOptions[i];
-				Rectangle r = PieceButton(i);
+				Rectangle r = PieceButton(i).Value;
 				bool sel = i == piecePick;
-				bool afford = buildInk >= o.Cost;
+				int cost = ShapeCost(o);
+				bool afford = buildInk >= cost;
 				DrDraw.Rect(r.X, r.Y, r.Width, r.Height, (sel ? new Color(60, 40, 10) : new Color(20, 20, 20)));
 				DrDraw.Outline(r.X, r.Y, r.Width, r.Height, sel ? new Color(255, 200, 40) : new Color(90, 90, 90), sel ? 2 : 1);
 				DrawPieceIcon(o, new Vector2(r.Center.X, r.Y + 17), 24f, afford ? 1f : 0.4f);
 				DrDraw.Text(o.Label, r.X + 4, r.Y + 32, afford ? Color.White : new Color(128, 128, 128), DrDraw.SmallFont, 0.7f);
-				DrDraw.Text($"{o.Cost}", r.Right - 18, r.Y + 2, afford ? new Color(120, 200, 255) : new Color(255, 80, 80), DrDraw.SmallFont, 0.7f);
+				DrDraw.Text($"{cost}", r.Right - 18, r.Y + 2, afford ? new Color(120, 200, 255) : new Color(255, 80, 80), DrDraw.SmallFont, 0.7f);
 				DrDraw.Text($"{o.Damage}", r.X + 4, r.Y + 46, new Color(255, 200, 80), DrDraw.SmallFont, 0.6f);
 			}
 			// Ink and time
 			float inkW = 84f * buildInk / InkMax;
-			DrDraw.Text("INK", 540, top - 4, new Color(120, 200, 255), DrDraw.SmallFont, 0.7f);
-			DrDraw.Rect(540, top + 10, 84, 8, new Color(30, 30, 60));
-			DrDraw.Rect(540, top + 10, inkW, 8, new Color(120, 200, 255));
-			DrDraw.Text($"{(buildTicks + 59) / 60}s", 590, top - 4, Color.White, DrDraw.SmallFont, 0.7f);
+			DrDraw.Text("INK", 540, top - 2, new Color(120, 200, 255), DrDraw.SmallFont, 0.7f);
+			DrDraw.Rect(540, top + 14, 84, 8, new Color(30, 30, 60));
+			DrDraw.Rect(540, top + 14, inkW, 8, new Color(120, 200, 255));
+			DrDraw.Text($"{(buildTicks + 59) / 60}s", 590, top - 2, Color.White, DrDraw.SmallFont, 0.7f);
 			Rectangle d = DoneButton;
 			DrDraw.Rect(d.X, d.Y, d.Width, d.Height, new Color(20, 60, 20));
 			DrDraw.Outline(d.X, d.Y, d.Width, d.Height, new Color(80, 255, 80), 2);
