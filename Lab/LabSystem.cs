@@ -491,7 +491,7 @@ namespace MercyMode.Lab
 			if (left > 0)
 			{
 				yield return Until(() => B.LabPhase != Phase.FightResult, "the end of the FIGHT", skipText: false);
-				Check(B.LabPhase is Phase.EnemyIntro or Phase.EnemyTurn, $"expected the enemy turn right after the kill, got {B.LabPhase}");
+				Check(B.LabPhase is Phase.EnemyTalk or Phase.EnemyIntro or Phase.EnemyTurn, $"expected the enemy turn right after the kill, got {B.LabPhase}");
 				yield return WatchEnemyTurn(left);
 			}
 			// Keep fighting until everyone is down, each turn's attackers matching who's left
@@ -558,7 +558,7 @@ namespace MercyMode.Lab
 			Check(Living().Count == 1 && Living()[0] is EnemyEncounter { Enraged: true }, "the other pirate didn't get enraged");
 			// No "was defeated" box while others remain: straight to the bullet box
 			yield return Until(() => B.LabPhase != Phase.FightResult, "the end of the FIGHT", skipText: false);
-			Check(B.LabPhase is Phase.EnemyIntro or Phase.EnemyTurn, $"expected the enemy turn right after the kill, got {B.LabPhase}");
+			Check(B.LabPhase is Phase.EnemyTalk or Phase.EnemyIntro or Phase.EnemyTurn, $"expected the enemy turn right after the kill, got {B.LabPhase}");
 			yield return WatchEnemyTurn(1);
 			yield return Menu();
 			yield return FightAndKill(0);

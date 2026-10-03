@@ -106,13 +106,13 @@ namespace MercyMode.Battle
 						DrDraw.Text("z", z.X, z.Y, TiredBlue * (1f - k), DrDraw.SmallFont, 0.6f + k * 0.4f);
 					}
 				}
-				if (string.IsNullOrEmpty(en.Bubble) || phase is not (Phase.EnemyIntro or Phase.EnemyTurn))
+				// Only while they talk, before the box opens
+				if (string.IsNullOrEmpty(en.Bubble) || phase != Phase.EnemyTalk)
 					continue;
 				int age = time - en.BubbleAt;
-				const int life = 150;
-				if (age < 0 || age > life)
+				if (age < 0)
 					continue;
-				float alpha = age > life - 15 ? (life - age) / 15f : 1f;
+				float alpha = 1f;
 				int chars = Math.Min(en.Bubble.Length, age / 2 + 1);
 
 				// Wrapped to the bubble's width (Deltarune's bubbles: the dialogue font at full size, black on white)
@@ -144,10 +144,15 @@ namespace MercyMode.Battle
 				float w = Math.Min(maxW, lines.Max(l => DrDraw.Measure(l, DrDraw.SmallFont) * scale)) + pad * 2f;
 				float h = lines.Count * lineH + pad * 1.5f;
 				// Beside the enemy at its own height, its tail pointing at it (its left edge, from how big it's drawn)
-				float bx = Math.Max(4f, at.X - half - 8f - tail - w), by = Math.Clamp(at.Y - h / 2f, 4f, ScreenHeight - PanelHeight - h - 4f);
-				// A pixel off each corner, like Deltarune's
-				DrDraw.Rect(bx + 1, by, w - 2, h, Color.White * alpha);
-				DrDraw.Rect(bx, by + 1, w, h - 2, Color.White * alpha);
+				// On whole pixels, so the corners stay sharp
+				w = (float)Math.Round(w);
+				h = (float)Math.Round(h);
+				float bx = (float)Math.Round(Math.Max(4f, at.X - half - 8f - tail - w)), by = (float)Math.Round(Math.Clamp(at.Y - h / 2f, 4f, ScreenHeight - PanelHeight - h - 4f));
+				// A square notch cut from each corner, like Deltarune's
+				const float notch = 2f;
+				DrDraw.Rect(bx + notch, by, w - notch * 2f, h, Color.White * alpha);
+				DrDraw.Rect(bx, by + notch, notch, h - notch * 2f, Color.White * alpha);
+				DrDraw.Rect(bx + w - notch, by + notch, notch, h - notch * 2f, Color.White * alpha);
 				// The tail: a white triangle from the bubble's right side toward the enemy
 				float cy = Math.Clamp(at.Y, by + 8f, by + h - 8f);
 				for (int i = 0; i < (int)tail; i++)

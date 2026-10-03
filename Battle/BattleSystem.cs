@@ -25,7 +25,7 @@ namespace MercyMode.Battle
 	/// </summary>
 	public partial class BattleSystem : ModSystem
 	{
-		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting, PartySelect, SummonSelect, DuelWait, Build, MercyWait, MercyPrompt }
+		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting, PartySelect, SummonSelect, DuelWait, Build, MercyWait, MercyPrompt, EnemyTalk }
 		private enum Choice { Fight, Act, Item, Spare, Defend }
 
 		public static BattleSystem Instance => ModContent.GetInstance<BattleSystem>();
@@ -621,6 +621,7 @@ namespace MercyMode.Battle
 				case Phase.Death: UpdateSoulDeath(); break;
 				case Phase.Waiting: UpdateWaiting(); break;
 				case Phase.Build: UpdateBuild(); break;
+				case Phase.EnemyTalk: UpdateEnemyTalk(); break;
 				case Phase.MercyWait: UpdateMercyWait(); break;
 				case Phase.MercyPrompt: UpdateMercyPrompt(); break;
 			}
@@ -1286,7 +1287,36 @@ namespace MercyMode.Battle
 			turnTimer = attack.Duration;
 			boxTimer = 0;
 			text = "";
-			// scr_moveheart: the SOUL bursts out of the hero and flies to the box in 8 frames
+			// Deltarune: the enemies say their piece first, then their bubbles go and the box opens
+			if (enemies.Any(e => e.Living && !string.IsNullOrEmpty(e.Bubble)))
+			{
+				foreach (BattleEnemy e in enemies)
+					e.BubbleAt = time;
+				SetPhase(Phase.EnemyTalk);
+				return;
+			}
+			OpenBulletBox();
+		}
+
+		/// <summary>The bubbles stay until they've been read (Z skips once typed), then the box opens.</summary>
+		private void UpdateEnemyTalk()
+		{
+			int longest = enemies.Where(e => e.Living && !string.IsNullOrEmpty(e.Bubble)).Select(e => e.Bubble.Length).DefaultIfEmpty(0).Max();
+			int typed = longest * 2 + 4;
+			// The same length on every screen in a party (the box opens together); alone, Z moves it on
+			bool skip = !Net.BattleNet.InParty && phaseTicks > typed && phaseTicks > 12 && Confirm;
+			if (skip || phaseTicks >= typed + EnemyTalkHoldTicks)
+				OpenBulletBox();
+		}
+
+		/// <summary>How long the bubbles stay once they're typed out, before the box opens by itself.</summary>
+		private const int EnemyTalkHoldTicks = 60;
+
+		/// <summary>scr_moveheart: the SOUL bursts out of the hero and flies to the box in 8 frames.</summary>
+		private void OpenBulletBox()
+		{
+			foreach (BattleEnemy e in enemies)
+				e.Bubble = null;
 			soulFrom = HeroHeart;
 			soul = soulFrom;
 			soulAlpha = 0f;
