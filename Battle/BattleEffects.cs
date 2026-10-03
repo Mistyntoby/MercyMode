@@ -576,7 +576,8 @@ namespace MercyMode.Battle
 				s.Step(dt);
 			stars.RemoveAll(s => s.Done);
 			t = next;
-			if (t >= Doze + Fade + 10)
+			// Over once the last sparkles have faded out on their own (not cut off mid-fade)
+			if (t >= Doze + Fade && stars.Count == 0)
 				Done = true;
 		}
 
