@@ -280,12 +280,32 @@ namespace MercyMode.Battle
 		{
 			// The party list may not have arrived yet: fall back to the player slot so two players don't share a spot
 			int slot = Net.BattleNet.Party.IndexOf(Player.whoAmI) is int i && i >= 0 ? i : Player.whoAmI % 3;
-			float x = root.Left.X - 40f - slot * 28f - Player.width;
-			var spot = new Vector2(x, Player.position.Y);
-			if (Math.Abs(spot.X - Player.position.X) < 8f * 16f && !Collision.SolidCollision(spot, Player.width, Player.height))
+			// On whichever side of the enemy they already are (not always the left: there may be a wall there)
+			int side = Player.Center.X <= root.Center.X ? -1 : 1;
+			float x = side < 0 ? root.Left.X - 40f - slot * 28f - Player.width : root.Right.X + 40f + slot * 28f;
+			// Terrain: the nearest height within a few tiles where they stand on solid ground with room to stand
+			Vector2? best = null;
+			for (int dy = 0; dy <= 6 * 16; dy += 8)
 			{
-				Player.position = spot;
-				playerPosition = spot;
+				foreach (int sign in new[] { 1, -1 })
+				{
+					var spot = new Vector2(x, Player.position.Y + dy * sign);
+					if (Collision.SolidCollision(spot, Player.width, Player.height))
+						continue;
+					if (!Collision.SolidCollision(spot + new Vector2(0f, Player.height), Player.width, 6))
+						continue;
+					best = spot;
+					break;
+				}
+				if (best != null)
+					break;
+			}
+			// Only a short step, and only with a clear line there (never through a wall)
+			if (best is Vector2 to && Math.Abs(to.X - Player.position.X) < 8f * 16f
+				&& Collision.CanHit(Player.position, Player.width, Player.height, to, Player.width, Player.height))
+			{
+				Player.position = to;
+				playerPosition = to;
 			}
 			Player.direction = root.Center.X >= Player.Center.X ? 1 : -1;
 		}
@@ -1484,6 +1504,13 @@ namespace MercyMode.Battle
 
 		private void StartOutro()
 		{
+			// Won while down (multiplayer): back up at 1 HP
+			if (downed)
+			{
+				downed = false;
+				battleLife = 1;
+				Player.statLife = 1;
+			}
 			Bullets.Clear();
 			panelDir = -1;
 			text = "";
