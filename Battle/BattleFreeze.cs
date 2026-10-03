@@ -65,7 +65,9 @@ namespace MercyMode.Battle
 		public override void OnHitByProjectile(NPC npc, Projectile projectile, NPC.HitInfo hit, int damageDone)
 		{
 			// Town NPCs' shots (the Guide's arrows) also belong to the local player in singleplayer; skip them
-			if (!projectile.npcProj && projectile.owner >= 0 && projectile.owner < Main.maxPlayers)
+			// Summons don't start battles: they roam, and dragged their owner into fights far away
+			if (!projectile.npcProj && projectile.owner >= 0 && projectile.owner < Main.maxPlayers
+				&& !BattleSystem.IsSummonOf(projectile, projectile.owner))
 				BattleSystem.TryStart(npc, Main.player[projectile.owner], "hit by " + projectile.Name);
 		}
 
@@ -98,7 +100,8 @@ namespace MercyMode.Battle
 		public override bool PreAI(Projectile projectile)
 		{
 			// Our own minions and sentries stay out of it (in multiplayer too): they fight in the battle, after FIGHT
-			bool ownSummon = BattleSystem.Active && BattleSystem.IsSummonOf(projectile, Main.myPlayer);
+			// Summons of anyone in a battle hold still, on every screen and the server (not just the owner's)
+			bool ownSummon = SummonInBattle(projectile);
 			// Multiplayer: other projectiles belong to their owners and the server; the world keeps going
 			if (!ownSummon && (!BattleSystem.Active || !MercyMode.IsSingleplayer))
 				return true;
@@ -109,9 +112,21 @@ namespace MercyMode.Battle
 
 		public override bool CanHitPlayer(Projectile projectile, Player target) => !BattleSystem.Active;
 
+		/// <summary>A summon whose owner is in a battle (ours, or another player's as the server and the others know it).</summary>
+		public static bool SummonInBattle(Projectile p)
+		{
+			if (p.owner < 0 || p.owner >= Main.maxPlayers || !BattleSystem.IsSummonOf(p, p.owner))
+				return false;
+			if (p.owner == Main.myPlayer && BattleSystem.Active)
+				return true;
+			if (Main.netMode == Terraria.ID.NetmodeID.Server)
+				return Net.BattleNet.InBattle(p.owner);
+			return Net.BattleNet.WorldBattles.Values.Any(b => b.Stage != Net.BattleNet.Stage.Over && b.Players.Contains(p.owner));
+		}
+
 		// Frozen minions can't hit anything in the world meanwhile (no kills heard in the background)
 		public override bool? CanHitNPC(Projectile projectile, NPC target) =>
-			BattleSystem.Active && BattleSystem.IsSummonOf(projectile, Main.myPlayer) ? false : null;
+			SummonInBattle(projectile) ? false : null;
 
 		// The battle screen draws them beside the player; the world copies stay hidden
 		public override bool PreDraw(Projectile projectile, ref Color lightColor) =>

@@ -919,10 +919,24 @@ namespace MercyMode.Battle
 			DrawingHero = true; // full-bright, like the player (Lighting hook)
 			try
 			{
+				int abigail = 0;
 				foreach (Projectile p in mine)
 				{
-					// Where it is relative to the player in the world, scaled onto the battle screen
-					Vector2 shift = Main.screenPosition + feet + (p.Center - anchorWorld) * scale - p.Center;
+					// Abigail's flower counter isn't drawn in the world either; Abigail herself is drawn by hand below
+					if (p.type == ProjectileID.AbigailCounter)
+						continue;
+					if (p.type == ProjectileID.AbigailMinion)
+					{
+						DrawGhost(p, feet + new Vector2(-18f - abigail++ * 22f, -50f) * (scale / HeroScale), scale);
+						continue;
+					}
+					// Where it is relative to the player in the world, scaled onto the battle screen (kept close: one far
+					// away when the battle began would be off at the edge)
+					Vector2 rel = (p.Center - anchorWorld) * scale;
+					float maxRel = 70f * (scale / HeroScale);
+					if (rel.Length() > maxRel)
+						rel = Vector2.Normalize(rel) * maxRel;
+					Vector2 shift = Main.screenPosition + feet + rel - p.Center;
 					Vector2 oldPosition = p.position;
 					float oldScale = p.scale;
 					var oldTrail = (Vector2[])p.oldPos.Clone();
@@ -950,6 +964,18 @@ namespace MercyMode.Battle
 				sb.End();
 				sb.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, m);
 			}
+		}
+
+		/// <summary>Abigail, drawn by hand: her own frames, bobbing, see-through like the ghost she is.</summary>
+		private void DrawGhost(Projectile p, Vector2 at, float scale)
+		{
+			Main.instance.LoadProjectile(p.type);
+			Texture2D tex = TextureAssets.Projectile[p.type].Value;
+			int frames = Math.Max(1, Main.projFrames[p.type]);
+			int frame = (time / 7) % frames;
+			var src = new Rectangle(0, tex.Height / frames * frame, tex.Width, tex.Height / frames);
+			at.Y += (float)Math.Sin(time / 20f) * 3f;
+			DrDraw.Sb.Draw(tex, at, src, Color.White * 0.85f * FlyProgress(), 0f, src.Size() / 2f, scale, SpriteEffects.None, 0f);
 		}
 
 		private void FireShot(WeaponOption w, int projectile)
