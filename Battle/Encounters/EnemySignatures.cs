@@ -73,6 +73,14 @@ namespace MercyMode.Battle.Encounters
 			return Sig.None;
 		}
 
+		/// <summary>Its voice as it talks: zombies and mummies moan; the rest make their own hit sound.</summary>
+		public override Terraria.Audio.SoundStyle? Voice => Signature() switch
+		{
+			Sig.Zombie or Sig.Mummy => SoundID.ZombieMoan,
+			Sig.Werewolf => SoundID.NPCHit6,
+			_ => Npc?.HitSound,
+		};
+
 		/// <summary>Its own lines, if it has a signature (null: the family's).</summary>
 		protected string[] SignatureBubbles() => Signature() switch
 		{

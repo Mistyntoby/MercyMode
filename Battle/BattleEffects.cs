@@ -515,6 +515,67 @@ namespace MercyMode.Battle
 	}
 
 	/// <summary>
+	/// PACIFY: the enemy turns a sleepy blue and sinks a little as a few z's float up off it, then fades away with
+	/// blue sparkles (spared, asleep).
+	/// </summary>
+	public class PacifyAnimation : BattleEffect
+	{
+		private readonly EnemySnapshot snap;
+		private readonly List<StarParticle> stars = new();
+		private float t;
+		private const float Doze = 14f, Fade = 26f;
+
+		public PacifyAnimation(EnemySnapshot snap)
+		{
+			this.snap = snap;
+			DeltaruneAssets.Play("pacify", Terraria.ID.SoundID.Item29 with { Volume = 0.7f, Pitch = -0.3f });
+		}
+
+		public override void Step(float dt)
+		{
+			float next = t + dt;
+			// Blue sparkles drift up while it fades
+			if ((int)next != (int)t && next >= Doze && next < Doze + Fade && snap.Valid)
+			{
+				float w = snap.Frame.Width * snap.Scale, h = snap.Frame.Height * snap.Scale;
+				var pos = snap.Position + new Vector2(Main.rand.NextFloat(-w / 2f, w / 2f), Main.rand.NextFloat(-h / 2f, h / 2f));
+				stars.Add(new StarParticle(pos, new Vector2(0, -1.2f), Vector2.Zero, 0f, 10f, new Color(150, 190, 255), 8));
+			}
+			foreach (var s in stars)
+				s.Step(dt);
+			stars.RemoveAll(s => s.Done);
+			t = next;
+			if (t >= Doze + Fade + 10)
+				Done = true;
+		}
+
+		public override void Draw()
+		{
+			if (!snap.Valid)
+				return;
+			Color sleepy = new(90, 120, 220);
+			float doze = Math.Min(1f, t / Doze);
+			float fade = MathHelper.Clamp((t - Doze) / Fade, 0f, 1f);
+			// Settles down a little as it falls asleep
+			Vector2 sink = new(0f, 4f * doze);
+			if (fade < 1f)
+				snap.Draw(sink, Color.Lerp(snap.Color, sleepy, doze) * (1f - fade));
+			// A few z's float up off it, one after another
+			float w = snap.Frame.Width * snap.Scale, h = snap.Frame.Height * snap.Scale;
+			for (int i = 0; i < 3; i++)
+			{
+				float k = (t - i * 6f) / 24f;
+				if (k <= 0f || k >= 1f)
+					continue;
+				Vector2 z = snap.Position + new Vector2(w * 0.3f + k * 12f + i * 4f, -h * 0.4f - k * 24f);
+				DrDraw.Text("z", z.X, z.Y, Color.White * (1f - k), DrDraw.SmallFont, 0.7f + i * 0.2f);
+			}
+			foreach (var s in stars)
+				s.Draw();
+		}
+	}
+
+	/// <summary>
 	/// obj_deathanim: the enemy turns red and breaks into blocks that peel off to the right, row by row.
 	/// </summary>
 	public class DeathAnimation : BattleEffect

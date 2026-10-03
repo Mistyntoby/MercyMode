@@ -336,6 +336,9 @@ namespace MercyMode.Battle
 		/// <summary>Deltarune's TIRED: its name shows blue, and PACIFY puts it to sleep (spared).</summary>
 		public virtual bool Tired => false;
 
+		/// <summary>The sound it makes as it starts talking (a zombie's moan), or null.</summary>
+		public virtual Terraria.Audio.SoundStyle? Voice => Npc?.HitSound;
+
 		/// <summary>What it says in its speech bubble as its turn starts (null: nothing).</summary>
 		public virtual string Bubble(int turn) => null;
 	}

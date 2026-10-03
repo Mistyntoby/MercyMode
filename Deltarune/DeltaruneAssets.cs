@@ -86,6 +86,9 @@ namespace MercyMode.Deltarune
 			["explosion"] = new[] { "snd_badexplosion", "snd_explosion", "snd_bomb" },
 			// game over: the SOUL cracks, then shatters
 			["soulcrack"] = new[] { "snd_break1" },
+			// PACIFY: the spell being cast, and the target falling asleep
+			["spellcast"] = new[] { "snd_spellcast" },
+			["pacify"] = new[] { "snd_spell_pacify", "snd_pacify" },
 			["soulshatter"] = new[] { "snd_break2" },
 		};
 

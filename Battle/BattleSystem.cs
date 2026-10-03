@@ -1301,8 +1301,15 @@ namespace MercyMode.Battle
 		/// <summary>The bubbles stay until they've been read (Z skips once typed), then the box opens.</summary>
 		private void UpdateEnemyTalk()
 		{
-			int longest = enemies.Where(e => e.Living && !string.IsNullOrEmpty(e.Bubble)).Select(e => e.Bubble.Length).DefaultIfEmpty(0).Max();
+			var talking = enemies.Where(e => e.Living && !string.IsNullOrEmpty(e.Bubble)).ToList();
+			int longest = talking.Select(e => e.Bubble.Length).DefaultIfEmpty(0).Max();
 			int typed = longest * 2 + 4;
+			// Each one's voice as it starts (a little apart in a group), then soft blips while the words type out
+			for (int i = 0; i < talking.Count; i++)
+				if (phaseTicks == 1 + i * 8 && talking[i].E.Voice is Terraria.Audio.SoundStyle voice)
+					AttackSfx.Vanilla(voice with { PitchVariance = 0.15f }, 0.7f);
+			if (phaseTicks < typed && phaseTicks % 4 == 2)
+				DeltaruneAssets.Play("text", Terraria.ID.SoundID.MenuTick with { Volume = 0.4f });
 			// The same length on every screen in a party (the box opens together); alone, Z moves it on
 			bool skip = !Net.BattleNet.InParty && phaseTicks > typed && phaseTicks > 12 && Confirm;
 			if (skip || phaseTicks >= typed + EnemyTalkHoldTicks)

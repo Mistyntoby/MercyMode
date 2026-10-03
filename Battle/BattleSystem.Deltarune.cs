@@ -6,6 +6,7 @@ using Terraria;
 using Terraria.ModLoader;
 using Terraria.ModLoader.IO;
 using MercyMode.Battle.Encounters;
+using MercyMode.Deltarune;
 using static MercyMode.Battle.BattleConstants;
 
 namespace MercyMode.Battle
@@ -28,13 +29,16 @@ namespace MercyMode.Battle
 			BattleEnemy who = targetEnemy;
 			string name = encounter.Name;
 			who.Out = true;
-			PlayEnemySpared();
+			// The spell: sparkles off the caster with the cast sound, then the target nods off and fades away
+			DeltaruneAssets.Play("spellcast", Terraria.ID.SoundID.Item4);
+			Sparks.Burst(this, HeroFeetNow + new Vector2(0f, -40f), 12, new Color(160, 200, 255), 2.4f);
+			if (duelWith < 0)
+				enemyOverride = new PacifyAnimation(enemySnap);
 			if (Net.BattleNet.Online)
 				Net.BattleNet.SendSpare(encounter.Npc);
 			else
 				encounter.Spare();
-			Sfx("spare");
-			var lines = new List<string> { $"* You cast PACIFY!\n* {name} fell asleep." };
+			var lines = new List<string> { $"* You cast PACIFY!\n* {name} fell asleep!" };
 			if (RecordRecruit(who.E) is string recruit)
 				lines.Add(recruit);
 			if (LivingEnemies.Count == 0)
@@ -96,16 +100,6 @@ namespace MercyMode.Battle
 				if (!en.Living)
 					continue;
 				Vector2 at = en.E.ScreenCenter;
-				// Sleepy: z's drift up off a TIRED one
-				if (en.E.Tired && phase != Phase.Outro)
-				{
-					for (int i = 0; i < 2; i++)
-					{
-						float k = ((time + i * 45) % 90) / 90f;
-						Vector2 z = at + new Vector2(18f + k * 14f, -30f - k * 26f);
-						DrDraw.Text("z", z.X, z.Y, TiredBlue * (1f - k), DrDraw.SmallFont, 0.6f + k * 0.4f);
-					}
-				}
 				// Only while they talk, before the box opens
 				if (string.IsNullOrEmpty(en.Bubble) || phase != Phase.EnemyTalk)
 					continue;
