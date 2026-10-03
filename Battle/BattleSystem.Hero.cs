@@ -559,10 +559,27 @@ namespace MercyMode.Battle
 					{
 						// Held in front of the hand, the right way round for the side they face, glowing a little
 						bool left = facing < 0;
-						Vector2 at = hand + new Vector2(facing * src.Width * scale * 0.35f, 0f);
 						float pulse = 0.85f + 0.15f * (float)Math.Sin(time / 6f);
-						DrDraw.Sb.Draw(tex, at, src, Color.White * (1f - shadow) * pulse, 0f, src.Size() / 2f, scale * 0.8f,
-							left ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+						if (manualItem.type == ItemID.LastPrism)
+						{
+							// The prism as Terraria shows it in use (its holdout, spinning faster as the beam charges),
+							// its point aimed at the enemy: the sprite points up, so a quarter turn toward them
+							Main.instance.LoadProjectile(ProjectileID.LastPrism);
+							Texture2D ptex = TextureAssets.Projectile[ProjectileID.LastPrism].Value;
+							int frames = Math.Max(1, Main.projFrames[ProjectileID.LastPrism]);
+							float charge = ally ? duelOppBeamCharge : beamCharge;
+							int speed = (int)MathHelper.Lerp(7f, 2f, charge);
+							Rectangle psrc = new(0, ptex.Height / frames * (int)(time / speed % frames), ptex.Width, ptex.Height / frames);
+							Vector2 pat = hand + new Vector2(facing * psrc.Height * scale * 0.3f, 0f);
+							Color glow = Color.Lerp(Color.White, WeaponBeam.Rainbow(0f), 0.35f * charge);
+							DrDraw.Sb.Draw(ptex, pat, psrc, glow * (1f - shadow) * pulse, MathHelper.PiOver2 * facing, psrc.Size() / 2f, scale * 0.8f, SpriteEffects.None, 0f);
+						}
+						else
+						{
+							Vector2 at = hand + new Vector2(facing * src.Width * scale * 0.35f, 0f);
+							DrDraw.Sb.Draw(tex, at, src, Color.White * (1f - shadow) * pulse, 0f, src.Size() / 2f, scale * 0.8f,
+								left ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+						}
 					}
 					else if (pose == HeroPose.Item || pose == HeroPose.ItemReady)
 					{

@@ -358,6 +358,17 @@ namespace MercyMode.Battle
 			bestPoints = 0;
 			// Guns: no timed bolts, spam Z for as many shots as the window and the gun's speed allow
 			gunMode = fightWeapon.Item?.useAmmo == AmmoID.Bullet;
+			// Beam weapons (the Last Prism): hold Z to channel the beam, paying mana as it runs
+			beamMode = IsBeamWeapon(fightWeapon.Item);
+			if (beamMode)
+				gunMode = false;
+			beamTimer = BeamWindowTicks;
+			beamCharge = 0f;
+			beamHits = 0;
+			beamOn = false;
+			beamTick = 0;
+			beamManaTick = 0;
+			beamSoundIn = 0;
 			gunTimer = GunWindowTicks;
 			gunCooldown = 0;
 			gunShots = 0;
@@ -386,6 +397,134 @@ namespace MercyMode.Battle
 				frame += Main.rand.NextBool() ? 12f : 18f;
 			}
 			SetPhase(Phase.FightBar);
+		}
+
+		// ---- beams: HOLD Z (the Last Prism) ----
+
+		private bool beamMode, beamOn, beamNoMana;
+		/// <summary>0..1: how long the beam has been held (the prism's rays close in, it gets wider and hits harder).</summary>
+		private float beamCharge;
+		private int beamTimer, beamHits, beamTick, beamManaTick, beamSoundIn;
+		private const int BeamWindowTicks = 200;
+		/// <summary>Ticks between the held beam's hits, and the most hits one turn.</summary>
+		private const int BeamHitEvery = 16;
+		private int MaxBeamHits => Math.Clamp(fightWeapon.Bolts * 3, 6, 12);
+		/// <summary>Full charge after this long held (the Last Prism takes about 2 seconds in Terraria too).</summary>
+		private const float BeamChargeTicks = 110f;
+
+		private void UpdateBeamBar()
+		{
+			boltX += 1f / TicksPerFrame;
+			if (beamTimer > 0)
+				beamTimer--;
+			if (!encounter.Alive || beamHits >= MaxBeamHits)
+				beamTimer = 0;
+			Item item = fightWeapon.Item;
+			bool want = beamTimer > 0 && Held(Microsoft.Xna.Framework.Input.Keys.Z);
+			// Mana as it runs: the weapon's cost every use time, like holding it in Terraria
+			if (want && item != null && item.mana > 0 && --beamManaTick <= 0)
+			{
+				if (Player.CheckMana(item, pay: true))
+				{
+					beamManaTick = Math.Max(6, item.useTime);
+					beamNoMana = false;
+				}
+				else
+				{
+					if (!beamNoMana)
+						Sfx("cantselect");
+					beamNoMana = true;
+					want = false;
+				}
+			}
+			if (want && !beamOn)
+			{
+				// It starts up: the prism's sound, and the first hit comes quickly
+				AttackSfx.Vanilla(SoundID.Item15 with { Volume = 0.7f });
+				beamTick = BeamHitEvery / 2;
+				beamSoundIn = 0;
+			}
+			beamOn = want;
+			beamCharge = beamOn ? Math.Min(1f, beamCharge + 1f / BeamChargeTicks) : Math.Max(0f, beamCharge - 0.04f);
+			SetHeroPose(HeroPose.AttackReady);
+			if (beamOn)
+			{
+				heroRecoil = Math.Max(heroRecoil, 0.3f * RecoilFrames * beamCharge);
+				// The prism's hum, quicker as it charges (Terraria's does the same)
+				if (--beamSoundIn <= 0)
+				{
+					AttackSfx.Vanilla(SoundID.Item15 with { Volume = 0.35f + 0.25f * beamCharge, Pitch = -0.2f + 0.5f * beamCharge });
+					beamSoundIn = (int)MathHelper.Lerp(24f, 7f, beamCharge);
+				}
+				if (--beamTick <= 0)
+				{
+					beamTick = BeamHitEvery;
+					beamHits++;
+					hitsTried++;
+					// Harder the longer it's held: a good press at first, a perfect one at full charge
+					int points = (int)MathHelper.Lerp(90f, 150f, beamCharge);
+					bestPoints = Math.Max(bestPoints, points);
+					pendingHits.Add(new PendingHit
+					{
+						Points = points,
+						Damage = Math.Max(1, fightWeapon.ShotDamage),
+						Crit = Main.rand.Next(100) < fightWeapon.Crit,
+						Ticks = 2,
+						Ranged = true,
+					});
+				}
+			}
+			for (int i = pendingHits.Count - 1; i >= 0; i--)
+			{
+				PendingHit h = pendingHits[i];
+				h.Ticks--;
+				if (h.Ticks <= 0)
+				{
+					pendingHits.RemoveAt(i);
+					ResolveHit(h);
+				}
+			}
+			if (beamTimer <= 0 && pendingHits.Count == 0 && beamCharge <= 0f)
+			{
+				beamOn = false;
+				if (hitsLanded == 0)
+					EnemyNumber(0, HeroDamageColor, DamageNumber.MissFrame);
+				SetHeroPose(HeroPose.Idle);
+				SetPhase(Phase.FightResult);
+			}
+			else if (beamTimer <= 0)
+				beamOn = false;
+		}
+
+		/// <summary>The held beam on the battle screen, from the prism to the target, while Z is down.</summary>
+		private void DrawFightBeam()
+		{
+			if (!beamMode || phase != Phase.FightBar || beamCharge <= 0.01f || encounter == null)
+				return;
+			NPC aim = Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : null;
+			Vector2 to = PartSpot(aim);
+			bool prism = fightWeapon.Item?.type == ItemID.LastPrism;
+			float alpha = beamOn ? 1f : beamCharge;
+			WeaponBeam.Draw(Muzzle(), to, 0.5f, prism, alpha, 0.45f + 0.75f * beamCharge, 1.6f - 1.3f * beamCharge);
+			if (beamOn && time % 3 == 0)
+				Sparks.Burst(this, to + Main.rand.NextVector2Circular(10f, 10f), 2, prism ? WeaponBeam.Rainbow(Main.rand.NextFloat()) : new Color(90, 220, 255), 2f);
+		}
+
+		/// <summary>The beam's bar: the prompt, the time left, its charge and the hits.</summary>
+		private void DrawBeamBar(float x, float y, float alpha)
+		{
+			bool prism = fightWeapon?.Item?.type == ItemID.LastPrism;
+			Color tint = prism ? WeaponBeam.Rainbow(0f) : new Color(90, 220, 255);
+			float left = beamTimer / (float)BeamWindowTicks;
+			DrDraw.Rect(x + 82, y + 30, (FightBoxWidth - 4) * left, 4, tint * alpha);
+			// The charge, filling the bar from the left
+			DrDraw.Rect(x + 82, y + 3, (FightBoxWidth - 4) * beamCharge, 3, Color.White * (alpha * 0.8f));
+			bool blink = beamTimer > 0 && !beamOn && (time / 8) % 2 == 0;
+			string prompt = beamNoMana ? "NO MANA" : "HOLD  Z";
+			DrDraw.Text(prompt, x + 92, y + 8, (beamNoMana ? new Color(255, 80, 80) : blink ? Color.White : tint) * alpha, DrDraw.SmallFont);
+			DrDraw.Text($"{beamHits}/{MaxBeamHits}", x + 80 + FightBoxWidth - 40, y + 8, Color.White * alpha, DrDraw.SmallFont);
+			if (fightWeapon?.Item is Item it && it.mana > 0)
+				DrDraw.Text($"MANA {Player.statMana}", x + 200, y + 8, new Color(120, 160, 255) * alpha, DrDraw.SmallFont, 0.8f);
 		}
 
 		// ---- guns: SPAM Z TO SHOOT ----
@@ -469,6 +608,11 @@ namespace MercyMode.Battle
 			if (gunMode)
 			{
 				UpdateGunBar();
+				return;
+			}
+			if (beamMode)
+			{
+				UpdateBeamBar();
 				return;
 			}
 			boltX += 1f / TicksPerFrame;
@@ -650,7 +794,21 @@ namespace MercyMode.Battle
 				DuelSendFire(fightWeapon?.Item?.type ?? 0, 0, null);
 			}
 			else
-				AddEffect(new ShotImpact(spot + Main.rand.NextVector2Circular(14f, 14f)));
+			{
+				Vector2 at = spot + Main.rand.NextVector2Circular(14f, 14f);
+				AddEffect(new ShotImpact(at));
+				// Like the duel's pieces: rockets and grenades blow up where they land, the rest spark in their colour
+				PieceKind kind = fightWeapon?.Item is Item fw ? Classify(fw) : PieceKind.Shot;
+				if (kind == PieceKind.Explosive)
+				{
+					AddEffect(new Shockwave(at, KindColor(kind), 46f));
+					Sparks.Burst(this, at, 14, new Color(255, 190, 80), 3.5f);
+					ShakeScreen(2f);
+					AttackSfx.Vanilla(SoundID.Item14 with { Volume = 0.6f });
+				}
+				else if (kind != PieceKind.Beam)
+					Sparks.Burst(this, at, 5, KindColor(kind), 2.2f);
+			}
 			enemyShake = 18;
 			if (hit.Crit)
 				Sfx("crit");
@@ -1653,6 +1811,9 @@ namespace MercyMode.Battle
 			NPC aim = Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : null;
 			Vector2 to = PartSpot(aim) + Main.rand.NextVector2Circular(14f, 14f);
 			AddEffect(new MuzzleFlash(from));
+			// A puff at the muzzle in the weapon's colour, like a duel piece coming in
+			if (w.Item != null)
+				Sparks.Burst(this, from, 5, KindColor(Classify(w.Item)), 2f);
 			// Beam weapons fire a beam, not their holdout (the Last Prism's prism) flying across
 			if (IsBeamWeapon(w.Item))
 				AddEffect(new BeamEffect(from, to, w.Item.type == ItemID.LastPrism));

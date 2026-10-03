@@ -281,9 +281,13 @@ namespace MercyMode.Battle
 			Main.hslToRgb(((float)(Main.GlobalTimeWrappedHourly * 0.8f) + offset) % 1f, 1f, 0.6f);
 
 		/// <param name="progress">0..1 through the beam's life: thin while it charges, full, then fading.</param>
-		public static void Draw(Vector2 from, Vector2 to, float progress, bool prism, float alpha)
+		public static void Draw(Vector2 from, Vector2 to, float progress, bool prism, float alpha) => Draw(from, to, progress, prism, alpha, 1f, 1f);
+
+		/// <param name="widthMul">How thick (a held beam grows with its charge).</param>
+		/// <param name="spread">How far apart the Last Prism's rays start (they close in as it charges).</param>
+		public static void Draw(Vector2 from, Vector2 to, float progress, bool prism, float alpha, float widthMul, float spread)
 		{
-			float width = progress < 0.2f ? MathHelper.Lerp(1f, 10f, progress / 0.2f) : progress > 0.75f ? 10f * (1f - (progress - 0.75f) / 0.25f) : 10f;
+			float width = (progress < 0.2f ? MathHelper.Lerp(1f, 10f, progress / 0.2f) : progress > 0.75f ? 10f * (1f - (progress - 0.75f) / 0.25f) : 10f) * widthMul;
 			float a = alpha * (progress > 0.85f ? 1f - (progress - 0.85f) / 0.15f : 1f);
 			Vector2 dir = to - from;
 			if (dir.LengthSquared() < 1f)
@@ -297,7 +301,7 @@ namespace MercyMode.Battle
 				Vector2 meet = from + n * Math.Min(60f, dir.Length() * 0.3f);
 				for (int i = 0; i < 6; i++)
 				{
-					float off = (i - 2.5f) * 7f;
+					float off = (i - 2.5f) * 7f * spread;
 					DrDraw.Line(from + side * off, meet, 2f, Rainbow(i / 6f) * a);
 				}
 				start = meet;
