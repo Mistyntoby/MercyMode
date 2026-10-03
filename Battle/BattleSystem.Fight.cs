@@ -986,6 +986,40 @@ namespace MercyMode.Battle
 			OpenSummonSelect();
 		}
 
+		/// <summary>
+		/// The summons calling this item would push out, like Terraria does when the minion slots are full: the oldest
+		/// first (lowest minionPos), until the new one fits. Names of the kinds lost.
+		/// </summary>
+		private List<string> Replaced(Item item)
+		{
+			var names = new List<string>();
+			if (!ContentSamples.ProjectilesByType.TryGetValue(item.shoot, out Projectile sample) || sample.minionSlots <= 0f
+				|| !ProjectileID.Sets.MinionSacrificable[item.shoot])
+				return names;
+			float free = Player.maxMinions - Player.slotsMinions;
+			if (free >= sample.minionSlots)
+				return names;
+			foreach (Projectile p in Main.projectile.Where(q => q.active && q.owner == Player.whoAmI && q.minion && q.minionSlots > 0f
+				&& ProjectileID.Sets.MinionSacrificable[q.type]).OrderBy(q => q.minionPos))
+			{
+				int kind = IsDragonSegment(p.type) ? ProjectileID.StardustDragon1 : p.type == ProjectileID.AbigailCounter ? ProjectileID.AbigailMinion : p.type;
+				string name = Lang.GetProjectileName(kind).Value;
+				if (!names.Contains(name))
+					names.Add(name);
+				free += p.minionSlots;
+				if (free >= sample.minionSlots)
+					break;
+			}
+			return names;
+		}
+
+		/// <summary>How many of each summon kind the player had before calling one (it may push some out).</summary>
+		private readonly Dictionary<int, int> summonsBeforeCall = new();
+
+		private Dictionary<int, int> SummonCounts() => Main.projectile
+			.Where(q => q.active && q.owner == Player.whoAmI && q.minion && !IsDragonSegment(q.type) && q.type != ProjectileID.AbigailCounter)
+			.GroupBy(q => q.type).ToDictionary(g => g.Key, g => g.Count());
+
 		/// <summary>The summon called on this pick goes away again, and the pick before it is back.</summary>
 		private void UndoCalledSummon()
 		{
@@ -995,6 +1029,26 @@ namespace MercyMode.Battle
 						|| calledSummon == ProjectileID.AbigailMinion && p.type == ProjectileID.AbigailCounter
 						|| calledSummon == ProjectileID.StardustDragon1 && IsDragonSegment(p.type)))
 						p.Kill();
+			// Whatever it pushed out comes back (called again with its item, if it's still in the inventory)
+			if (calledSummon > 0)
+			{
+				// Terraria only counts minion slots once a tick: count them now, without the one just dismissed
+				Player.slotsMinions = Main.projectile.Where(q => q.active && q.owner == Player.whoAmI && q.minion).Sum(q => q.minionSlots);
+				var now = SummonCounts();
+				foreach (var (kind, had) in summonsBeforeCall)
+				{
+					Item item = Player.inventory.Take(50).FirstOrDefault(it => it != null && !it.IsAir && it.buffType > 0 && SummonKindOf(it) == kind);
+					if (item == null)
+						continue;
+					int have = now.TryGetValue(kind, out int h) ? h : 0;
+					for (int tries = 0; have < had && tries < 10; tries++, have++)
+					{
+						CallSummon(item);
+						Player.slotsMinions = Main.projectile.Where(q => q.active && q.owner == Player.whoAmI && q.minion).Sum(q => q.minionSlots);
+					}
+				}
+			}
+			summonsBeforeCall.Clear();
 			if (calledSummon > 0 || unsummonPending)
 				chosenSummon = summonBefore;
 			calledSummon = 0;
@@ -1048,7 +1102,12 @@ namespace MercyMode.Battle
 				StatArrow(sx + DrDraw.Measure($"ATK {selDamage}", DrDraw.SmallFont) + 8, sy + 3, selDamage > currentDamage);
 			int count = sel.Out != null ? Main.projectile.Count(p => p.active && p.owner == Player.whoAmI && p.type == sel.Out.type) : 1;
 			DrDraw.Text(count > 1 ? $"{count} OUT, 1 HIT" : "1 HIT", sx, sy + 20, gray, DrDraw.SmallFont);
-			DrDraw.Text(sel.Call != null ? "CALLED NOW" : "AFTER YOUR HIT", sx, sy + 40, gray, DrDraw.SmallFont);
+			string replaces = sel.Call != null ? string.Join(", ", Replaced(sel.Call)) : "";
+			if (replaces.Length > 0)
+				DrDraw.Text("REPLACES " + replaces.ToUpperInvariant(), sx, sy + 40, new Color(255, 80, 80), DrDraw.SmallFont,
+					Math.Min(1f, 200f / Math.Max(1f, DrDraw.Measure("REPLACES " + replaces.ToUpperInvariant(), DrDraw.SmallFont))));
+			else
+				DrDraw.Text(sel.Call != null ? "CALLED NOW" : "AFTER YOUR HIT", sx, sy + 40, gray, DrDraw.SmallFont);
 			NPC foe = encounter?.TargetableParts == true && Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : encounter?.StrikeTarget();
 			if (foe != null)
 			{
@@ -1081,7 +1140,12 @@ namespace MercyMode.Battle
 			if (pick.Out != null)
 				chosenSummon = pick.Out.type;
 			else if (pick.Call != null)
+			{
+				summonsBeforeCall.Clear();
+				foreach (var (kind, n) in SummonCounts())
+					summonsBeforeCall[kind] = n;
 				chosenSummon = calledSummon = CallSummon(pick.Call);
+			}
 			else
 			{
 				unsummonPending = Minions().Count > 0;
@@ -1297,6 +1361,9 @@ namespace MercyMode.Battle
 					rel += (p.Center - anchor.Center) * scale;
 					// Our chosen one's attack: a lunge at the enemy and back (shooters stay put and fire)
 					int kind = anchor.type;
+					// Idle: flying ones drift about a little (frozen, they'd hang perfectly still)
+					if (!p.sentry && !p.tileCollide)
+						rel += new Vector2((float)Math.Sin(time * 0.03f + p.whoAmI) * 10f, (float)Math.Sin(time * 0.06f + p.whoAmI * 1.7f) * 6f) * (scale / HeroScale);
 					if (lunge > 0f && kind == fighting && !p.sentry && !SummonShots.ContainsKey(kind) && encounter != null)
 						rel += (encounter.ScreenCenter - (feet + rel)) * lunge * 0.85f;
 					if (ours && p == anchor)
@@ -1310,7 +1377,7 @@ namespace MercyMode.Battle
 					if (frames > 1)
 						p.frame = (time / 5 + p.whoAmI) % frames;
 					if (!p.sentry && !IsDragonSegment(p.type) && p.type != ProjectileID.StardustDragon1)
-						p.spriteDirection = 1;
+						p.spriteDirection = BattleFreezeProjectile.FacingRight(p.type);
 					var oldTrail = (Vector2[])p.oldPos.Clone();
 					p.position += shift;
 					for (int i = 0; i < p.oldPos.Length; i++)

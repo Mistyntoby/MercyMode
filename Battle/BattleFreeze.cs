@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -146,12 +147,37 @@ namespace MercyMode.Battle
 							seg.Center += moved;
 				}
 				else
-					projectile.direction = projectile.spriteDirection = owner.direction;
+				{
+					projectile.direction = owner.direction;
+					projectile.spriteDirection = owner.direction * FacingRight(type);
+				}
 			}
 			return false;
 		}
 
 		public override bool CanHitPlayer(Projectile projectile, Player target) => !BattleSystem.Active;
+
+		/// <summary>
+		/// Per summon kind, the spriteDirection that makes it face right. Sprites drawn facing left (the Imp) use -1.
+		/// Learned from how each summon turns while it flies about in the world; a few known ones to start with.
+		/// </summary>
+		private static readonly Dictionary<int, int> facingVotes = new()
+		{
+			[Terraria.ID.ProjectileID.FlyingImp] = -50,
+		};
+
+		public static int FacingRight(int type) => facingVotes.TryGetValue(type, out int v) && v < 0 ? -1 : 1;
+
+		public override void PostAI(Projectile projectile)
+		{
+			// Moving sideways at a fair speed, a summon faces where it goes: note which spriteDirection that was
+			if (projectile.owner != Main.myPlayer || Main.netMode == Terraria.ID.NetmodeID.Server || System.Math.Abs(projectile.velocity.X) < 2f
+				|| projectile.spriteDirection == 0 || !BattleSystem.IsSummonOf(projectile, projectile.owner) || SummonInBattle(projectile))
+				return;
+			int vote = projectile.spriteDirection * System.Math.Sign(projectile.velocity.X);
+			facingVotes.TryGetValue(projectile.type, out int v);
+			facingVotes[projectile.type] = System.Math.Clamp(v + vote, -60, 60);
+		}
 
 		/// <summary>A summon whose owner is in a battle (ours, or another player's as the server and the others know it).</summary>
 		public static bool SummonInBattle(Projectile p)
