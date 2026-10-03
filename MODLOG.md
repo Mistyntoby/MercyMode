@@ -427,3 +427,12 @@ Resolution 640x480. All sizes below in those pixels.
 - 0.63: composite arm angles times the facing (left-facing stab/defend/item arms), beam weapons (Last Prism, Charged Blaster Cannon) fire a beam in FIGHT and are held out (no blade pose), duel pieces BEAM and BOOM (rockets, grenades), spawn puffs and orb trails, the builder can force the dodger's SOUL mode (6 s cooldown), battle background scrolls on a real-time clock snapped to screen pixels.
 - 0.64: beam weapons in FIGHT are HOLD Z (200 ticks, a hit every 16 while held, up to 6-12 hits, mana every use time, charge over ~110 ticks raises damage, width and pitch; Item15 hum quickening); the held Last Prism draws its spinning holdout aimed at the enemy; duels mirror the held beam (BeamState); FIGHT shots spark in their weapon kind's colour and explosives blow up on impact, like the duel pieces.
 - 0.65: challenges carry an id (a press never carries over to the next challenge with the same player; that left both sides at 1/2), a completed challenge clears stale battle/duel entries instead of failing silently; beams drawn additively (DrDraw.Additive, DrDraw.Glow): six swirling Last Prism rays that close in and merge into one pulsing rainbow beam at full charge, glows at both ends, sparks and motes; the aim slides between targets; louder hum, a zap per hit, a flash and rumble when the rays meet.
+
+## Deltarune extras (0.74)
+
+- Signature attacks (Battle/Encounters/EnemySignatures.cs): ~35 enemies matched by internal name (variants together) get their own attack and speech lines; used on turns 0, 3, 6... instead of the family attack. Lab: attacks-signatures (26 types, 1 turn each) plus the family sweep (which hits 9 more).
+- Speech bubbles: every regular enemy says a line as its turn opens (family lines, or its signature lines; "...so... tired..." when TIRED).
+- TIRED: a regular enemy under 34% HP (or WornOut) shows its name blue, says it looks TIRED, and drifts z's. PACIFY (ACT, 16 TP) spares a TIRED enemy at once.
+- RECRUITS: sparing (or pacifying) a regular enemy counts toward its kind (banner groups variants), saved per character (RecruitPlayer); at 4 it's a recruit and starts later battles with 35% MERCY.
+- Several enemies attacking together: each RepeatingAttack fires 1.6x/2.2x less often and their volleys are staggered (two zombie walls with separate gaps at once left no way through).
+- FIGHT numbers stack per enemy (hits carried over to the next enemy start at its spot).

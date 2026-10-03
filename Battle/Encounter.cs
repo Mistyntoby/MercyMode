@@ -330,6 +330,12 @@ namespace MercyMode.Battle
 
 		/// <summary>True for regular enemies (shorter turns, MERCY rises faster).</summary>
 		public virtual bool IsBoss => true;
+
+		/// <summary>Deltarune's TIRED: its name shows blue, and PACIFY puts it to sleep (spared).</summary>
+		public virtual bool Tired => false;
+
+		/// <summary>What it says in its speech bubble as its turn starts (null: nothing).</summary>
+		public virtual string Bubble(int turn) => null;
 	}
 
 	/// <summary>Decides who gets a battle and which encounter they use.</summary>
