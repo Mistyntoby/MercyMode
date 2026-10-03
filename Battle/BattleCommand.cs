@@ -14,8 +14,8 @@ namespace MercyMode.Battle
 	{
 		public override CommandType Type => CommandType.Chat;
 		public override string Command => "mmbattle";
-		public override string Usage => "/mmbattle [npc <id|name> | group <n> <name> | group <name>, <name>, ... | spawn [dx dy] | spawnnpc <id|name> | loadout <starter|melee|spear|ranged|magic|thrown|endgame|summon|mixed> | clearinv confirm | join | end | clear | heal | hp <n> | mercy <n> | kit | night | tp <0-100> | bosshp <n> | turn <n>]";
-		public override string Description => "Start Mercy Mode battles for testing (no arguments: Eye of Cthulhu)";
+		public override string Usage => "/mmbattle [eye | npc <id|name> | group <n> <name> | group <name>, <name>, ... | spawn [dx dy] | spawnnpc <id|name> | loadout <starter|melee|spear|ranged|magic|thrown|endgame|summon|mixed> | clearinv confirm | join | end | clear | heal | hp <n> | mercy <n> | kit | night | tp <0-100> | bosshp <n> | turn <n>]";
+		public override string Description => "Mercy Mode test commands (type /mmbattle for the list)";
 
 		/// <summary>Weapon sets for demonstrating FIGHT with each kind of weapon (item, stack).</summary>
 		private static readonly Dictionary<string, (int, int)[]> Loadouts = new()
@@ -31,10 +31,37 @@ namespace MercyMode.Battle
 			["mixed"] = new (int, int)[] { (ItemID.PlatinumHelmet, 1), (ItemID.PlatinumChainmail, 1), (ItemID.PlatinumGreaves, 1), (ItemID.NightsEdge, 1), (ItemID.Minishark, 1), (ItemID.MusketBall, 999), (ItemID.MagicMissile, 1), (ItemID.Shuriken, 200) },
 		};
 
+		private static void ShowHelp(CommandCaller caller)
+		{
+			Color h = MercyMode.MercyYellow, t = MercyMode.TextWhite, g = MercyMode.Gray;
+			caller.Reply("* Mercy Mode commands:", h);
+			caller.Reply("Battles (singleplayer):", h);
+			caller.Reply("  /mmbattle eye  - fight the Eye of Cthulhu", t);
+			caller.Reply("  /mmbattle npc <id|name>  - spawn an enemy or boss and fight it", t);
+			caller.Reply("  /mmbattle group <n> <name>  or  group <a>, <b>, <c>  - fight a squad", t);
+			caller.Reply("  /mmbattle spawn [dx dy]  - spawn the Eye without starting  |  spawnnpc <id|name>", t);
+			caller.Reply("Gear:", h);
+			caller.Reply("  /mmbattle loadout <starter|melee|spear|ranged|magic|thrown|endgame|summon|mixed>", t);
+			caller.Reply("  /mmbattle kit  - potions and one of each weapon kind", t);
+			caller.Reply("  /mmbattle clearinv confirm  - DELETES your main inventory (not armor)", t);
+			caller.Reply("In a battle:", h);
+			caller.Reply("  /mmbattle end  |  heal  |  hp <n>  |  mercy <n>  |  tp <0-100>  |  bosshp <n>  |  turn <n>", t);
+			caller.Reply("Other:", h);
+			caller.Reply("  /mmbattle join  - join a battle nearby (multiplayer; same as the Join Battle key)", t);
+			caller.Reply("  /mmbattle night  |  clear", t);
+			caller.Reply("  /drassets  - which Deltarune assets loaded", g);
+		}
+
 		public override void Action(CommandCaller caller, string input, string[] args)
 		{
 			Player player = caller.Player;
 			string cmd = args.Length > 0 ? args[0].ToLowerInvariant() : "";
+			// Nothing (or help): the list of commands
+			if (cmd is "" or "help" or "?")
+			{
+				ShowHelp(caller);
+				return;
+			}
 
 			switch (cmd)
 			{
@@ -214,6 +241,14 @@ namespace MercyMode.Battle
 				}
 				else
 					caller.Reply($"* Spawned {spawned.FullName}.", MercyMode.TextWhite);
+				return;
+			}
+
+			// Anything not known: the list, rather than a surprise Eye of Cthulhu
+			if (cmd != "eye" && cmd != "spawn")
+			{
+				caller.Reply($"* Unknown command \"{cmd}\".", MercyMode.Gray);
+				ShowHelp(caller);
 				return;
 			}
 
