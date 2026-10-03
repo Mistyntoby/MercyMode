@@ -190,6 +190,7 @@ namespace MercyMode.Battle
 			SetUpEnemies(root, given);
 			ResetNet();
 			time = 0;
+			summonLungeTime = -1000;
 			battleOver = false;
 			defending = false;
 			menuChoice = Choice.Fight;
@@ -911,7 +912,9 @@ namespace MercyMode.Battle
 			ApplyRow(rows);
 			if (Cancel)
 			{
-				if (pendingChoice == Choice.Fight)
+				if (pendingChoice == Choice.Fight && summonMenuShown)
+					BackToSummonSelect();
+				else if (pendingChoice == Choice.Fight)
 					OpenWeaponSelect();
 				else
 					SetPhase(Phase.Menu);
@@ -1930,7 +1933,7 @@ namespace MercyMode.Battle
 			float textY = top + 48; // 376 when the panel is fully up
 			// Multiplayer: the others have picked and wait on us; the server goes on without us when this runs out
 			int skipIn = Net.BattleNet.SecondsUntilSkip;
-			if (skipIn >= 0 && skipIn <= 60 && phase is Phase.Menu or Phase.WeaponSelect or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect or Phase.PartySelect)
+			if (skipIn >= 0 && skipIn <= 60 && phase is Phase.Menu or Phase.WeaponSelect or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect or Phase.PartySelect or Phase.SummonSelect)
 				DrDraw.Text($"The others are waiting: auto-skip in {skipIn}s", 30, ScreenHeight - 18, new Color(255, 220, 64), DrDraw.SmallFont, 0.8f);
 			switch (phase)
 			{
@@ -1958,8 +1961,7 @@ namespace MercyMode.Battle
 					DrawHealTargets(textY);
 					break;
 				case Phase.SummonSelect:
-					DrawItemList(textY, SummonLabels());
-					DrDraw.Text("Who joins\nthe FIGHT?", 470, textY, new Color(128, 128, 128), DrDraw.BigFont, 0.8f);
+					DrawSummonSelect(textY);
 					break;
 				case Phase.ItemSelect:
 					var items = HealingItems();

@@ -255,7 +255,7 @@ namespace MercyMode.Battle
 			netRound = round;
 			spectating = false;
 			pendingAction = null;
-			if (phase is Phase.Waiting or Phase.Menu or Phase.WeaponSelect or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect or Phase.PartySelect)
+			if (phase is Phase.Waiting or Phase.Menu or Phase.WeaponSelect or Phase.EnemySelect or Phase.ActSelect or Phase.ItemSelect or Phase.PartySelect or Phase.SummonSelect)
 			{
 				// Still choosing when the wait ran out: no action this round
 				executing = false;
@@ -646,6 +646,9 @@ namespace MercyMode.Battle
 				// Watchers stand a little see-through until they jump in
 				float shadow = BattleNet.Joining.Contains(who) ? 0.5f : 0f;
 				allyLastFeet[who] = spot;
+				// Their summons, behind them like ours
+				if (fly >= 1f)
+					DrawMinions(sb, m, p, feet, scale);
 				HeroLight = light;
 				DrawPlayerPose(sb, m, p, feet + new Vector2(0f, bob * fly), scale, fly >= 1f ? pose : HeroPose.Idle, timer, shadow, ally: true);
 				HeroLight = Color.White;

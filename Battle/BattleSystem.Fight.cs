@@ -218,6 +218,7 @@ namespace MercyMode.Battle
 			if (pick.Slot >= 0 && pick.Slot < 10)
 				Player.selectedItem = pick.Slot;
 			// Summons out or in the inventory: which one fights alongside (or none)
+			summonMenuShown = false;
 			if (SummonEntries().Count > 0)
 			{
 				OpenSummonSelect();
@@ -895,10 +896,17 @@ namespace MercyMode.Battle
 		/// <summary>The minion a summon item calls (Abigail's flower shoots her counter; she's the one who fights).</summary>
 		private static int SummonKindOf(Item item) => item.shoot == ProjectileID.AbigailCounter ? ProjectileID.AbigailMinion : item.shoot;
 
+		/// <summary>What was called from the inventory on this pick (undone by backing out of the target), and the pick before.</summary>
+		private int calledSummon;
+		private bool summonMenuShown;
+		private int summonBefore = -1;
+
+		/// <summary>"No summon" first, then the kinds out, then summon items that could be called.</summary>
 		private List<SummonEntry> SummonEntries()
 		{
 			var kinds = Minions();
-			var list = kinds.Select(k => new SummonEntry(k, null)).ToList();
+			var list = new List<SummonEntry> { new(null, null) };
+			list.AddRange(kinds.Select(k => new SummonEntry(k, null)));
 			var seen = new HashSet<int>(kinds.Select(k => k.type));
 			for (int i = 0; i < 50; i++)
 			{
@@ -910,25 +918,97 @@ namespace MercyMode.Battle
 					list.Add(new SummonEntry(null, item));
 			}
 			// Nothing out and nothing to call: no menu at all
-			if (list.Count == 0)
-				return list;
-			list.Add(new SummonEntry(null, null));
-			return list;
+			return list.Count == 1 ? new List<SummonEntry>() : list;
+		}
+
+		/// <summary>One summon attack's damage before defense (all of a kind that's out hit together).</summary>
+		private int SummonEntryDamage(SummonEntry e)
+		{
+			if (e.Out != null)
+				return SummonDamage(e.Out) * Math.Max(1, Main.projectile.Count(p => p.active && p.owner == Player.whoAmI && p.type == e.Out.type));
+			return e.Call != null ? Player.GetWeaponDamage(e.Call) : 0;
 		}
 
 		private void OpenSummonSelect()
 		{
+			calledSummon = 0;
+			summonBefore = chosenSummon;
 			var entries = SummonEntries();
-			listIndex = Math.Max(0, entries.FindIndex(e => e.Out?.type == chosenSummon));
-			if (chosenSummon == 0 && Minions().Count == 0)
-				listIndex = entries.Count - 1;
+			// Start on the one already fighting (or the first out); "No summon" if none is out
+			int at = entries.FindIndex(e => e.Out != null && e.Out.type == chosenSummon);
+			if (at < 0 && chosenSummon != 0)
+				at = entries.FindIndex(e => e.Out != null);
+			listIndex = Math.Max(0, at);
 			SetPhase(Phase.SummonSelect);
 		}
 
-		private List<string> SummonLabels() => SummonEntries().Select(e =>
-			e.Out != null ? $"{Lang.GetProjectileName(e.Out.type).Value}  ({SummonDamage(e.Out)})"
-			: e.Call != null ? $"Summon {e.Call.Name}"
-			: Minions().Count > 0 ? "Unsummon" : "No summon").ToList();
+		/// <summary>Backing out of the target after picking a summon: the one just called goes away again.</summary>
+		private void BackToSummonSelect()
+		{
+			if (calledSummon > 0)
+				foreach (Projectile p in Main.ActiveProjectiles)
+					if (p.owner == Player.whoAmI && (p.type == calledSummon
+						|| calledSummon == ProjectileID.AbigailMinion && p.type == ProjectileID.AbigailCounter))
+						p.Kill();
+			chosenSummon = summonBefore;
+			OpenSummonSelect();
+		}
+
+		private void DrawSummonSelect(float y)
+		{
+			var entries = SummonEntries();
+			if (entries.Count == 0)
+				return;
+			Projectile current = ChosenSummon();
+			int currentDamage = current != null ? SummonEntryDamage(new SummonEntry(current, null)) : 0;
+			const int rows = 3;
+			int first = Math.Clamp(listIndex - rows + 1, 0, Math.Max(0, entries.Count - rows));
+			for (int i = first; i < Math.Min(entries.Count, first + rows); i++)
+			{
+				SummonEntry e = entries[i];
+				float ey = y + (i - first) * 30;
+				string name = e.Out != null ? Lang.GetProjectileName(e.Out.type).Value
+					: e.Call != null ? "Call " + e.Call.Name
+					: Minions().Count > 0 ? "Unsummon" : "No summon";
+				float scale = Math.Min(1f, 270f / Math.Max(1f, DrDraw.Measure(name, DrDraw.BigFont)));
+				DrDraw.Text(name, 80, ey + (1f - scale) * 10f, Color.White, DrDraw.BigFont, scale);
+				if (i == listIndex)
+					DrawHeartCursor(55, ey + 10);
+				// Better or worse than the one fighting now
+				int dmg = SummonEntryDamage(e);
+				if (e.Out != null && current != null && e.Out.type == current.type)
+					DrDraw.Text("E", 360, ey + 6, new Color(128, 128, 128), DrDraw.SmallFont);
+				else if (dmg != currentDamage)
+					StatArrow(362, ey + 8, dmg > currentDamage);
+			}
+			if (first > 0)
+				DrDraw.Text("^", 380, y - 4, Color.White, DrDraw.SmallFont);
+			if (first + rows < entries.Count)
+				DrDraw.Text("v", 380, y + 70, Color.White, DrDraw.SmallFont);
+
+			// The highlighted one's damage, on the right like the weapons
+			SummonEntry sel = entries[Math.Clamp(listIndex, 0, entries.Count - 1)];
+			int selDamage = SummonEntryDamage(sel);
+			Color gray = new(160, 160, 160);
+			float sx = 410, sy = y - 6;
+			if (sel.Out == null && sel.Call == null)
+			{
+				DrDraw.Text(Minions().Count > 0 ? "Dismiss your\nsummons" : "FIGHT alone", sx, sy, gray, DrDraw.SmallFont);
+				return;
+			}
+			DrDraw.Text($"ATK {selDamage}", sx, sy, Color.White, DrDraw.SmallFont);
+			if (selDamage != currentDamage && !(sel.Out != null && sel.Out == current))
+				StatArrow(sx + DrDraw.Measure($"ATK {selDamage}", DrDraw.SmallFont) + 8, sy + 3, selDamage > currentDamage);
+			int count = sel.Out != null ? Main.projectile.Count(p => p.active && p.owner == Player.whoAmI && p.type == sel.Out.type) : 1;
+			DrDraw.Text(count > 1 ? $"{count} OUT, 1 HIT" : "1 HIT", sx, sy + 20, gray, DrDraw.SmallFont);
+			DrDraw.Text(sel.Call != null ? "CALLED NOW" : "AFTER YOUR HIT", sx, sy + 40, gray, DrDraw.SmallFont);
+			NPC foe = encounter?.TargetableParts == true && Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : encounter?.StrikeTarget();
+			if (foe != null)
+			{
+				int perHit = AfterDefense(Math.Max(1, (int)Math.Round(selDamage * DamageScale)), foe);
+				DrDraw.Text($"VS DEF {foe.defense}: {perHit}", sx, sy + 60, new Color(255, 200, 80), DrDraw.SmallFont);
+			}
+		}
 
 		private void UpdateSummonSelect()
 		{
@@ -954,12 +1034,13 @@ namespace MercyMode.Battle
 			if (pick.Out != null)
 				chosenSummon = pick.Out.type;
 			else if (pick.Call != null)
-				chosenSummon = CallSummon(pick.Call);
+				chosenSummon = calledSummon = CallSummon(pick.Call);
 			else
 			{
 				Unsummon();
 				chosenSummon = 0;
 			}
+			summonMenuShown = true;
 			OpenEnemySelect();
 		}
 
@@ -1055,17 +1136,19 @@ namespace MercyMode.Battle
 		/// The player's summons on the battle screen, drawn by Terraria itself (their own frames, colours and segments),
 		/// placed around the player as they are in the world, at the battle's scale.
 		/// </summary>
-		private void DrawMinions(SpriteBatch sb, Matrix m)
+		private void DrawMinions(SpriteBatch sb, Matrix m) => DrawMinions(sb, m, Player, HeroFeetNow, HeroScaleNow);
+
+		/// <summary>Someone's summons (ours, or an ally's beside them) on the battle screen, behind them.</summary>
+		private void DrawMinions(SpriteBatch sb, Matrix m, Player owner, Vector2 ownerFeet, float scale)
 		{
-			if (Player.dead)
+			if (owner.dead)
 				return;
-			var mine = Main.projectile.Where(p => IsSummonOf(p, Player.whoAmI)).ToList();
+			var mine = Main.projectile.Where(p => IsSummonOf(p, owner.whoAmI)).ToList();
 			if (mine.Count == 0)
 				return;
-			float scale = HeroScaleNow;
-			Vector2 anchorWorld = Player.Bottom;
+			Vector2 anchorWorld = owner.Bottom;
 			// A little behind the player, so a summon hovering on them doesn't cover them
-			Vector2 feet = HeroFeetNow + new Vector2(-26f, -6f) * (scale / HeroScale);
+			Vector2 feet = ownerFeet + new Vector2(-26f, -6f) * (scale / HeroScale);
 			sb.End();
 			sb.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, m);
 			DrawingSummons = true;
@@ -1132,10 +1215,12 @@ namespace MercyMode.Battle
 			int frame = (time / 9) % Math.Min(4, rows);
 			at.Y += (float)Math.Sin(time / 20f) * 3f;
 			// Her attack: a quick lunge at the enemy and back
-			float lunge = time - summonLungeTime < 24 ? (float)Math.Sin((time - summonLungeTime) / 24f * Math.PI) : 0f;
+			// Only our own lunge (an ally's isn't sent); the time check also skips a lunge left from an earlier battle
+			int since = p.owner == Player.whoAmI ? time - summonLungeTime : -1;
+			float lunge = since >= 0 && since < 24 ? (float)Math.Sin(since / 24f * Math.PI) : 0f;
 			if (lunge > 0f && encounter != null)
 				at = Vector2.Lerp(at, encounter.ScreenCenter, lunge * 0.85f);
-			float a = 0.9f * FlyProgress();
+			float a = 0.9f * (p.owner == Player.whoAmI ? FlyProgress() : 1f);
 			var body = new Rectangle(0, h * frame, w, h);
 			// Pale and faintly blue, like her glow in the world
 			DrDraw.Sb.Draw(tex, at, body, new Color(215, 230, 255) * a, 0f, body.Size() / 2f, scale, SpriteEffects.None, 0f);
