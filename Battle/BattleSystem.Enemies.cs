@@ -44,6 +44,8 @@ namespace MercyMode.Battle
 			/// <summary>Its speech bubble this turn, and when it started.</summary>
 			public string Bubble;
 			public int BubbleAt;
+			/// <summary>Turns it sat out (its lines move on even when it doesn't attack).</summary>
+			public int IdleTalks;
 		}
 
 		private struct EnemyTrail
@@ -313,6 +315,23 @@ namespace MercyMode.Battle
 				WithEnemy(a, () => part = (a.E is EnemyEncounter ee && a.E.Turn % 3 == 0 ? ee.SignatureAttack(this) : null) ?? a.E.NextAttack(this));
 				a.E.Turn++;
 				parts.Add(new OwnedAttack(a, part));
+			}
+			// The ones sitting this turn out still say something (Deltarune: everyone talks before the box opens)
+			foreach (BattleEnemy idle in living)
+				if (!attackers.Contains(idle))
+				{
+					idle.Bubble = idle.E.Bubble(idle.E.Turn + 1 + idle.IdleTalks++);
+					idle.BubbleAt = time;
+				}
+			// Two of a kind don't say the same thing at once: the later one moves on to another of its lines
+			var saying = new HashSet<string>();
+			foreach (BattleEnemy e in living)
+			{
+				if (string.IsNullOrEmpty(e.Bubble))
+					continue;
+				for (int k = 1; k < 4 && saying.Contains(e.Bubble); k++)
+					e.Bubble = e.E.Bubble(e.E.Turn + k * 7 + e.IdleTalks) ?? e.Bubble;
+				saying.Add(e.Bubble);
 			}
 			if (parts.Count == 1)
 				return parts[0];

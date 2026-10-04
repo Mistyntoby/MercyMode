@@ -816,6 +816,7 @@ namespace MercyMode.Battle
 			if (!hit.Ranged)
 			{
 				slashTimer = 0;
+				slashEnemy = targetEnemy;
 				DuelSendFire(fightWeapon?.Item?.type ?? 0, 0, null);
 			}
 			else

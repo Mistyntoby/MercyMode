@@ -95,6 +95,8 @@ namespace MercyMode.Battle
 		private float boltX; // frames since the bar appeared (boltx)
 		private float fightFade;
 		private int slashTimer = -1;
+		/// <summary>The enemy the current slash struck.</summary>
+		private BattleEnemy slashEnemy;
 		private float enemyAttackEnergy;
 		private Vector2 enemyAttackDirection;
 		private int patternSoundCooldown;
@@ -1961,8 +1963,9 @@ namespace MercyMode.Battle
 		/// <summary>obj_basicattack: the slash over the enemy (2.5x for a perfect hit).</summary>
 		private void DrawSlash(Vector2 pos)
 		{
-			// Only on the enemy that was hit (every enemy in a group is drawn through here)
-			if (slashTimer < 0 || focus != targetEnemy)
+			// Only on the enemy that was hit (every enemy in a group is drawn through here); a killing hit's slash stays
+			// on the one it killed, not the next target
+			if (slashTimer < 0 || focus != (slashEnemy ?? targetEnemy))
 				return;
 			int f = Math.Min(4, slashTimer / 4); // image_speed 0.5: two frames per sprite frame
 			float s = bestPoints == 150 ? 2.5f : 2f;

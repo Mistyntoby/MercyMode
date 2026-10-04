@@ -15,6 +15,7 @@ namespace MercyMode.Battle
 		internal bool LabFirstStrike => firstStrike;
 		internal Encounter LabTarget => targetEnemy?.E;
 		internal List<(Encounter E, bool Out)> LabEnemies => enemies.Select(e => (e.E, e.Out)).ToList();
+		internal List<string> LabBubbles => enemies.Where(e => e.Living).Select(e => e.Bubble).ToList();
 		internal int LabWeaponCount => weaponOptions.Count;
 		internal Vector2 LabSoul => soul;
 		internal int LabShieldDir => shieldDir;

@@ -194,6 +194,7 @@ namespace MercyMode.Lab
 				("frames", Frames),
 				("eye-rips", EyeRips),
 				("first-strike", FirstStrike),
+				("everyone-talks", EveryoneTalks),
 			};
 			string want = Wanted.Trim().ToLowerInvariant();
 			foreach (var s in all)
@@ -1306,6 +1307,25 @@ namespace MercyMode.Lab
 			yield return Until(() => !BattleSystem.Active, "the battle ending", 60 * 30);
 		}
 
+		/// <summary>Every living enemy says something before the box opens, the ones sitting the turn out and bosses too.</summary>
+		private IEnumerable EveryoneTalks()
+		{
+			foreach (int[] group in new[] { new int[] { NPCID.BlueSlime, NPCID.BlueSlime, NPCID.BlueSlime }, new int[] { NPCID.EyeofCthulhu } })
+			{
+				yield return StartWith(group);
+				yield return Menu();
+				yield return Choose(4);
+				yield return Until(() => B.LabPhase is Phase.EnemyTalk or Phase.EnemyIntro or Phase.EnemyTurn, "the enemy turn");
+				List<string> said = B.LabBubbles;
+				Log($"  {B.LabTarget.Name} x{said.Count}: {string.Join(" | ", said)}");
+				Check(said.All(b => !string.IsNullOrEmpty(b)), $"{said.Count(b => string.IsNullOrEmpty(b))} of {said.Count} said nothing");
+				Check(B.LabPhase == Phase.EnemyTalk, $"no talking before the box ({B.LabPhase})");
+				foreach (NPC m in B.LabEnemies.SelectMany(e => e.E.Members()).ToList())
+					m.active = false;
+				yield return WaitForEnd();
+			}
+		}
+
 		/// <summary>Hitting an enemy to start the battle lands a FIGHT hit before the panel comes up.</summary>
 		private IEnumerable FirstStrike()
 		{
@@ -1403,6 +1423,24 @@ namespace MercyMode.Lab
 				{
 					still.Add($"{type}:(error {e.GetType().Name})");
 				}
+			}
+			// How often a few common ones change frame, frozen (ticks per change)
+			foreach (int type in new[] { NPCID.BlueSlime, NPCID.Zombie, NPCID.DemonEye, NPCID.FlyingFish, NPCID.Skeleton })
+			{
+				var n = new NPC();
+				n.SetDefaults(type);
+				n.whoAmI = 199;
+				n.direction = n.spriteDirection = -1;
+				int changes = 0, last = n.frame.Y;
+				for (int t = 0; t < 240; t++)
+				{
+					Frozen.Freeze(n);
+					BattleFreezeNPC.AnimateInPlace(n, n.FindFrame);
+					if (n.frame.Y != last)
+						changes++;
+					last = n.frame.Y;
+				}
+				Log($"  {Lang.GetNPCNameValue(type)}: a frame change every {(changes > 0 ? 240f / changes : 0):0.0} ticks");
 			}
 			Log($"  {still.Count} hostile types stand still when frozen:");
 			foreach (var chunk in still.Chunk(8))

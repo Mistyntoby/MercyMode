@@ -87,7 +87,9 @@ namespace MercyMode.Battle
 				return;
 			}
 			int facing = npc.direction != 0 ? npc.direction : npc.spriteDirection != 0 ? npc.spriteDirection : -1;
-			npc.velocity = new Vector2(facing * PretendSpeed, 0f);
+			// Slimes squish in place on their own (moving only made them wobble twice as fast): just on the ground
+			bool inPlace = npc.aiStyle == Terraria.ID.NPCAIStyleID.Slime;
+			npc.velocity = new Vector2(inPlace ? 0f : facing * PretendSpeed, 0f);
 			try
 			{
 				findFrame();

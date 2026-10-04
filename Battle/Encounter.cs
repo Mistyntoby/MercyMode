@@ -358,7 +358,7 @@ namespace MercyMode.Battle
 		public virtual Terraria.Audio.SoundStyle? Voice => Npc?.HitSound;
 
 		/// <summary>What it says in its speech bubble as its turn starts (null: nothing).</summary>
-		public virtual string Bubble(int turn) => null;
+		public virtual string Bubble(int turn) => IsBoss ? Encounters.BossBubbles.Get(Npc.type, turn) : null;
 	}
 
 	/// <summary>Decides who gets a battle and which encounter they use.</summary>
