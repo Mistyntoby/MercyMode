@@ -151,28 +151,47 @@ namespace MercyMode.Battle
 		/// <summary>Lines up to this long ("Blorp!", "Braaains...") get the small bubble.</summary>
 		private const int ShortBubbleChars = 14;
 
-		/// <summary>Where a letter sits off its place right now for its effect (in battle pixels).</summary>
-		private Vector2 LetterOffset(TextFx fx, int index)
+		/// <summary>
+		/// Where a letter sits off its place right now for its effect (in battle pixels). Driven by the real clock and not
+		/// snapped to pixels, so it moves smoothly at whatever rate the screen draws.
+		/// </summary>
+		private static Vector2 LetterOffset(TextFx fx, int index)
 		{
+			// Seconds, continuous between game ticks
+			float s = (float)BackgroundClock.Elapsed.TotalSeconds;
 			switch (fx)
 			{
 				case TextFx.Shake:
 				case TextFx.Tremble:
 				{
-					// A new random spot every 2 frames, the same for every screen and draw of that moment
-					uint h = (uint)(index * 73856093) ^ (uint)((time / (2 * TicksPerFrame)) * 19349663);
-					h ^= h >> 13;
-					h *= 0x5bd1e995;
-					float amp = fx == TextFx.Tremble ? 2f : 1f;
-					float dx = ((h & 0xff) / 255f * 2f - 1f) * amp;
-					float dy = (((h >> 8) & 0xff) / 255f * 2f - 1f) * amp;
-					return new Vector2((float)Math.Round(dx), (float)Math.Round(dy));
+					// Glides between random spots (a new one about 14 times a second): a smooth jitter, not a jump
+					float amp = fx == TextFx.Tremble ? 2f : 1.1f;
+					float t = s * (fx == TextFx.Tremble ? 18f : 14f) + index * 0.37f;
+					return new Vector2(SmoothNoise(index * 2, t), SmoothNoise(index * 2 + 1, t)) * amp;
 				}
 				case TextFx.Wave:
-					return new Vector2(0f, (float)Math.Round(Math.Sin(time * 0.12f + index * 0.55f) * 2f));
+					return new Vector2(0f, (float)Math.Sin(s * 7.2f + index * 0.55f) * 2f);
 				default:
 					return Vector2.Zero;
 			}
+		}
+
+		/// <summary>-1..1, changing smoothly with <paramref name="t"/> (eased between random points at whole numbers).</summary>
+		private static float SmoothNoise(int seed, float t)
+		{
+			int i = (int)Math.Floor(t);
+			float f = t - i;
+			f = f * f * (3f - 2f * f);
+			return MathHelper.Lerp(Hash(seed, i), Hash(seed, i + 1), f);
+		}
+
+		private static float Hash(int seed, int i)
+		{
+			uint h = (uint)(seed * 73856093) ^ (uint)(i * 19349663);
+			h ^= h >> 13;
+			h *= 0x5bd1e995;
+			h ^= h >> 15;
+			return (h & 0xffff) / 65535f * 2f - 1f;
 		}
 
 		/// <summary>

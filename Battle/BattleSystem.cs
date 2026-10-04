@@ -1149,6 +1149,13 @@ namespace MercyMode.Battle
 			}
 			faceAction = FaceSpare;
 			string spared = $"* {Player.name} spared {encounter.Name}!";
+			// Bosses fight to the end
+			if (encounter.IsBoss)
+			{
+				SetHeroPose(HeroPose.Act);
+				ShowMessages(new[] { $"* {Player.name} tried to spare {encounter.Name}...\n* But it won't back down." }, StartEnemyTurn);
+				return;
+			}
 			if (encounter.Mercy >= 100f)
 			{
 				BattleEnemy who = targetEnemy;
@@ -2290,6 +2297,12 @@ namespace MercyMode.Battle
 				DrDraw.Rect(420, rowY + 5, (float)Math.Ceiling(hp * 81), 16, row.Locked ? new Color(110, 110, 110) : new Color(0, 255, 0));
 				DrDraw.Text(row.Locked ? "GUARDED" : $"{(int)Math.Ceiling(hp * 100)}%", 424, rowY + 5, Color.White, DrDraw.SmallFont);
 				float mercy = MathHelper.Clamp(e.Mercy / 100f, 0f, 1f);
+				// A boss can't be spared: no MERCY bar for it
+				if (e.IsBoss)
+				{
+					DrDraw.Text("---", 524, rowY + 5, new Color(128, 128, 128), DrDraw.SmallFont);
+					continue;
+				}
 				DrDraw.Rect(520, rowY + 5, 81, 16, new Color(255, 80, 32));
 				DrDraw.Rect(520, rowY + 5, (float)Math.Ceiling(mercy * 81), 16, new Color(255, 255, 0));
 				DrDraw.Text($"{(int)e.Mercy}%", 524, rowY + 5, new Color(128, 0, 0), DrDraw.SmallFont);

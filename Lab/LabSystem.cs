@@ -618,18 +618,20 @@ namespace MercyMode.Lab
 			yield return WaitForEnd();
 		}
 
+		/// <summary>Bosses can't be spared: MERCY stays at 0, and SPARE just says it won't back down.</summary>
 		private IEnumerable BossSpare()
 		{
 			yield return StartWith(NPCID.EyeofCthulhu);
 			yield return Menu();
 			B.LabTarget.Mercy = 100f;
-			NPC.downedBoss1 = false;
-			bool before = NPC.downedBoss1;
+			Check(B.LabTarget.Mercy == 0f, $"a boss got MERCY ({B.LabTarget.Mercy})");
 			yield return Spare(0);
+			yield return Until(() => B.LabPhase == Phase.Message, "the spare message", skipText: false);
+			Check(B.LabText.Contains("won't back down"), $"expected the boss to refuse, got \"{B.LabText}\"");
+			Check(Main.npc.Any(n => n.active && n.type == NPCID.EyeofCthulhu), "the Eye was spared anyway");
+			yield return Menu();
+			yield return FightAndKill(0);
 			yield return WaitForEnd();
-			Check(NPC.downedBoss1, "sparing the Eye didn't count it as beaten");
-			Check(!Main.npc.Any(n => n.active && n.type == NPCID.EyeofCthulhu), "the Eye is still around after the spare");
-			Log($"  downedBoss1 {before} -> {NPC.downedBoss1}");
 		}
 
 		/// <summary>A swing or shot from before the battle (or still in the world) never hurts the enemy during it.</summary>

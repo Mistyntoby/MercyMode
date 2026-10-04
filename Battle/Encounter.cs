@@ -206,12 +206,17 @@ namespace MercyMode.Battle
 		{
 			get
 			{
+				// Bosses can't be spared: no MERCY at all
+				if (IsBoss)
+					return 0f;
 				if (mercy < 0f)
 					mercy = Npc.GetGlobalNPC<MercyGlobalNPC>().Mercy;
 				return mercy;
 			}
 			set
 			{
+				if (IsBoss)
+					return;
 				float before = Mercy;
 				mercy = MathHelper.Clamp(value, 0f, 100f);
 				if (Npc.active)
@@ -233,8 +238,9 @@ namespace MercyMode.Battle
 		/// <summary>Adds MERCY, halving it each time the same act is repeated. Returns what was actually gained.</summary>
 		protected float GainMercy(string actName, float amount)
 		{
+			// Bosses can't be spared: their ACTs are flavour (no MERCY, and no "no effect" line either)
 			if (IsBoss)
-				amount *= BossMercyScale;
+				return amount * BossMercyScale;
 			ActUses.TryGetValue(actName, out int uses);
 			ActUses[actName] = uses + 1;
 			float before = Mercy;

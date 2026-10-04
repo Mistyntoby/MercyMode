@@ -1193,7 +1193,9 @@ namespace MercyMode.Battle.Net
 					continue;
 				n.position = to;
 				n.velocity = Vector2.Zero;
-				b.SavedVelocity[r] = Vector2.Zero;
+				// The fling (knockback) doesn't carry on after the battle; an ordinary walk or hop does
+				if (b.SavedVelocity.TryGetValue(r, out Vector2 v) && v.Length() > 3f)
+					b.SavedVelocity[r] = Vector2.Normalize(v) * 3f;
 				n.netUpdate = true;
 			}
 		}
