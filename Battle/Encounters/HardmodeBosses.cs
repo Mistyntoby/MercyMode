@@ -90,7 +90,7 @@ namespace MercyMode.Battle.Encounters
 
 		public override string Name => "THE TWINS";
 		public override bool DrawWithTerraria => true;
-		public override Vector2 CompositeSize => new(240f, 160f);
+		public override Vector2 CompositeSize => new(200f, 260f);
 		public override string EncounterText => "* THE TWINS blink in perfect sync.";
 		public override bool TargetableParts => true;
 		// Both have to go
@@ -105,6 +105,25 @@ namespace MercyMode.Battle.Encounters
 		};
 
 		public override IEnumerable<NPC> Members() => BossKit.OfTypes(Types);
+
+		/// <summary>
+		/// They spawn on the same spot (and the world can leave one right behind the other), so they're set apart here:
+		/// Retinazer above, Spazmatism below, each bobbing on its own. Both look at the party on the left; the eye
+		/// sprites look down at rotation 0, like the Eye of Cthulhu's.
+		/// </summary>
+		public override void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking)
+		{
+			var twins = parts.Where(p => Types.Contains(p.type) && p.life > 0).ToList();
+			Vector2 mid = anchor.Center;
+			foreach (NPC p in twins)
+			{
+				int i = p.type == NPCID.Retinazer ? 0 : 1;
+				Vector2 at = twins.Count < 2 ? Vector2.Zero : new Vector2(i == 0 ? -24f : 24f, i == 0 ? -70f : 70f);
+				at.Y += (float)Math.Sin(time / 24f + i * 2.1f) * 6f;
+				p.position = mid + at - p.Size / 2f;
+				p.rotation = MathHelper.PiOver2 + (float)Math.Sin(time / 33f + i * 1.3f) * 0.08f - attacking * (i == 0 ? 0.12f : -0.12f);
+			}
+		}
 
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
@@ -130,12 +149,16 @@ namespace MercyMode.Battle.Encounters
 				() => new Sprinkler(flame) { Every = Hard ? 4 : 6, Arms = Hard ? 2 : 1, Speed = 2.6f, TurnSpeed = 0.07f, FanSpread = 0.9f },
 				() => new LaneDash(spaz, Hard ? 46 : 60) { AllowVertical = true, Speed = Hard ? 9f : 7.5f, LaunchSound = SoundID.ForceRoar },
 			};
+			// The weather report (Lanino and Elnina): Spazmatism brings the rain, Retinazer the sun; a twin left
+			// alone forecasts only its own
+			EnemyAttack forecast() => new Forecast((p, v) => flame(p, v))
+				{ Rain = spazmatism, Sun = retinazer, Warn = Hard ? 38 : 44, MinWarn = Hard ? 28 : 32 };
 			if (retinazer && !spazmatism)
-				return Cycle(retinazerAttacks);
+				return Cycle(retinazerAttacks.Append(forecast).ToArray());
 			if (spazmatism && !retinazer)
-				return Cycle(spazmatismAttacks);
+				return Cycle(spazmatismAttacks.Append(forecast).ToArray());
 			return Cycle(
-				retinazerAttacks[0], retinazerAttacks[1], spazmatismAttacks[0], spazmatismAttacks[1], retinazerAttacks[2],
+				retinazerAttacks[0], forecast, retinazerAttacks[1], spazmatismAttacks[0], spazmatismAttacks[1], retinazerAttacks[2],
 				() => new Combo(TurnTicks,
 					new Beam(60) { Width = 10f, Color = red, FireSound = SoundID.Item33 },
 					new Sprinkler(flame) { Every = 9, Speed = 2.2f, TurnSpeed = 0.05f }),

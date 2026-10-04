@@ -1064,12 +1064,28 @@ namespace MercyMode.Lab
 		{
 			yield return StartWith(NPCID.Retinazer, NPCID.Spazmatism);
 			yield return Menu();
+			// They spawn on one spot: posed for the battle screen they sit apart, both looking left at the party
+			var twins = B.LabTarget.DrawParts().ToList();
+			Check(twins.Count == 2, $"{twins.Count} twins drawn, not 2");
+			Vector2[] saved = twins.Select(n => n.position).ToArray();
+			float[] savedRot = twins.Select(n => n.rotation).ToArray();
+			B.LabTarget.PoseForBattle(twins, twins[0], 0, 0f);
+			float apart = twins.Count == 2 ? Vector2.Distance(twins[0].Center, twins[1].Center) : 0f;
+			bool lookLeft = twins.All(n => Math.Abs(MathHelper.WrapAngle(n.rotation - MathHelper.PiOver2)) < 0.3f);
+			for (int i = 0; i < twins.Count; i++)
+			{
+				twins[i].position = saved[i];
+				twins[i].rotation = savedRot[i];
+			}
+			Log($"  posed {apart:0} px apart, looking left: {lookLeft}");
+			Check(apart > 100f, $"the twins are drawn only {apart:0} px apart");
+			Check(lookLeft, "a twin doesn't look at the party");
 			yield return FightPart("RETINAZER");
 			Check(BattleSystem.Active && B.LabTarget.Alive, "breaking one twin ended the fight");
 			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the enemy turn");
 			string name = B.LabAttack?.GetType().Name;
 			Log($"  Spazmatism alone attacks with {name}");
-			Check(name is "Sprinkler" or "LaneDash", $"the lone Spazmatism used {name}, one of Retinazer's attacks");
+			Check(name is "Sprinkler" or "LaneDash" or "Forecast", $"the lone Spazmatism used {name}, one of Retinazer's attacks");
 			yield return Menu();
 			yield return FightPart("SPAZMATISM");
 			yield return WaitForEnd();
