@@ -188,6 +188,9 @@ namespace MercyMode.Battle
 		/// the battle sprite. <paramref name="pos"/> is the frame's centre; <paramref name="scale"/> is battle pixels per
 		/// sprite pixel; <paramref name="color"/> is the light on it (not the sprite's own tint).
 		/// </summary>
+		/// <summary>A frame of the sheet to show instead of the NPC's own (its AI, which would change it, is paused); null: its own.</summary>
+		public virtual int? FrameOverride(int time, int frameCount) => null;
+
 		public virtual void DrawBehindSprite(Vector2 pos, int frame, float rotation, Vector2 scale, Color color) { }
 		/// <inheritdoc cref="DrawBehindSprite"/>
 		public virtual void DrawOverSprite(Vector2 pos, int frame, float rotation, Vector2 scale, Color color) { }

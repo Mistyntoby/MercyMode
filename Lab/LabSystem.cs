@@ -192,6 +192,7 @@ namespace MercyMode.Lab
 				("multi-hit-spills-over", MultiHitSpillsOver),
 				("mp-server", MultiplayerServer),
 				("frames", Frames),
+				("eye-rips", EyeRips),
 			};
 			string want = Wanted.Trim().ToLowerInvariant();
 			foreach (var s in all)
@@ -1302,6 +1303,32 @@ namespace MercyMode.Lab
 			foreach (NPC m in eoc.Members().ToList())
 				m.active = false;
 			yield return Until(() => !BattleSystem.Active, "the battle ending", 60 * 30);
+		}
+
+		/// <summary>Below half HP the Eye spends a turn tearing open, then shows its mouth.</summary>
+		private IEnumerable EyeRips()
+		{
+			yield return StartWith(NPCID.EyeofCthulhu);
+			yield return Menu();
+			Check(B.LabTarget.FrameOverride(0, 6) is < 3, "the Eye shows its mouth before tearing open");
+			NPC eye = B.LabTarget.Npc;
+			eye.life = (int)(eye.lifeMax * 0.45f);
+			yield return Choose(4);
+			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the enemy turn");
+			string name = B.LabAttack?.GetType().Name;
+			Log($"  turn at 45% HP: {name}");
+			Check(name == "RipOpen", $"the Eye attacked with {name} instead of tearing open");
+			Check(B.Bullets.All(b => !b.Harmful), "tearing open hurt the SOUL");
+			yield return Menu();
+			int? shown = B.LabTarget.FrameOverride(0, 6);
+			Log($"  frame afterwards: {shown}");
+			Check(shown is >= 3, "the Eye didn't switch to its mouth frames");
+			yield return Choose(4);
+			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the next enemy turn");
+			Check(B.LabAttack?.GetType().Name != "RipOpen", "the Eye tore open twice");
+			foreach (NPC m in B.LabTarget.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
 		}
 
 		/// <summary>Frozen enemies keep animating: a live frozen flying fish, then every hostile type simulated.</summary>

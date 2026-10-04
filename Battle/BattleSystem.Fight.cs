@@ -1500,6 +1500,8 @@ namespace MercyMode.Battle
 			int family = Family(chosen.type);
 			summonStrikeTicks = 0;
 			bool shotFired = false;
+			// The duel opponent sees them come at them: a negative projectile is a summon family attacking
+			DuelSendFire(0, -family, null);
 			// Every one of the family goes: shooters fire from where they're drawn, the rest lunge
 			foreach (Projectile m in Members(family, Player.whoAmI))
 			{
@@ -1580,8 +1582,11 @@ namespace MercyMode.Battle
 		/// </summary>
 		private void DrawMinions(SpriteBatch sb, Matrix m) => DrawMinions(sb, m, Player, HeroFeetNow, HeroScaleNow);
 
-		/// <summary>Someone's summons (ours, or an ally's beside them) on the battle screen, behind them.</summary>
-		private void DrawMinions(SpriteBatch sb, Matrix m, Player owner, Vector2 ownerFeet, float scale)
+		/// <summary>
+		/// Someone's summons (ours, an ally's beside them, or a duel opponent's) on the battle screen, behind them.
+		/// <paramref name="facing"/> -1 mirrors them for someone facing left (the duel opponent).
+		/// </summary>
+		private void DrawMinions(SpriteBatch sb, Matrix m, Player owner, Vector2 ownerFeet, float scale, int facing = 1)
 		{
 			if (owner.dead)
 				return;
@@ -1596,14 +1601,17 @@ namespace MercyMode.Battle
 				}).ToList();
 			Projectile dragonHead = Main.projectile.FirstOrDefault(p => p.active && p.owner == owner.whoAmI && p.type == ProjectileID.StardustDragon1);
 			bool ours = owner.whoAmI == Player.whoAmI;
-			int since = ours ? time - summonLungeTime : -1;
-			int fighting = ours && ChosenSummon() is Projectile cs ? Family(cs.type) : 0;
+			// The duel opponent's summons attack us
+			bool opponent = !ours && duelWith >= 0 && owner.whoAmI == duelWith;
+			int since = ours ? time - summonLungeTime : opponent ? time - duelOppSummonTime : -1;
+			int fighting = ours && ChosenSummon() is Projectile cs ? Family(cs.type) : opponent ? duelOppSummonFamily : 0;
+			Vector2? lungeAt = ours ? encounter?.ScreenCenter : opponent ? HeroFeetNow + new Vector2(0f, -40f) : null;
 			float lunge = since >= 0 && since < 24 ? (float)Math.Sin(since / 24f * Math.PI) : 0f;
 			if (mine.Count == 0)
 				return;
 			Vector2 anchorWorld = owner.Bottom;
 			// A little behind the player, so a summon hovering on them doesn't cover them
-			Vector2 feet = ownerFeet + new Vector2(-26f, -6f) * (scale / HeroScale);
+			Vector2 feet = ownerFeet + new Vector2(-26f * facing, -6f) * (scale / HeroScale);
 			sb.End();
 			sb.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullCounterClockwise, null, m);
 			DrawingSummons = true;
@@ -1613,7 +1621,7 @@ namespace MercyMode.Battle
 				int abigail = 0;
 				// The Stardust Dragon slithers around on its own (its world copy is frozen in a line)
 				if (dragonHead != null)
-					DrawDragon(owner, dragonHead, feet, scale, ours && fighting == ProjectileID.StardustDragon1 ? since : -1);
+					DrawDragon(owner, dragonHead, feet, scale, (ours || opponent) && fighting == ProjectileID.StardustDragon1 ? since : -1, facing, lungeAt);
 				foreach (Projectile p in mine)
 				{
 					// Abigail's flower counter isn't drawn in the world either; Abigail herself is drawn by hand below
@@ -1623,7 +1631,7 @@ namespace MercyMode.Battle
 						continue;
 					if (p.type == ProjectileID.AbigailMinion)
 					{
-						DrawGhost(p, feet + new Vector2(6f + abigail++ * 22f, -50f) * (scale / HeroScale), scale);
+						DrawGhost(p, feet + new Vector2((6f + abigail++ * 22f) * facing, -50f) * (scale / HeroScale), scale);
 						continue;
 					}
 					// Where it is relative to the player in the world, scaled onto the battle screen (kept close: one far
@@ -1631,6 +1639,7 @@ namespace MercyMode.Battle
 					// The dragon's body follows its head's spot, keeping its shape
 					Projectile anchor = IsDragonSegment(p.type) && dragonHead != null ? dragonHead : p;
 					Vector2 rel = (anchor.Center - anchorWorld) * scale;
+					rel.X *= facing;
 					float maxRel = 70f * (scale / HeroScale);
 					if (rel.Length() > maxRel)
 						rel = Vector2.Normalize(rel) * maxRel;
@@ -1640,10 +1649,12 @@ namespace MercyMode.Battle
 					// Idle: flying ones drift about a little (frozen, they'd hang perfectly still)
 					if (!p.sentry && !p.tileCollide)
 						rel += new Vector2((float)Math.Sin(time * 0.03f + p.whoAmI) * 10f, (float)Math.Sin(time * 0.06f + p.whoAmI * 1.7f) * 6f) * (scale / HeroScale);
-					if (lunge > 0f && Family(p.type) == fighting && !p.sentry && !SummonShots.ContainsKey(p.type) && encounter != null)
-						rel += (encounter.ScreenCenter - (feet + rel)) * lunge * 0.85f;
+					if (lunge > 0f && Family(p.type) == fighting && !p.sentry && !SummonShots.ContainsKey(p.type) && lungeAt is Vector2 lungeTo)
+						rel += (lungeTo - (feet + rel)) * lunge * 0.85f;
 					if (ours && p == anchor)
 						summonSpots[p.whoAmI] = feet + rel;
+					else if (opponent && p == anchor)
+						duelOppSummonSpots[p.whoAmI] = feet + rel;
 					Vector2 shift = Main.screenPosition + feet + rel - p.Center;
 					Vector2 oldPosition = p.position;
 					float oldScale = p.scale;
@@ -1657,7 +1668,7 @@ namespace MercyMode.Battle
 					if (frames > 1)
 						p.frame = (time / 5 + p.whoAmI) % frames;
 					if (!p.sentry && !IsDragonSegment(p.type) && p.type != ProjectileID.StardustDragon1)
-						p.spriteDirection = BattleFreezeProjectile.FacingRight(p.type);
+						p.spriteDirection = BattleFreezeProjectile.FacingRight(p.type) * facing;
 					var oldTrail = (Vector2[])p.oldPos.Clone();
 					p.position += shift;
 					for (int i = 0; i < p.oldPos.Length; i++)
@@ -1703,7 +1714,7 @@ namespace MercyMode.Battle
 
 		private readonly Dictionary<int, DragonSim> dragons = new();
 
-		private void DrawDragon(Player owner, Projectile head, Vector2 feet, float scale, int since)
+		private void DrawDragon(Player owner, Projectile head, Vector2 feet, float scale, int since, int facing = 1, Vector2? attackAt = null)
 		{
 			float k = scale / HeroScale;
 			// Head first, then the body nearest it in the world, out to the tail
@@ -1717,12 +1728,12 @@ namespace MercyMode.Battle
 				spacing = MathHelper.Clamp(Enumerable.Range(1, chain.Count - 1).Average(i => Vector2.Distance(chain[i].Center, chain[i - 1].Center)), 10f, 30f);
 			spacing *= scale;
 
-			Vector2 home = feet + new Vector2(-30f, -80f) * k;
+			Vector2 home = feet + new Vector2(-30f * facing, -80f) * k;
 			if (!dragons.TryGetValue(owner.whoAmI, out DragonSim sim) || sim.LastTick < 0 || sim.LastTick > time)
 			{
-				sim = dragons[owner.whoAmI] = new DragonSim { Head = home, Velocity = new Vector2(2f, 0f) };
+				sim = dragons[owner.whoAmI] = new DragonSim { Head = home, Velocity = new Vector2(2f * facing, 0f) };
 				for (int i = 0; i < 1200; i++)
-					sim.Trail.Add(home - new Vector2(i, 0f));
+					sim.Trail.Add(home - new Vector2(i * facing, 0f));
 				sim.LastTick = time;
 			}
 			// Steer on the battle's ticks (drawing can run more often)
@@ -1733,11 +1744,11 @@ namespace MercyMode.Battle
 				Vector2 target = home + new Vector2((float)Math.Sin(t * 0.025f) * 70f, (float)Math.Sin(t * 0.05f) * 30f) * k;
 				float maxSpeed = 2.6f * k;
 				int s2 = since - (time - t);
-				if (s2 >= 0 && s2 < DragonAttackTicks && encounter != null)
+				if (s2 >= 0 && s2 < DragonAttackTicks && (attackAt ?? encounter?.ScreenCenter) is Vector2 foe)
 				{
 					// Attacking: out to the enemy in a loop and back round to the player
 					float u = s2 / (float)DragonAttackTicks;
-					Vector2 to = encounter.ScreenCenter - target;
+					Vector2 to = foe - target;
 					Vector2 side = new Vector2(-to.Y, to.X).SafeNormalize(Vector2.Zero);
 					target += to * (float)Math.Sin(u * Math.PI) + side * (float)Math.Sin(u * Math.PI * 2) * 50f * k;
 					maxSpeed = 14f * k;

@@ -37,6 +37,8 @@ namespace MercyMode.Battle
 			public Rectangle RawFrame;
 			public int RawFrameTick = -1;
 			public float FrameJitter;
+			/// <summary>How often Terraria's frame changed since the shown one last did.</summary>
+			public int RawChanges;
 			/// <summary>The frames (their Y) Terraria has picked lately, and when last.</summary>
 			public readonly Dictionary<int, int> FramesSeen = new();
 			/// <summary>Its speech bubble this turn, and when it started.</summary>
@@ -59,6 +61,8 @@ namespace MercyMode.Battle
 		private BattleEnemy targetEnemy;
 		/// <summary>The fewest ticks between two of an enemy's frames on the battle screen.</summary>
 		private const int EnemyFrameTicks = 5;
+		/// <summary>Regular enemies hold each frame at least this long, so every walker steps at one steady pace.</summary>
+		private const int RegularEnemyFrameTicks = 9;
 		/// <summary>The enemy the per-enemy fields below refer to: the target, or the one being drawn or stepped.</summary>
 		private BattleEnemy focus;
 

@@ -391,6 +391,9 @@ namespace MercyMode.Battle
 			float extend;
 			if (phase == Phase.EnemyTurn)
 				extend = Ease(Math.Min(1f, phaseTicks / (float)StringsInTicks));
+			else if (phase == Phase.Build && duelWith >= 0)
+				// The builder watching the other player's purple SOUL
+				extend = Ease(Math.Min(1f, (time - mirroredSoulSince) / (float)StringsInTicks));
 			else if (phase == Phase.EnemyOutro)
 				extend = 1f - Ease(Math.Min(1f, phaseTicks / (float)StringsOutTicks));
 			else
@@ -425,6 +428,46 @@ namespace MercyMode.Battle
 					DrDraw.Rect(right - 2f, y - 2f, 4f, 4f, c);
 				}
 			}
+		}
+
+		/// <summary>When the builder's copy of the other player's SOUL last changed mode.</summary>
+		private int mirroredSoulSince;
+		private bool mirroredSoulHopping;
+
+		/// <summary>
+		/// The builder's copy of the other player's SOUL follows its real mode (the dodger's game may not have taken a
+		/// forced change, or took it late), and its strings wobble when it hops onto another one.
+		/// </summary>
+		private void MirrorRemoteSoulMode(SoulMode mode, Vector2 was)
+		{
+			if (!Enum.IsDefined(mode))
+				return;
+			if (mode != soulMode)
+			{
+				BeginSoulMode(mode);
+				mirroredSoulSince = time;
+				if (mode == SoulMode.Purple)
+					for (int i = 0; i < PurpleStrings; i++)
+						stringPlucked[i] = time + i * 2;
+				return;
+			}
+			if (mode != SoulMode.Purple)
+				return;
+			// Hopping slides it over a few ticks: the string wobbles once it lands
+			if (Math.Abs(duelRemoteSoul.Y - was.Y) >= 1f)
+			{
+				mirroredSoulHopping = true;
+				return;
+			}
+			if (!mirroredSoulHopping)
+				return;
+			mirroredSoulHopping = false;
+			float y = duelRemoteSoul.Y + SoulSize / 2f;
+			int nearest = 0;
+			for (int i = 1; i < PurpleStrings; i++)
+				if (Math.Abs(PurpleStringY(i) - y) < Math.Abs(PurpleStringY(nearest) - y))
+					nearest = i;
+			stringPlucked[nearest] = time;
 		}
 
 		private static float Ease(float t) => 1f - (1f - t) * (1f - t) * (1f - t);

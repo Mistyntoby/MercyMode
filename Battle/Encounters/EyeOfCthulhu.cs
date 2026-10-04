@@ -12,8 +12,80 @@ namespace MercyMode.Battle.Encounters
 	{
 		public override string Name => "EYE OF CTHULHU";
 
-		// The sprite looks down; turn it to look left at the party
-		public override float DrawRotation(int time) => MathHelper.PiOver2 + (float)Math.Sin(time / 30f) * 0.08f;
+		// The sprite looks down; turn it to look left at the party. While it tears open it spins, faster and faster,
+		// then slows to a stop (Terraria's phase change)
+		public override float DrawRotation(int time)
+		{
+			float look = MathHelper.PiOver2 + (float)Math.Sin(time / 30f) * 0.08f;
+			if (ripProgress is float p && p < 1f)
+			{
+				// Speeds up, then winds down: smoothstep of the turns made, five whole turns in all
+				float s = p * p * (3f - 2f * p);
+				look += s * MathHelper.TwoPi * 5f;
+			}
+			return look;
+		}
+
+		// ---- tearing open (phase 2) ----
+
+		/// <summary>0..1 through the turn it tears open; 1 once it has; null before.</summary>
+		private float? ripProgress;
+		/// <summary>Torn open: the mouth frames (3-5 of the sheet) from the moment it bursts.</summary>
+		private bool Ripped => ripProgress >= RipBurstAt;
+		private const float RipBurstAt = 0.5f;
+		private const int RipTicks = 150;
+
+		public override int? FrameOverride(int time, int frameCount)
+		{
+			if (frameCount < 6)
+				return null;
+			// Its eye frames (0-2) or mouth frames (3-5), cycling slowly
+			int cycle = time / 8 % 3;
+			return Ripped ? 3 + cycle : cycle;
+		}
+
+		/// <summary>The turn it tears open: no bullets, just the spin, the roar and the burst.</summary>
+		private class RipOpen : EnemyAttack
+		{
+			private readonly EyeOfCthulhu eye;
+			private bool burst;
+
+			public RipOpen(EyeOfCthulhu eye)
+			{
+				this.eye = eye;
+				Duration = RipTicks;
+			}
+
+			public override void Update(BattleSystem battle, int tick)
+			{
+				eye.ripProgress = Math.Min(1f, tick / (float)(RipTicks - 20));
+				if (tick == 1)
+					AttackSfx.Vanilla(SoundID.ForceRoar, 0.9f);
+				if (tick % 12 == 0 && !burst)
+					battle.ShakeScreen(1);
+				if (!burst && eye.Ripped)
+				{
+					burst = true;
+					AttackSfx.Vanilla(SoundID.NPCHit1, 1f, -0.3f);
+					AttackSfx.Vanilla(SoundID.Roar, 0.9f);
+					battle.ShakeScreen(6);
+					Vector2 at = eye.ScreenCenter;
+					// Blood and bits of eye fly off it (harmless: it's a show, not an attack)
+					for (int i = 0; i < 28; i++)
+					{
+						Vector2 v = Main.rand.NextVector2Unit() * Main.rand.NextFloat(1.5f, 5f);
+						bool chunk = i % 4 == 0;
+						Bullet b = Shots.Ball(at, v, chunk ? new Color(235, 225, 225) : new Color(200, 20, 30), 0f, chunk ? 1.1f : Main.rand.NextFloat(0.5f, 0.9f));
+						b.Harmful = false;
+						b.GrazePoints = 0f;
+						b.Acceleration = new Vector2(0f, 0.18f);
+						b.Lifetime = 70;
+						b.OffscreenMargin = 2000f;
+						battle.Spawn(b);
+					}
+				}
+			}
+		}
 		public override Vector2 DrawCenter => new(500, 180);
 		public override float DrawScale(Rectangle frame) => 1f;
 
@@ -62,6 +134,12 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			bool hard = LifeRatio < 0.5f;
+			// Halfway down it tears its eye open instead of attacking, once
+			if (hard && ripProgress == null)
+			{
+				ripProgress = 0f;
+				return new RipOpen(this);
+			}
 			int pick = Turn % 8;
 			return pick switch
 			{

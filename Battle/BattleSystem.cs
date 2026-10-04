@@ -1850,7 +1850,10 @@ namespace MercyMode.Battle
 				{
 					focus.FrameJitter = Math.Max(0f, focus.FrameJitter - 0.15f);
 					if (frame != focus.RawFrame)
+					{
 						focus.FrameJitter += 1f;
+						focus.RawChanges++;
+					}
 					focus.RawFrame = frame;
 					focus.RawFrameTick = time;
 					focus.FramesSeen[frame.Y] = time;
@@ -1858,9 +1861,11 @@ namespace MercyMode.Battle
 						if (time - focus.FramesSeen[y] > 40)
 							focus.FramesSeen.Remove(y);
 				}
-				if (time - focus.ShownFrameAt >= EnemyFrameTicks)
+				if (time - focus.ShownFrameAt >= (encounter.IsBoss ? EnemyFrameTicks : RegularEnemyFrameTicks))
 				{
-					if (focus.FrameJitter > 2.5f && focus.FramesSeen.Count > 1)
+					// Changing faster than it's shown (a fish flapping): step through the frames in order rather
+					// than catching every other one
+					if ((focus.FrameJitter > 2.5f || focus.RawChanges > 1) && focus.FramesSeen.Count > 1)
 					{
 						// Changing every tick (wings beating, or a slime stuck mid-jump): play the frames it has been
 						// using, in order, at a steady pace, instead of copying the flicker
@@ -1868,11 +1873,13 @@ namespace MercyMode.Battle
 						int next = ys.FirstOrDefault(y => y > focus.ShownFrame.Y, ys[0]);
 						focus.ShownFrame = new Rectangle(frame.X, next, frame.Width, frame.Height);
 						focus.ShownFrameAt = time;
+						focus.RawChanges = 0;
 					}
 					else if (frame != focus.ShownFrame)
 					{
 						focus.ShownFrame = frame;
 						focus.ShownFrameAt = time;
+						focus.RawChanges = 0;
 					}
 				}
 				frame = focus.ShownFrame;
@@ -1887,6 +1894,11 @@ namespace MercyMode.Battle
 					frame.Y = attackFrame * frameHeight;
 					frame.Height = frameHeight;
 				}
+			}
+			if (encounter.FrameOverride(time, frameCount) is int shownFrame)
+			{
+				frame.Y = Math.Clamp(shownFrame, 0, frameCount - 1) * frameHeight;
+				frame.Height = frameHeight;
 			}
 			float drawScale = EnemyScaleNow(out _, out _);
 			float glide = FlyProgress();

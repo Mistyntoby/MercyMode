@@ -225,8 +225,8 @@ namespace MercyMode.Battle
 				{
 					w.Write((short)soul.X);
 					w.Write((short)soul.Y);
-					// 0x80 grazing, 0x40 the dark frame of the hit-invincibility blink
-					w.Write((byte)((grazeTimer > 0 ? 0x80 : 0) | (inv > 0 && inv / SoulBlinkTicks % 2 == 1 ? 0x40 : 0)));
+					// 0x80 grazing, 0x40 the dark frame of the hit-invincibility blink, low bits the SOUL's mode
+					w.Write((byte)((grazeTimer > 0 ? 0x80 : 0) | (inv > 0 && inv / SoulBlinkTicks % 2 == 1 ? 0x40 : 0) | (int)soulMode & 0x07));
 				});
 		}
 
@@ -335,8 +335,29 @@ namespace MercyMode.Battle
 		/// <summary>Where the opponent's weapon is, roughly (their hand, facing us).</summary>
 		private Vector2 DuelOppHand => EnemyPosNow + new Vector2(-22f, -4f);
 
+		/// <summary>The opponent's summons attacking us: which family, when; where each was drawn (shots start there).</summary>
+		private int duelOppSummonFamily, duelOppSummonTime = -1000;
+		private readonly Dictionary<int, Vector2> duelOppSummonSpots = new();
+
 		private void OnDuelFire(int item, int proj, Vector2 at)
 		{
+			if (proj < 0)
+			{
+				// Their summons come at us: shooters fire from where we draw them, the rest lunge (drawn in DrawMinions)
+				duelOppSummonFamily = -proj;
+				duelOppSummonTime = time;
+				bool shot = false;
+				foreach (Projectile m in Members(duelOppSummonFamily, duelWith))
+					if (SummonShots.TryGetValue(m.type, out int s))
+					{
+						Vector2 start = duelOppSummonSpots.TryGetValue(m.whoAmI, out Vector2 spot) ? spot : EnemyPosNow + new Vector2(20f, -60f);
+						AddEffect(new ShotProjectile(s, start, HeroFeetNow + new Vector2(0f, -40f) + Main.rand.NextVector2Circular(10f, 10f), 10f));
+						shot = true;
+					}
+				if (shot)
+					Sfx("attack");
+				return;
+			}
 			duelOppAttackAt = Main.GameUpdateCount;
 			if (item > 0)
 				duelOppItem = item;
@@ -536,8 +557,11 @@ namespace MercyMode.Battle
 					break;
 				case BattleNet.DuelKind.Soul:
 				{
+					Vector2 was = duelRemoteSoul;
 					duelRemoteSoul = new Vector2(r.ReadInt16(), r.ReadInt16());
 					byte flags = r.ReadByte();
+					if (phase == Phase.Build)
+						MirrorRemoteSoulMode((SoulMode)(flags & 0x07), was);
 					if (!duelRemoteSoulSet)
 						soul = duelRemoteSoul;
 					duelRemoteSoulSet = true;
@@ -752,6 +776,9 @@ namespace MercyMode.Battle
 			HeroLight = glide >= 1f ? Color.White : Color.Lerp(Lighting.GetColor(o.Center.ToTileCoordinates()), Color.White, glide);
 			duelDrawingHurt = duelOppHurt >= 0;
 			var (oppPose, oppTimer) = glide >= 1f ? DuelOppPoseNow() : (HeroPose.Idle, 0f);
+			// Their summons, behind them (they face left, so behind is to the right)
+			if (glide >= 1f)
+				DrawMinions(sb, m, o, feet + new Vector2(0f, bob), scale, facing: -1);
 			DrawPlayerPose(sb, m, o, feet + new Vector2(0f, bob), scale, oppPose, oppTimer, 0f, ally: true, facing: -1);
 			duelDrawingHurt = false;
 			HeroLight = Color.White;

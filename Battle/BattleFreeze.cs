@@ -55,8 +55,11 @@ namespace MercyMode.Battle
 
 		public override void Load() => On_NPC.FindFrame += FindFrameInMotion;
 
-		/// <summary>How fast a frozen enemy pretends to move while Terraria picks its frame.</summary>
-		private const float PretendSpeed = 1.4f;
+		/// <summary>
+		/// How fast a frozen enemy pretends to move while Terraria picks its frame: a slow walk (walkers step by distance,
+		/// so a zombie changes frame every 10 ticks at this speed; 1.4 looked like running in place).
+		/// </summary>
+		private const float PretendSpeed = 0.8f;
 
 		/// <summary>
 		/// A frozen enemy has no speed (and Terraria adds a tick of gravity before picking the frame), so walkers stood
