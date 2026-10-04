@@ -191,6 +191,7 @@ namespace MercyMode.Lab
 				("no-world-hits", NoWorldHits),
 				("multi-hit-spills-over", MultiHitSpillsOver),
 				("mp-server", MultiplayerServer),
+				("frames", Frames),
 			};
 			string want = Wanted.Trim().ToLowerInvariant();
 			foreach (var s in all)
@@ -1301,6 +1302,68 @@ namespace MercyMode.Lab
 			foreach (NPC m in eoc.Members().ToList())
 				m.active = false;
 			yield return Until(() => !BattleSystem.Active, "the battle ending", 60 * 30);
+		}
+
+		/// <summary>Frozen enemies keep animating: a live frozen flying fish, then every hostile type simulated.</summary>
+		private IEnumerable Frames()
+		{
+			yield return StartWith(NPCID.FlyingFish);
+			NPC fish = B.LabTarget.Npc;
+			var seen = new HashSet<int>();
+			for (int i = 0; i < 120; i++)
+			{
+				seen.Add(fish.frame.Y);
+				yield return null;
+			}
+			Log($"  frozen flying fish: {seen.Count} frames ({string.Join(" ", seen)})");
+			Check(seen.Count > 1, "the frozen flying fish stays on one frame");
+			var still = new List<string>();
+			for (int type = 1; type < NPCID.Count; type++)
+			{
+				var n = new NPC();
+				try
+				{
+					n.SetDefaults(type);
+					if (n.friendly || n.townNPC || n.boss || n.damage <= 0 || Main.npcFrameCount[type] < 2 || n.lifeMax <= 5)
+						continue;
+					n.whoAmI = 199;
+					n.position = new Vector2(Main.spawnTileX * 16f, (Main.spawnTileY - 10) * 16f);
+					n.direction = n.spriteDirection = -1;
+					var frames = new HashSet<int>();
+					for (int t = 0; t < 120; t++)
+					{
+						Frozen.Freeze(n);
+						BattleFreezeNPC.AnimateInPlace(n, n.FindFrame);
+						frames.Add(n.frame.Y);
+					}
+					if (frames.Count < 2)
+						still.Add($"{type}:{Lang.GetNPCNameValue(type)}");
+				}
+				catch (Exception e)
+				{
+					still.Add($"{type}:(error {e.GetType().Name})");
+				}
+			}
+			Log($"  {still.Count} hostile types stand still when frozen:");
+			foreach (var chunk in still.Chunk(8))
+				Log("    " + string.Join(", ", chunk));
+			// Casters, closed mimics, turrets and boss parts really do hold one frame; 256 did before battle enemies
+			// pretended to move while picking frames
+			Check(still.Count < 60, $"{still.Count} enemy types stopped animating when frozen");
+			foreach (NPC m in B.LabTarget.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
+		}
+
+		/// <summary>What the battle freeze leaves an NPC with right before Terraria picks its frame.</summary>
+		private static class Frozen
+		{
+			public static void Freeze(NPC n)
+			{
+				n.velocity = Vector2.Zero;
+				if (!n.noGravity)
+					n.velocity.Y += 0.3f;
+			}
 		}
 
 		private IEnumerable SingleEnemy()

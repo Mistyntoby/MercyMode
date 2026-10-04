@@ -53,6 +53,48 @@ namespace MercyMode.Battle
 
 		public override bool CheckActive(NPC npc) => !Frozen(npc);
 
+		public override void Load() => On_NPC.FindFrame += FindFrameInMotion;
+
+		/// <summary>How fast a frozen enemy pretends to move while Terraria picks its frame.</summary>
+		private const float PretendSpeed = 1.4f;
+
+		/// <summary>
+		/// A frozen enemy has no speed (and Terraria adds a tick of gravity before picking the frame), so walkers stood
+		/// on one frame or showed their jump frame: zombies, skeletons, goblins, mimics... Enemies on the battle screen
+		/// pick their frame as if walking or flying toward the way they face, then go back to standing still.
+		/// </summary>
+		private static void FindFrameInMotion(On_NPC.orig_FindFrame orig, NPC npc)
+		{
+			if (!Frozen(npc) || !BattleSystem.IsBattleSprite(npc))
+			{
+				orig(npc);
+				return;
+			}
+			AnimateInPlace(npc, () => orig(npc));
+		}
+
+		/// <summary>Runs <paramref name="findFrame"/> with the enemy pretending to move, then holds it still again.</summary>
+		public static void AnimateInPlace(NPC npc, System.Action findFrame)
+		{
+			// Bosses and worms are posed by their encounters; their frames come from their own states
+			NPC root = MercyMode.Root(npc);
+			if (npc.boss || root.boss || npc.realLife >= 0 || npc.aiStyle == Terraria.ID.NPCAIStyleID.Worm)
+			{
+				findFrame();
+				return;
+			}
+			int facing = npc.direction != 0 ? npc.direction : npc.spriteDirection != 0 ? npc.spriteDirection : -1;
+			npc.velocity = new Vector2(facing * PretendSpeed, 0f);
+			try
+			{
+				findFrame();
+			}
+			finally
+			{
+				npc.velocity = Vector2.Zero;
+			}
+		}
+
 		// A battle's enemy and the rest of the world leave each other alone (town NPCs, other monsters)
 		public override bool CanHitNPC(NPC npc, NPC target) => !Frozen(npc) && !Frozen(target);
 
