@@ -140,7 +140,12 @@ namespace MercyMode.Battle.Encounters
 				ripProgress = 0f;
 				return new RipOpen(this);
 			}
-			int pick = Turn % 8;
+			// Its second move: tears well up along the path you just took
+			int pick = Turn % 9;
+			if (pick == 1)
+				return new EchoTrail(EyeTear) { Delay = hard ? 30 : 38, RecordEvery = hard ? 5 : 6 };
+			if (pick > 1)
+				pick--;
 			return pick switch
 			{
 				0 => new TearRain(hard),

@@ -223,6 +223,8 @@ namespace MercyMode.Battle.Encounters
 				// Retinazer locks on and fires
 				() => new Beam(Hard ? 36 : 48) { Width = 10f, Warn = Hard ? 32 : 40, Active = 16, Color = red, FireSound = SoundID.Item33 },
 				() => new AimedBursts(laser, Hard ? 26 : 36) { Count = Hard ? 4 : 3, Speed = 3.2f, Spread = 0.25f },
+				// Its laser grid: beams cross the box, leaving squares to hide in
+				() => new LaserGrid(Hard ? 60 : 74) { Lines = Hard ? 3 : 2, Color = red },
 			};
 			var spazmatismAttacks = new Func<EnemyAttack>[]
 			{
@@ -239,7 +241,7 @@ namespace MercyMode.Battle.Encounters
 			if (spazmatism && !retinazer)
 				return Cycle(spazmatismAttacks.Append(forecast).ToArray());
 			return Cycle(
-				retinazerAttacks[0], forecast, retinazerAttacks[1], spazmatismAttacks[0], spazmatismAttacks[1], retinazerAttacks[2],
+				retinazerAttacks[0], forecast, retinazerAttacks[3], retinazerAttacks[1], spazmatismAttacks[0], spazmatismAttacks[1], retinazerAttacks[2],
 				() => new Combo(TurnTicks,
 					new Beam(60) { Width = 10f, Color = red, FireSound = SoundID.Item33 },
 					new Sprinkler(flame) { Every = 9, Speed = 2.2f, TurnSpeed = 0.05f }),
@@ -609,8 +611,9 @@ namespace MercyMode.Battle.Encounters
 					Origin = new Vector2(BattleConstants.BoxCenterX, BattleConstants.BoxCenterY),
 					Spiral = true, Arms = Hard ? 5 : 4, Every = Hard ? 7 : 9, Speed = 1.7f, TurnSpeed = 0.06f, ArmTicks = 20,
 				},
-				// Ethereal lances: lines flash, then strike along them
-				() => new Beam(Hard ? 18 : 26) { Width = 10f, Warn = 34, Active = 12, Aimed = false, Color = new Color(255, 180, 255), FireSound = SoundID.Item163 },
+				// Ethereal lances: lines of rainbow lances flicker in one by one, then fire across in order (the Roaring
+				// Knight's sword lines)
+				() => new SwordLines(Hard ? 36 : 46) { Diagonals = Hard, Speed = Hard ? 6f : 5f, Color = i => Main.hslToRgb(i * 0.07f % 1f, 1f, 0.72f) },
 				() => new LaneDash(empress, Hard ? 44 : 58) { AllowVertical = true, Speed = Hard ? 10f : 8f, LaunchSound = SoundID.Item160 },
 				() => new Converge(lance, Hard ? 48 : 62) { Count = Hard ? 12 : 9, Speed = Hard ? 4.8f : 4.2f },
 				// Everlasting rainbow: bolts circle in on you

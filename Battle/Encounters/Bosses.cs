@@ -182,6 +182,8 @@ namespace MercyMode.Battle.Encounters
 			return Cycle(
 				// Blue SOUL for the bouncy attacks: hop the gel
 				() => new Bouncers(Gel, hard ? 18 : 26).WithSoul(SoulMode.Blue),
+				// It slams down and the shock ripples out in rings, each with one way through
+				() => new ShockwaveRings(hard ? 56 : 72) { RingsPerSlam = hard ? 3 : 2, GrowSpeed = hard ? 1.8f : 1.5f },
 				// It jumps and lands on you: the floor ripples out gel both ways
 				() => new Slam(king, gelDrop, hard ? 62 : 82) { Width = 48f, Shards = hard ? 3 : 2, FallSpeed = hard ? 10f : 8.5f }.WithSoul(SoulMode.Blue),
 				// Its slimes hop in from both sides; jump them
@@ -361,6 +363,8 @@ namespace MercyMode.Battle.Encounters
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new StringRunners(creeper, hard ? 20 : 28) { Speed = hard ? 3f : 2.5f },
 					new Rain((p, v) => thought(p, v).Sparkly(Shots.Red), hard ? 26 : 36) { SpeedMin = 1.2f, SpeedMax = 1.6f }),
+				// Illusions: they flicker between real and false together; the false ones can be passed through
+				() => new PhaseBullets(creeper, hard ? 8 : 11) { Speed = hard ? 1.7f : 1.4f, RealTicks = hard ? 56 : 46 },
 				() => new Orbiters(creeper, hard ? 90 : 120) { Count = hard ? 8 : 6, AngularSpeed = 0.03f },
 				// Bad thoughts close in from every side
 				() => new Converge(thought, hard ? 55 : 70) { Count = hard ? 10 : 8, Speed = hard ? 4.5f : 3.8f, Radius = 72f },
@@ -416,6 +420,10 @@ namespace MercyMode.Battle.Encounters
 			Bullet stinger(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Stinger, p, v, 1f, 0.6f, new Vector2(8, 8), rotationOffset: MathHelper.PiOver2);
 			return Cycle(
 				() => new Homing(bee, hard ? 14 : 20) { Speed = hard ? 2.2f : 1.8f, Turn = 0.03f, SteerTicks = 70 },
+				// The box turns into honeycomb: cells light up, then fill with honey
+				() => hard
+					? new Combo(BattleConstants.DefaultEnemyTurnTicks, new Honeycomb(72) { Fill = 0.62f }, new Homing(bee, 40) { Speed = 1.5f, FirstAt = 30 })
+					: new Honeycomb(84),
 				// Green SOUL: stingers from every side; turn the shield to block them
 				() => new ShieldSpears(stinger, hard ? 16 : 22) { Speed = hard ? 2.8f : 2.3f },
 				// She hovers above and sprays stingers in a sweeping fan
@@ -512,6 +520,8 @@ namespace MercyMode.Battle.Encounters
 			Bullet bone(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Bone, p, v, 1f, 0.6f, new Vector2(10, 10), spin: 0.25f);
 			return Cycle(
 				() => new LaneDash(hand, hard ? 45 : 60) { AllowVertical = true, Speed = hard ? 8f : 7f },
+				// A tunnel of bones slides through; follow the gap as it winds
+				() => new BoneTunnel(hard ? 9 : 11) { Speed = hard ? 2.6f : 2.2f, GapSize = hard ? 42f : 48f, WanderSpeed = hard ? 0.022f : 0.018f },
 				// The spinning-head charge
 				() => new LaneDash(head, hard ? 60 : 80) { AllowVertical = true, Speed = hard ? 7f : 5.5f, LaneWidth = 40f, LaunchSound = SoundID.Roar },
 				// A hand slams the floor and scatters bones along it (blue SOUL: jump them)
@@ -623,6 +633,8 @@ namespace MercyMode.Battle.Encounters
 			Bullet iceShard(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Ice, 0.7f);
 			return Cycle(
 				() => new FloorSpikes(spike, hard ? 24 : 34) { Warn = hard ? 24 : 30 }.WithSoul(SoulMode.Blue),
+				// Its shadow hands creep in, freeze, then lunge at you
+				() => new FreezeAndFire(hand, hard ? 11 : 15) { LungeSpeed = hard ? 4.2f : 3.6f, FreezeEvery = hard ? 70 : 84 },
 				() => new Homing(hand, hard ? 26 : 36) { Speed = 1.5f, Turn = 0.05f, SteerTicks = 110 },
 				// A boulder crashes down and breaks into rubble along the floor
 				() => new Slam(boulder, rock, hard ? 58 : 76) { Width = 44f, Shards = hard ? 3 : 2, Debris = 4 }.WithSoul(SoulMode.Blue),
@@ -687,6 +699,10 @@ namespace MercyMode.Battle.Encounters
 			Bullet leechBody(Vector2 p, Vector2 v) => Shots.Npc(NPCID.LeechBody, p, v, 0.8f, 0.7f, new Vector2(10, 10), rotationOffset: BossKit.WormRotation);
 			return Cycle(
 				() => new SideShots(laser, hard ? 10 : 14) { Side = -1, Speed = 6f },
+				// The wall itself pushes into the box while its eyes fire across what's left
+				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
+					new FleshPush { Side = -1, MaxPush = hard ? 0.6f : 0.5f },
+					new Beam(hard ? 60 : 80) { FixedAngle = 0f, Tilt = 0.1f, Width = 12f, Color = new Color(255, 80, 200), FireSound = SoundID.Item33, FirstAt = 70 }),
 				// Its eyes lock on and fire big beams across the box
 				() => new Beam(hard ? 46 : 62) { FixedAngle = 0f, Tilt = hard ? 0.35f : 0.2f, Width = hard ? 18f : 15f, Color = new Color(255, 80, 200), FireSound = SoundID.Item33 },
 				() => new Walls(hungry, hard ? 55 : 70) { Side = -1, Speed = hard ? 2f : 1.6f, Spacing = 18f, GapSize = 42f },
@@ -765,6 +781,8 @@ namespace MercyMode.Battle.Encounters
 			Bullet purple(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Purple, 0.6f);
 			return Cycle(
 				() => new AimedBursts(red, hard ? 30 : 45) { Count = hard ? 5 : 3, Speed = hard ? 2.6f : 2.2f },
+				// Lines of swords (the Roaring Knight's): they appear one by one, then fire across in order
+				() => new SwordLines(hard ? 40 : 50) { Diagonals = hard, Color = _ => new Color(255, 120, 120) },
 				() => new LaneDash(Self, hard ? 50 : 70) { AllowVertical = true, Speed = hard ? 8f : 6.5f, LaunchSound = SoundID.Roar },
 				() => new Converge(red, hard ? 52 : 68) { Count = hard ? 10 : 8, Speed = hard ? 4.5f : 3.8f },
 				() => new Rain(purple, hard ? 7 : 10),
