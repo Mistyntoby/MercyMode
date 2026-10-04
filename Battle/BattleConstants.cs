@@ -63,8 +63,7 @@ namespace MercyMode.Battle
 		public const float DefaultGrazePoints = 5f;
 		/// <summary>TP (out of 100) for each bullet grazed.</summary>
 		public const float GrazeTP = 1f;
-		/// <summary>Boss bullets hit this much harder than their contact damage times the bullet's multiplier.</summary>
-		public const float BossBulletScale = 1.8f;
+
 		public const float DefaultTimePoints = 5f;
 		/// <summary>While still touching: grazepoints / 20 and timepoints / 20 every frame.</summary>
 		public const float GrazeHoldDivisor = 20f;

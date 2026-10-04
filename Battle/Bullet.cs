@@ -150,8 +150,8 @@ namespace MercyMode.Battle
 				DrDraw.Sb.Draw(Solid ? WhiteMask.Of(Texture) : Texture, pos, src, color, rotation, src.Size() / 2f, Scale, effects, 0f);
 				return;
 			}
-			// Fallback: a white diamond-ish square the size of the hitbox
-			DrDraw.Rect(pos.X - HitSize.X / 2f, pos.Y - HitSize.Y / 2f, HitSize.X, HitSize.Y, color);
+			// Fallback (the Deltarune sprite isn't in the chapter the assets come from): a shaded round bullet
+			DrDraw.Ball(pos, Math.Max(HitSize.X, HitSize.Y) / 2f + 2f * Scale, color);
 		}
 	}
 }

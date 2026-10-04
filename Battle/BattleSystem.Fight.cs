@@ -70,35 +70,60 @@ namespace MercyMode.Battle
 		public const int BossTargetTurns = 12;
 
 		/// <summary>
-		/// The damage a weapon typical for this boss's stage does in one good FIGHT turn (normal mode), from the
-		/// weapons players usually carry into it. A boss's hits are scaled so that weapon beats it in about
-		/// <see cref="BossTargetTurns"/> turns; a better weapon is faster, a worse one slower.
+		/// Where a boss sits in a normal playthrough, from what players usually have when they reach it (normal mode):
+		/// the damage a fair weapon does in one good FIGHT turn, and the player's max HP and defense. FIGHT is scaled
+		/// so that weapon wins in about <see cref="BossTargetTurns"/> turns; its bullets are sized against that HP and
+		/// defense (<see cref="BossBulletDamage"/>), so a 40-damage hit isn't the same at 120 HP as at 400.
 		/// </summary>
-		private static float ParTurnDamage(int type) => type switch
+		public static (float turnDamage, float hp, float defense) BossStage(int type) => type switch
 		{
-			NPCID.KingSlime or NPCID.EyeofCthulhu or NPCID.BrainofCthulhu or NPCID.EaterofWorldsHead
-				or NPCID.EaterofWorldsBody or NPCID.EaterofWorldsTail => 30f,
-			NPCID.QueenBee or NPCID.SkeletronHead or NPCID.Deerclops => 45f,
-			NPCID.WallofFlesh => 60f,
-			NPCID.QueenSlimeBoss or NPCID.Retinazer or NPCID.Spazmatism or NPCID.TheDestroyer or NPCID.SkeletronPrime => 100f,
-			NPCID.Plantera => 140f,
-			NPCID.Golem or NPCID.GolemHead => 160f,
-			NPCID.DukeFishron or NPCID.HallowBoss or NPCID.CultistBoss => 200f,
-			NPCID.MoonLordCore or NPCID.MoonLordHand or NPCID.MoonLordHead => 280f,
-			_ => Main.hardMode ? 140f : 45f,
+			NPCID.KingSlime => (30f, 140f, 6f),
+			NPCID.EyeofCthulhu => (30f, 160f, 8f),
+			NPCID.BrainofCthulhu or NPCID.EaterofWorldsHead or NPCID.EaterofWorldsBody or NPCID.EaterofWorldsTail => (32f, 200f, 12f),
+			NPCID.QueenBee or NPCID.Deerclops => (45f, 260f, 16f),
+			NPCID.SkeletronHead => (45f, 280f, 18f),
+			NPCID.WallofFlesh => (60f, 360f, 24f),
+			NPCID.QueenSlimeBoss or NPCID.Retinazer or NPCID.Spazmatism or NPCID.TheDestroyer or NPCID.SkeletronPrime => (100f, 400f, 34f),
+			NPCID.Plantera => (140f, 440f, 45f),
+			NPCID.Golem or NPCID.GolemHead => (160f, 460f, 55f),
+			NPCID.DukeFishron or NPCID.HallowBoss or NPCID.CultistBoss => (200f, 480f, 65f),
+			NPCID.MoonLordCore or NPCID.MoonLordHand or NPCID.MoonLordHead => (280f, 500f, 80f),
+			_ => Main.hardMode ? (140f, 420f, 40f) : (45f, 220f, 14f),
 		};
+
+		/// <summary>Share of a typical player's max HP one ordinary boss bullet takes (Deltarune hits take about a tenth).</summary>
+		private const float BossHitShare = 0.09f;
+
+		/// <summary>
+		/// A boss bullet's damage before the player's defense: a share of the typical HP for its stage, plus the
+		/// typical defense's worth, so a player as geared as expected takes about <see cref="BossHitShare"/> of a
+		/// typical health bar (better armour takes less, worse takes more). Expert and Master hit a little harder.
+		/// <paramref name="mult"/> is the bullet's own multiplier (0.8 is an ordinary bullet).
+		/// </summary>
+		public static int BossBulletDamage(Encounter e, float mult)
+		{
+			var (_, hp, defense) = BossStage(e.Npc?.type ?? 0);
+			float mode = (float)Math.Sqrt(Math.Max(1f, Main.GameModeInfo.EnemyDamageMultiplier));
+			float defenseTaken = Main.masterMode ? 1f : Main.expertMode ? 0.75f : 0.5f;
+			return Math.Max(1, (int)Math.Round(hp * BossHitShare * (mult / 0.8f) * mode + defense * defenseTaken));
+		}
+
+		/// <summary>Players a boss's health counts: everyone on the server, but never more than three.</summary>
+		private static int BossPartySize() =>
+			Main.netMode == NetmodeID.SinglePlayer ? 1 : Math.Clamp(Main.player.Count(p => p.active), 1, 3);
 
 		/// <summary>
 		/// What a hit on <paramref name="e"/> is multiplied by. Regular enemies: <see cref="DamageScale"/>. Bosses: scaled
 		/// to their health (which already includes Expert's and Master's), so a fight takes about
-		/// <see cref="BossTargetTurns"/> turns with a fair weapon; the config multiplier still applies.
+		/// <see cref="BossTargetTurns"/> turns with a fair weapon; with more players (up to three) each hit counts for
+		/// less, so the party as a whole still takes that long. The config multiplier still applies.
 		/// </summary>
 		public static float HitScale(Encounter e)
 		{
 			if (e == null || !e.IsBoss || e.Npc == null)
 				return DamageScale;
 			float config = ModContent.GetInstance<MercyConfig>()?.FightDamageMultiplier ?? 1f;
-			float boss = Math.Max(1f, e.LifeMax / (BossTargetTurns * ParTurnDamage(e.Npc.type)));
+			float boss = Math.Max(1f, e.LifeMax / (BossTargetTurns * BossStage(e.Npc.type).turnDamage * BossPartySize()));
 			return config * boss;
 		}
 

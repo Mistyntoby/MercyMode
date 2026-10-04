@@ -30,6 +30,37 @@ namespace MercyMode.Battle
 			DamageMult = damage,
 		};
 
+		/// <summary>
+		/// A drop of blood: a dark red bead with a tail stretched back along its path, a glint, and drips falling off it.
+		/// Drawn by hand, so it looks the same whatever Deltarune files there are.
+		/// </summary>
+		public static Bullet Blood(Vector2 pos, Vector2 vel, float scale = 1f, float damage = 0.9f)
+		{
+			var body = new Color(170, 12, 24);
+			var dark = new Color(90, 0, 10);
+			var b = new Bullet
+			{
+				Position = pos,
+				Velocity = vel,
+				Scale = scale,
+				HitSize = new Vector2(9, 9) * scale,
+				DamageMult = damage,
+				Color = body,
+			};
+			b.OnDraw = x =>
+			{
+				float r = 4.5f * x.Scale;
+				Color tint = (x.Flash > 0 ? Color.Lerp(body, Color.White, 0.6f) : x.Color) * x.Alpha;
+				Vector2 back = x.Velocity.LengthSquared() > 0.01f ? -Vector2.Normalize(x.Velocity) : new Vector2(0f, -1f);
+				float stretch = MathHelper.Clamp(x.Velocity.Length() * 2.2f, 3f, 12f) * x.Scale;
+				// The tail, thinning out behind it
+				DrDraw.Line(x.Position, x.Position + back * stretch, r * 1.4f, dark * x.Alpha);
+				DrDraw.Line(x.Position + back * stretch * 0.4f, x.Position + back * stretch * 1.3f, r * 0.7f, dark * (0.8f * x.Alpha));
+				DrDraw.Ball(x.Position, r, tint);
+			};
+			return b.Dripping(dark, 7);
+		}
+
 		/// <summary>A bullet drawn with a Terraria NPC's sprite, animated through its frames.</summary>
 		public static Bullet Npc(int type, Vector2 pos, Vector2 vel, float scale, float damage, Vector2 hitSize,
 			bool rotate = true, float rotationOffset = 0f, int ticksPerFrame = 6)

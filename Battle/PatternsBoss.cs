@@ -505,20 +505,53 @@ namespace MercyMode.Battle
 					{
 						if (x.Age < warn)
 						{
-							// The spot pulses; a short line shows where the gap will be
-							float a = (x.Age / 3) % 2 == 0 ? 0.9f : 0.4f;
-							DrDraw.Rect(origin.X - 4, origin.Y - 4, 8, 8, color * a);
-							DrDraw.Line(origin, origin + ringGap.ToRotationVector2() * 22f, 2f, Microsoft.Xna.Framework.Color.White * a);
+							// The slam spot: a faint ring of what's coming, with its way through lit up in white
+							float t = x.Age / (float)warn;
+							float pulse = (x.Age / 4) % 2 == 0 ? 1f : 0.6f;
+							const int dots = 24;
+							for (int s = 0; s < dots; s++)
+							{
+								float a = MathHelper.TwoPi * s / dots;
+								if (Math.Abs(MathHelper.WrapAngle(a - ringGap)) <= gapHalf)
+									continue;
+								DrDraw.Ball(origin + a.ToRotationVector2() * (14f + t * 10f), 1.6f, color * (0.5f * pulse));
+							}
+							// The way out: a bright wedge and an arrow along it
+							Vector2 dir = ringGap.ToRotationVector2();
+							Vector2 side = new(-dir.Y, dir.X);
+							float reach = 18f + t * 16f;
+							DrDraw.Line(origin + dir * 8f, origin + dir * reach, 3f, Microsoft.Xna.Framework.Color.White * pulse);
+							DrDraw.Line(origin + dir * reach, origin + dir * (reach - 6f) + side * 5f, 3f, Microsoft.Xna.Framework.Color.White * pulse);
+							DrDraw.Line(origin + dir * reach, origin + dir * (reach - 6f) - side * 5f, 3f, Microsoft.Xna.Framework.Color.White * pulse);
+							DrDraw.Ball(origin, 5f + (float)Math.Sin(x.Age * 0.5f) * 1.5f, color * pulse);
 							return;
 						}
 						float radius = (x.Age - warn) * grow;
-						const int segs = 56;
+						float fadeOut = Math.Min(1f, (x.Lifetime - x.Age) / 20f);
+						const int segs = 64;
+						// Gel: a dark rim, the body, a light inner edge, wobbling a little; bubbles riding along it
+						var rim = new Color(20, 40, 120) * fadeOut;
+						var shine = new Color(190, 220, 255) * fadeOut;
 						for (int s = 0; s < segs; s++)
 						{
 							float a0 = MathHelper.TwoPi * s / segs, a1 = MathHelper.TwoPi * (s + 1) / segs;
 							if (Math.Abs(MathHelper.WrapAngle((a0 + a1) / 2f - ringGap)) <= gapHalf)
 								continue;
-							DrDraw.Line(origin + a0.ToRotationVector2() * radius, origin + a1.ToRotationVector2() * radius, thick, color);
+							float w0 = radius + (float)Math.Sin(a0 * 6f + x.Age * 0.25f) * 1.5f;
+							float w1 = radius + (float)Math.Sin(a1 * 6f + x.Age * 0.25f) * 1.5f;
+							Vector2 p0 = origin + a0.ToRotationVector2() * w0, p1 = origin + a1.ToRotationVector2() * w1;
+							DrDraw.Line(p0, p1, thick + 4f, rim);
+							DrDraw.Line(p0, p1, thick, color * fadeOut);
+							DrDraw.Line(origin + a0.ToRotationVector2() * (w0 - thick * 0.35f), origin + a1.ToRotationVector2() * (w1 - thick * 0.35f), 1.5f, shine);
+							if (s % 8 == 3)
+								DrDraw.Ball(origin + a0.ToRotationVector2() * (w0 + 1f), thick * 0.55f, shine * 0.8f);
+						}
+						// Glints on both edges of the way through
+						foreach (float edge in new[] { ringGap - gapHalf, ringGap + gapHalf })
+						{
+							Vector2 at = origin + edge.ToRotationVector2() * radius;
+							float g = 2.5f + (float)Math.Sin(x.Age * 0.4f) * 1f;
+							DrDraw.Ball(at, g, Microsoft.Xna.Framework.Color.White * fadeOut);
 						}
 					},
 				});

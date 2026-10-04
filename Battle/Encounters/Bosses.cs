@@ -183,7 +183,7 @@ namespace MercyMode.Battle.Encounters
 				// Blue SOUL for the bouncy attacks: hop the gel
 				() => new Bouncers(Gel, hard ? 18 : 26).WithSoul(SoulMode.Blue),
 				// It slams down and the shock ripples out in rings, each with one way through
-				() => new ShockwaveRings(hard ? 56 : 72) { RingsPerSlam = hard ? 3 : 2, GrowSpeed = hard ? 1.8f : 1.5f },
+				() => new ShockwaveRings(hard ? 62 : 78) { RingsPerSlam = hard ? 3 : 2, GrowSpeed = hard ? 1.6f : 1.3f, Warn = 36, Thickness = 6f },
 				// It jumps and lands on you: the floor ripples out gel both ways
 				() => new Slam(king, gelDrop, hard ? 62 : 82) { Width = 48f, Shards = hard ? 3 : 2, FallSpeed = hard ? 10f : 8.5f }.WithSoul(SoulMode.Blue),
 				// Its slimes hop in from both sides; jump them

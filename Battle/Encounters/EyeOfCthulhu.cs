@@ -172,16 +172,8 @@ namespace MercyMode.Battle.Encounters
 			return moves[Turn % moves.Length]();
 		}
 
-		private static Bullet EyeTear(Vector2 p, Vector2 v) => new()
-		{
-			Position = p,
-			Velocity = v,
-			Sprite = "spr_ponman_eyebullet",
-			Color = new Color(255, 90, 90),
-			Scale = 1.5f,
-			HitSize = new Vector2(10, 10),
-			DamageMult = 0.9f,
-		};
+		/// <summary>A tear of blood (drawn by hand: dark red, a tail along its path, dripping).</summary>
+		private static Bullet EyeTear(Vector2 p, Vector2 v) => Shots.Blood(p, v, 1.2f, 0.9f);
 
 		// ================================================================== patterns
 
@@ -204,16 +196,9 @@ namespace MercyMode.Battle.Encounters
 				{
 					float x = Main.rand.NextFloat(box.Left + 6, box.Right - 6);
 					float sway = Main.rand.NextFloat(MathHelper.TwoPi);
-					battle.Spawn(new Bullet
-					{
-						Position = new Vector2(x, box.Top - 24),
-						Velocity = new Vector2(0, Main.rand.NextFloat(1.8f, 2.6f) * (hard ? 1.2f : 1f)),
-						Sprite = "spr_smallbullet",
-						Color = new Color(255, 70, 70),
-						HitSize = new Vector2(8, 8),
-						DamageMult = 0.6f,
-						OnUpdate = b => b.Position.X += (float)Math.Sin(b.Age / 12f + sway) * 0.4f,
-					});
+					Bullet drop = Shots.Blood(new Vector2(x, box.Top - 24), new Vector2(0, Main.rand.NextFloat(1.8f, 2.6f) * (hard ? 1.2f : 1f)), 1f, 0.6f);
+					drop.OnUpdate += b => b.Position.X += (float)Math.Sin(b.Age / 12f + sway) * 0.4f;
+					battle.Spawn(drop);
 				}
 				if (WithServants && tick % 50 == 25 && tick < Duration - 60)
 					ServantSwarm.SpawnServant(battle, false);
@@ -365,16 +350,9 @@ namespace MercyMode.Battle.Encounters
 						continue;
 					float a = MathHelper.TwoPi * i / count;
 					Vector2 dir = a.ToRotationVector2();
-					battle.Spawn(new Bullet
-					{
-						Position = center + dir * 120f,
-						Velocity = -dir * 1.1f,
-						Sprite = "spr_ponman_eyebullet",
-						Scale = 1.5f,
-						HitSize = new Vector2(10, 10),
-						DamageMult = 1.1f,
-						Lifetime = 115,
-					});
+					Bullet drop = Shots.Blood(center + dir * 120f, -dir * 1.1f, 1.3f, 1.1f);
+					drop.Lifetime = 115;
+					battle.Spawn(drop);
 				}
 			}
 		}

@@ -190,13 +190,45 @@ namespace MercyMode.Battle
 		/// <summary>Player turns left before a potion can be used again (Terraria's potion sickness, in turns).</summary>
 		private int potionSickTurns;
 
+		/// <summary>How many turns the current potion sickness started with (for its bar).</summary>
+		private int potionSickFull;
+
+		/// <summary>Ticks a turn of potion sickness stands for, outside the battle.</summary>
+		private const int SickTurnTicks = 600;
+
+		/// <summary>
+		/// Shows the battle's potion sickness as Terraria's own debuff (so it's in the effects list with its icon and
+		/// description), kept at the turns left in time; whatever is left when the battle ends carries on outside.
+		/// </summary>
+		private void SyncPotionSickness()
+		{
+			if (potionSickTurns > 0)
+			{
+				int ticks = potionSickTurns * SickTurnTicks;
+				int i = Player.FindBuffIndex(BuffID.PotionSickness);
+				if (i < 0)
+					Player.AddBuff(BuffID.PotionSickness, ticks, quiet: true);
+				else
+					Player.buffTime[i] = ticks;
+				Player.potionDelay = ticks;
+			}
+			else if (Player.HasBuff(BuffID.PotionSickness))
+			{
+				Player.ClearBuff(BuffID.PotionSickness);
+				Player.potionDelay = 0;
+			}
+		}
+
 		/// <summary>Whether potion sickness keeps this item from being used right now.</summary>
 		private bool SickLocked(int type) =>
 			potionSickTurns > 0 && Terraria.ID.ContentSamples.ItemsByType.TryGetValue(type, out Item sample) && sample.potion;
 
 		private void Start(NPC root, string reason, List<NPC> given = null)
 		{
+			// Sickness from before the battle doesn't carry in: the battle counts its own, in turns
 			potionSickTurns = 0;
+			Player.ClearBuff(BuffID.PotionSickness);
+			Player.potionDelay = 0;
 			boss = root;
 			// The enemy, plus nearby ones (a squad, during an event) for regular fights; the first is the target
 			SetUpEnemies(root, given);
@@ -558,6 +590,7 @@ namespace MercyMode.Battle
 			if (phase == Phase.None)
 				return;
 			playerHeadPortrait?.Request();
+			SyncPotionSickness();
 
 			if (boss == null || Player.dead)
 			{
@@ -1158,7 +1191,7 @@ namespace MercyMode.Battle
 				heal = Player.GetHealLife(item, true);
 				// Terraria's potion sickness, counted in turns (about 10 seconds each) instead of time
 				if (item.potion)
-					potionSickTurns = Math.Max(1, (int)Math.Ceiling((item.type == ItemID.RestorationPotion ? Player.restorationDelayTime : Player.potionDelayTime) / 600f));
+					potionSickFull = potionSickTurns = Math.Max(1, (int)Math.Ceiling((item.type == ItemID.RestorationPotion ? Player.restorationDelayTime : Player.potionDelayTime) / 600f));
 				item.stack--;
 				if (item.stack <= 0)
 					item.TurnToAir();
@@ -1576,10 +1609,11 @@ namespace MercyMode.Battle
 			if (downed)
 				return;
 			Encounter by = b.Owner ?? encounter;
-			// Bosses hit harder than their contact damage suggests: Terraria takes half the player's defense off every
-			// hit, which left early boss bullets at 1-5 damage
-			float bossScale = by != null && by.IsBoss && duelWith < 0 ? BossBulletScale : 1f;
-			int damage = Math.Max(1, (int)Math.Round((b.Owner?.Damage ?? turnDamage) * b.DamageMult * bossScale));
+			// Bosses: sized against a typical player for their stage (contact damage left early hits at 1-5 after
+			// defense, and King Slime's 40 was a third of a starting health bar)
+			int damage = by != null && by.IsBoss && duelWith < 0
+				? BossBulletDamage(by, b.DamageMult)
+				: Math.Max(1, (int)Math.Round((b.Owner?.Damage ?? turnDamage) * b.DamageMult));
 			Player.immune = false;
 			Player.immuneTime = 0;
 			HurtingPlayer = true;

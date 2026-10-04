@@ -149,7 +149,7 @@ namespace MercyMode.Battle
 		internal static string BubblePlain(string text) => text == null ? "" : ParseBubble(text).plain;
 
 		/// <summary>Lines up to this long ("Blorp!", "Braaains...") get the small bubble.</summary>
-		private const int ShortBubbleChars = 14;
+		private const int ShortBubbleChars = 20;
 
 		/// <summary>
 		/// Where a letter sits off its place right now for its effect (in battle pixels). Driven by the real clock and not
@@ -219,7 +219,7 @@ namespace MercyMode.Battle
 				// Short lines get Deltarune's small bubble (small text, snug); longer ones the big one
 				bool small = BubblePlain(en.Bubble).Length <= ShortBubbleChars;
 				string font = small ? DrDraw.SmallFont : DrDraw.BigFont;
-				float scale = small ? 1f : 0.9f, pad = small ? 8f : 12f, tail = small ? 10f : 12f;
+				float scale = small ? 1f : 0.8f, pad = small ? 8f : 10f, tail = small ? 10f : 12f;
 				float lineH = DrDraw.LineHeight(font) * scale;
 				float half = 24f;
 				WithEnemy(en, () =>
@@ -235,7 +235,7 @@ namespace MercyMode.Battle
 				});
 				// (The box isn't open yet while they talk, so a bubble can reach across the middle of the screen)
 				float room = at.X - half - 8f - tail - 8f;
-				float maxW = MathHelper.Clamp(room - pad * 2f, 100f, 290f);
+				float maxW = MathHelper.Clamp(room - pad * 2f, 100f, 240f);
 				(string plain, TextFx[] fx) = ParseBubble(en.Bubble);
 				var lines = new List<string>();
 				string line = "";

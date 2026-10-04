@@ -248,7 +248,8 @@ namespace MercyMode.Battle
 
 			float alpha = panelAlpha * Math.Min(1f, buffDrawer * 2f);
 			DrDraw.Rect(x, top, DrawerWidth + 8f, ScreenHeight - top + 6f, Color.Black * alpha);
-			DrDraw.Text("BUFFS", x + 6, top + 2, new Color(130, 130, 130) * alpha, DrDraw.SmallFont, 0.6f);
+			// Good and bad alike (and plain statuses), so not "buffs"
+			DrDraw.Text("EFFECTS", x + 6, top + 2, new Color(130, 130, 130) * alpha, DrDraw.SmallFont, 0.6f);
 			// The key that hides it (whatever it's bound to), as a hint
 			// (Never rebound: Terraria lists no keys for it yet, but B is what works)
 			string key = MercyMode.AssignedKeys(MercyMode.BuffsKey).FirstOrDefault() ?? "B";
@@ -261,8 +262,11 @@ namespace MercyMode.Battle
 				var (type, ticks) = rows[index];
 				float rx = x + 4f, rw = DrawerWidth - 14f;
 				bool bad = BadBuff(type);
-				bool ongoing = Ongoing(type, ticks);
-				Color edge = bad ? new Color(255, 70, 70) : new Color(80, 230, 110);
+				// Pets and lights are just there: neither good nor bad
+				bool status = !bad && (Main.vanityPet[type] || Main.lightPet[type]);
+				bool battleSick = type == Terraria.ID.BuffID.PotionSickness && potionSickTurns > 0;
+				bool ongoing = !battleSick && Ongoing(type, ticks);
+				Color edge = bad ? new Color(255, 70, 70) : status ? new Color(150, 150, 160) : new Color(80, 230, 110);
 				bool hover = new Rectangle((int)x, (int)y, (int)DrawerWidth, (int)h).Contains(mouse);
 				bool inspected = type == buffInspect;
 				DrDraw.Rect(rx, y, rw, h - 3, (inspected ? new Color(26, 26, 32) : hover ? new Color(20, 20, 24) : new Color(12, 12, 14)) * alpha);
@@ -273,15 +277,20 @@ namespace MercyMode.Battle
 				DrDraw.Sb.Draw(icon, new Vector2(rx + 4, y + 1), null, Color.White * alpha, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
 
 				string name = Lang.GetBuffName(type);
-				// Kept topped up: it just says it keeps going
-				string timer = ticks < 0 ? "" : ongoing ? "ONGOING" : FormatBuffTime(ticks);
+				// Its sign: + good, - bad, a dot for a plain status
+				string sign = bad ? "-" : status ? "=" : "+";
+				DrDraw.Text(sign, rx + 23, y + 1, edge * alpha, DrDraw.SmallFont, 0.6f);
+				float signW = DrDraw.Measure("+ ", DrDraw.SmallFont) * 0.6f;
+				// Kept topped up: it just says it keeps going. The battle's potion sickness counts turns, not time
+				string timer = battleSick ? $"{potionSickTurns} TURN{(potionSickTurns == 1 ? "" : "S")}"
+					: ticks < 0 ? "" : ongoing ? "ONGOING" : FormatBuffTime(ticks);
 				float timerScale = ongoing ? 0.5f : 0.6f;
 				float timerW = DrDraw.Measure(timer, DrDraw.SmallFont) * timerScale;
-				float maxName = rw - 24 - timerW - 6;
+				float maxName = rw - 24 - timerW - 6 - signW;
 				float nameScale = 0.6f;
 				if (DrDraw.Measure(name, DrDraw.SmallFont) * nameScale > maxName)
 					nameScale = Math.Max(0.38f, maxName / Math.Max(1f, DrDraw.Measure(name, DrDraw.SmallFont)));
-				DrDraw.Text(name, rx + 23, y + 1, Color.White * alpha, DrDraw.SmallFont, nameScale);
+				DrDraw.Text(name, rx + 23 + signW, y + 1, Color.White * alpha, DrDraw.SmallFont, nameScale);
 				if (timer.Length > 0)
 				{
 					bool ending = !ongoing && ticks < 5 * 60 && (time / 10) % 2 == 0;
@@ -295,6 +304,12 @@ namespace MercyMode.Battle
 					DrDraw.Rect(rx + 23, barY, rw - 27, 2, edge * (0.45f * alpha));
 					float g = (time % 90) / 90f;
 					DrDraw.Rect(rx + 23 + (rw - 35) * g, barY, 8, 2, Color.White * (0.7f * alpha));
+				}
+				else if (battleSick)
+				{
+					float frac = MathHelper.Clamp(potionSickTurns / (float)Math.Max(1, potionSickFull), 0f, 1f);
+					DrDraw.Rect(rx + 23, barY, rw - 27, 2, Color.White * (0.15f * alpha));
+					DrDraw.Rect(rx + 23, barY, (rw - 27) * frac, 2, edge * alpha);
 				}
 				else if (ticks >= 0 && buffFull.TryGetValue(type, out int full) && full > 0)
 				{

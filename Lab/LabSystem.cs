@@ -1314,13 +1314,29 @@ namespace MercyMode.Lab
 		/// <summary>Boss hits scale to a fair number of turns; potions bring on potion sickness; slime bullets keep their colour.</summary>
 		private IEnumerable Balance()
 		{
+			// Sickness from outside doesn't follow you into the battle
+			P.AddBuff(BuffID.PotionSickness, 3600);
 			yield return StartWith(NPCID.EyeofCthulhu);
+			Check(!P.HasBuff(BuffID.PotionSickness), "potion sickness from outside carried into the battle");
 			yield return Menu();
 			Encounter eye = B.LabTarget;
 			float scale = BattleSystem.HitScale(eye);
 			float turns30 = eye.LifeMax / (30f * scale);
 			Log($"  Eye of Cthulhu: {eye.LifeMax} HP, hits x{scale:0.0}; a 30-damage turn wins in {turns30:0.0} turns");
 			Check(turns30 > 9f && turns30 < 15f, $"a fair weapon takes {turns30:0.0} turns");
+
+			// Boss bullets against a typical player for the stage: an ordinary one takes about a tenth of the bar
+			foreach (var (type, label) in new[] { (NPCID.KingSlime, "King Slime"), (NPCID.EyeofCthulhu, "Eye of Cthulhu"), (NPCID.Plantera, "Plantera") })
+			{
+				var sample = new NPC();
+				sample.SetDefaults(type);
+				var enc = EncounterRegistry.Create(sample);
+				var (_, hp, def) = BattleSystem.BossStage(type);
+				int raw = BattleSystem.BossBulletDamage(enc, 0.8f);
+				float taken = raw - def * 0.5f;
+				Log($"  {label}: ordinary bullet {raw} raw, {taken:0} to a typical {hp:0} HP / {def:0} defense player ({taken / hp:P0})");
+				Check(taken / hp > 0.06f && taken / hp < 0.15f, $"{label}'s bullets take {taken / hp:P0} of a typical health bar");
+			}
 
 			// A slime bullet is drawn blue, not grey
 			Bullet slime = Shots.Npc(NPCID.BlueSlime, Vector2.Zero, Vector2.Zero, 1f, 1f, new Vector2(8, 8));
@@ -1338,6 +1354,7 @@ namespace MercyMode.Lab
 			yield return Menu();
 			Log($"  potion sickness: {B.LabPotionSick} turns left");
 			Check(B.LabPotionSick > 0, "using a potion didn't bring on potion sickness");
+			Check(P.HasBuff(BuffID.PotionSickness), "potion sickness isn't in the effects list");
 			// ITEM still opens; the potion in it can't be used while sick
 			yield return Choose(2);
 			yield return Until(() => B.LabPhase == Phase.ItemSelect, "the item list while sick", skipText: false);

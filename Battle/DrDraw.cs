@@ -61,6 +61,41 @@ namespace MercyMode.Battle
 			Sb.Draw(glow, at, null, color, 0f, new Vector2(32f), radius / 32f, SpriteEffects.None, 0f);
 		}
 
+		private static Texture2D ball;
+
+		/// <summary>
+		/// A shaded round bullet (made once, so it never depends on the Deltarune files): a dark rim, a lit body and a
+		/// highlight, tinted by <paramref name="color"/>.
+		/// </summary>
+		public static void Ball(Vector2 at, float radius, Color color)
+		{
+			if (Main.dedServ || radius <= 0f)
+				return;
+			if (ball == null || ball.IsDisposed)
+			{
+				const int size = 16;
+				ball = new Texture2D(Main.instance.GraphicsDevice, size, size);
+				var data = new Color[size * size];
+				var c = new Vector2(size / 2f);
+				for (int y = 0; y < size; y++)
+					for (int x = 0; x < size; x++)
+					{
+						var p = new Vector2(x + 0.5f, y + 0.5f);
+						float d = Vector2.Distance(p, c) / (size / 2f);
+						if (d > 1f)
+							continue;
+						// Lit from the top left; the rim darker, a small bright spot
+						float light = 1f - Vector2.Distance(p, c + new Vector2(-2.5f, -2.5f)) / size;
+						byte v = d > 0.82f ? (byte)90 : (byte)MathHelper.Clamp(150 + light * 140f, 0f, 255f);
+						if (Vector2.Distance(p, c + new Vector2(-2.5f, -2.5f)) < 1.6f)
+							v = 255;
+						data[y * size + x] = new Color(v, v, v, (byte)255);
+					}
+				ball.SetData(data);
+			}
+			Sb.Draw(ball, at, null, color, 0f, new Vector2(8f), radius / 8f, SpriteEffects.None, 0f);
+		}
+
 		private static readonly Rectangle Pixel = new(0, 0, 1, 1);
 
 		public static void Rect(float x, float y, float w, float h, Color color)
