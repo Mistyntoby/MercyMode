@@ -1844,7 +1844,8 @@ namespace MercyMode.Battle
 					focus.ShownFrame = frame;
 					focus.ShownFrameAt = time;
 				}
-				// How often Terraria's frame has been changing lately (once per tick, however often this is drawn)
+				// How often Terraria's frame has been changing lately, and which frames it has been using (once per tick,
+				// however often this is drawn)
 				if (time != focus.RawFrameTick)
 				{
 					focus.FrameJitter = Math.Max(0f, focus.FrameJitter - 0.15f);
@@ -1852,15 +1853,27 @@ namespace MercyMode.Battle
 						focus.FrameJitter += 1f;
 					focus.RawFrame = frame;
 					focus.RawFrameTick = time;
+					focus.FramesSeen[frame.Y] = time;
+					foreach (int y in focus.FramesSeen.Keys.ToList())
+						if (time - focus.FramesSeen[y] > 40)
+							focus.FramesSeen.Remove(y);
 				}
-				// Flipping every few ticks (stuck mid-jump): hold still on what's shown
-				if (focus.FrameJitter > 2.5f)
+				if (time - focus.ShownFrameAt >= EnemyFrameTicks)
 				{
-				}
-				else if (frame != focus.ShownFrame && time - focus.ShownFrameAt >= EnemyFrameTicks)
-				{
-					focus.ShownFrame = frame;
-					focus.ShownFrameAt = time;
+					if (focus.FrameJitter > 2.5f && focus.FramesSeen.Count > 1)
+					{
+						// Changing every tick (wings beating, or a slime stuck mid-jump): play the frames it has been
+						// using, in order, at a steady pace, instead of copying the flicker
+						var ys = focus.FramesSeen.Keys.OrderBy(y => y).ToList();
+						int next = ys.FirstOrDefault(y => y > focus.ShownFrame.Y, ys[0]);
+						focus.ShownFrame = new Rectangle(frame.X, next, frame.Width, frame.Height);
+						focus.ShownFrameAt = time;
+					}
+					else if (frame != focus.ShownFrame)
+					{
+						focus.ShownFrame = frame;
+						focus.ShownFrameAt = time;
+					}
 				}
 				frame = focus.ShownFrame;
 			}

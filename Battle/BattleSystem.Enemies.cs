@@ -37,6 +37,8 @@ namespace MercyMode.Battle
 			public Rectangle RawFrame;
 			public int RawFrameTick = -1;
 			public float FrameJitter;
+			/// <summary>The frames (their Y) Terraria has picked lately, and when last.</summary>
+			public readonly Dictionary<int, int> FramesSeen = new();
 			/// <summary>Its speech bubble this turn, and when it started.</summary>
 			public string Bubble;
 			public int BubbleAt;
@@ -56,7 +58,7 @@ namespace MercyMode.Battle
 		/// <summary>The enemy FIGHT, ACT and SPARE are aimed at; <see cref="encounter"/> is its encounter.</summary>
 		private BattleEnemy targetEnemy;
 		/// <summary>The fewest ticks between two of an enemy's frames on the battle screen.</summary>
-		private const int EnemyFrameTicks = 8;
+		private const int EnemyFrameTicks = 5;
 		/// <summary>The enemy the per-enemy fields below refer to: the target, or the one being drawn or stepped.</summary>
 		private BattleEnemy focus;
 
