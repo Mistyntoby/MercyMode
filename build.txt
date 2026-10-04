@@ -1,6 +1,6 @@
 displayName = Mercy Mode
 author = Mistyn
-version = 0.90
+version = 0.91
 side = Both
 # Notes, scripts and the local transcript stay out of the published mod
 buildIgnore = *.md, MercyMode.txt, LICENSE, tools\*, .github\*

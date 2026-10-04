@@ -1164,7 +1164,38 @@ namespace MercyMode.Battle.Net
 				n.velocity = Vector2.Zero;
 				n.netUpdate = true;
 			}
+			PullCloser(b);
 			SendFrozen(b);
+		}
+
+		/// <summary>
+		/// A regular enemy that ended up far from the player who started the battle (the hit that started it knocked it
+		/// flying before the freeze got there, or it hopped away meanwhile) is brought back beside them, on the side it
+		/// went, and doesn't fly off again when the battle ends.
+		/// </summary>
+		private static void PullCloser(NetBattle b)
+		{
+			if (b.Players.Count == 0)
+				return;
+			Player leader = Main.player[b.Players[0]];
+			const float far = 5 * 16, gap = 3 * 16;
+			foreach (int r in b.Roots)
+			{
+				NPC n = Main.npc[r];
+				if (!n.active || n.boss || n.realLife >= 0 && n.realLife != n.whoAmI || EncounterRegistry.IsBossFight(n)
+					|| Math.Abs(n.Center.X - leader.Center.X) <= far)
+					continue;
+				int side = n.Center.X >= leader.Center.X ? 1 : -1;
+				var to = new Vector2(leader.Center.X + side * (gap + n.width / 2f) - n.width / 2f,
+					n.noGravity ? leader.Center.Y - n.height / 2f - 16f : leader.Bottom.Y - n.height);
+				// Only to open ground (never into a wall)
+				if (Collision.SolidCollision(to, n.width, n.height))
+					continue;
+				n.position = to;
+				n.velocity = Vector2.Zero;
+				b.SavedVelocity[r] = Vector2.Zero;
+				n.netUpdate = true;
+			}
 		}
 
 		/// <summary>Which NPCs this battle holds, to everyone (or one player). Sent again now and then so nobody misses it.</summary>
