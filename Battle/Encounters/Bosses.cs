@@ -287,6 +287,8 @@ namespace MercyMode.Battle.Encounters
 			return Cycle(
 				// Eaters of Souls dive from above
 				() => new Diver((p, v) => Shots.Npc(NPCID.EaterofSouls, p, v, 0.8f, 0.8f, new Vector2(16, 16), rotate: false), hard ? 26 : 36),
+				// It burrows under the box toward you, then bursts out
+				() => new BurrowTrail((p, v) => Shots.Ball(p, v, new Color(150, 100, 60), 0.6f, 0.9f), hard ? 64 : 80) { Speed = hard ? 1.8f : 1.5f, Shards = hard ? 10 : 8 },
 				() => new Snake(Head, Body, hard ? 70 : 100) { Segments = 9, Speed = hard ? 2.8f : 2.3f },
 				// Corruption drips down in rows with a drifting gap
 				() => new GapRows(spit, hard ? 28 : 36) { Speed = hard ? 1.7f : 1.4f, GapSize = hard ? 42f : 50f },

@@ -1399,6 +1399,9 @@ namespace MercyMode.Battle
 				arenaBlend = target;
 		}
 		public Vector2 SoulCenter => soul + new Vector2(SoulSize / 2f);
+		private Vector2 soulPull;
+		/// <summary>Pulls the (red) SOUL this much this tick, on top of its own movement (capped below its speed).</summary>
+		public void PullSoul(Vector2 by) => soulPull += by;
 		public void Spawn(Bullet b)
 		{
 			b.Owner ??= spawnOwner;
@@ -1535,6 +1538,13 @@ namespace MercyMode.Battle
 				disableSlow = false;
 			}
 			soul += new Vector2(px, py);
+			// An attack pulling at it (the Moon Lord's black hole); never faster than the SOUL can walk away
+			if (soulPull != Vector2.Zero)
+			{
+				float max = SoulSpeed * 0.6f;
+				soul += soulPull.Length() > max ? Vector2.Normalize(soulPull) * max : soulPull;
+				soulPull = Vector2.Zero;
+			}
 
 			Rectangle box = Box;
 			soul.X = MathHelper.Clamp(soul.X, box.Left + BoxClampLow, box.Right - BoxClampHigh);

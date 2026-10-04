@@ -290,6 +290,8 @@ namespace MercyMode.Battle.Encounters
 			Bullet probe(Vector2 p, Vector2 v) => Shots.Npc(NPCID.Probe, p, v, 0.8f, 0.7f, new Vector2(14, 14), rotate: false);
 			return Cycle(
 				() => new Snake(head, body, Hard ? 70 : 95) { Segments = 12, SegmentLag = 5, Speed = Hard ? 3f : 2.5f },
+				// Its probes scan the box; where they find you, lasers strike
+				() => new ProbeScan(Hard ? 78 : 96) { SweepTicks = Hard ? 46 : 56 },
 				// Yellow SOUL: probes drop off and hover in, firing; shoot them down
 				() => new Gunships(probe, laser, Hard ? 40 : 54) { Toughness = 3, FireEvery = Hard ? 40 : 52, ShotSpeed = 2.8f },
 				// Every segment fires down at once
@@ -398,6 +400,8 @@ namespace MercyMode.Battle.Encounters
 				// Yellow SOUL: its cannon arms hover in and fire rockets; shoot them down
 				attacks.Add(() => new Gunships((p, v) => Shots.Npc(NPCID.PrimeCannon, p, v, 0.7f, 1f, new Vector2(22, 22), rotate: false), rocket, Hard ? 48 : 62)
 					{ Toughness = Hard ? 5 : 4, FireEvery = Hard ? 44 : 56, ShotSpeed = 2.2f });
+			// The guillotine: lanes flash, then saw blades drop down them
+			attacks.Add(() => new Guillotine(saw, Hard ? 38 : 46) { Dropping = Hard ? 3 : 2, Warn = Hard ? 30 : 34 });
 			if (Has(NPCID.PrimeSaw))
 				attacks.Add(() => new LaneDash(saw, Hard ? 44 : 58) { AllowVertical = true, Speed = Hard ? 9f : 7.5f });
 			if (Has(NPCID.PrimeCannon))
@@ -444,6 +448,8 @@ namespace MercyMode.Battle.Encounters
 			return Cycle(
 				// Green SOUL: seeds fly in from every side; block them with the shield
 				() => new ShieldSpears(seed, Hard ? 14 : 20) { Speed = Hard ? 3f : 2.5f },
+				// Seeds land around the box, then sprout thorns
+				() => new SeedBombs(Hard ? 44 : 54) { Seeds = Hard ? 4 : 3 },
 				() => new AimedBursts(seed, Hard ? 22 : 32) { Count = Hard ? 5 : 3, Speed = 2.8f, Spread = 0.3f },
 				() => new Bouncers(thorn, Hard ? 26 : 34) { Bounce = 1f },
 				() => new Converge(poison, Hard ? 50 : 66) { Count = Hard ? 10 : 8, Speed = Hard ? 4.4f : 3.8f, RotationOffset = MathHelper.PiOver2 },
@@ -525,6 +531,10 @@ namespace MercyMode.Battle.Encounters
 			return Cycle(
 				// Rocket punches across the box
 				() => new LaneDash(fist, Hard ? 40 : 54) { Speed = Hard ? 10f : 8.5f, LaneWidth = 34f },
+				// Temple traps: spiked balls swing across the box on chains
+				() => Hard
+					? new Combo(TurnTicks, new Pendulums { Count = 3 }, new Rain(fireball, 40) { SpeedMin = 1.6f, SpeedMax = 2f, FirstAt = 40 })
+					: new Pendulums { Count = 2 },
 				// A ground pound: stone shockwaves along the floor
 				() => new Slam(golem, stone, Hard ? 60 : 76) { Width = 56f, Shards = 3, Debris = 4, FallSpeed = 11f }.WithSoul(SoulMode.Blue),
 				// Blue SOUL: the temple's traps, stone pillars sliding through to jump and duck
@@ -563,6 +573,8 @@ namespace MercyMode.Battle.Encounters
 			return Cycle(
 				// Its charges, back and forth
 				() => new LaneDash(duke, Hard ? 38 : 50) { AllowVertical = true, Speed = Hard ? 11f : 9f, Warn = Hard ? 26 : 32, LaneWidth = 36f, LaunchSound = SoundID.Roar },
+				// Tsunami: walls of water sweep across with openings
+				() => new Tsunami(Hard ? 92 : 110) { Speed = Hard ? 1.8f : 1.5f, Gaps = Hard ? 1 : 2 },
 				// Bubbles spiral out from the middle
 				() => new Sprinkler(bubble)
 				{
@@ -649,6 +661,8 @@ namespace MercyMode.Battle.Encounters
 			var cyan = new Color(140, 220, 255);
 			return Cycle(
 				() => new AimedBursts(fire, Hard ? 26 : 36) { Count = Hard ? 5 : 3, Speed = 2.6f },
+				// Lightning rods: pairs appear, then lightning arcs between them
+				() => new LightningRods(Hard ? 54 : 64) { Pairs = Hard ? 3 : 2, Color = cyan },
 				// Ice mist: shards gather around you, then close in
 				() => new Converge(ice, Hard ? 50 : 64) { Count = Hard ? 10 : 8, Speed = Hard ? 4.4f : 3.8f },
 				// Lightning from the orb
@@ -770,6 +784,8 @@ namespace MercyMode.Battle.Encounters
 			var cyan = new Color(120, 255, 230);
 			return Cycle(
 				() => new AimedBursts(bolt, Hard ? 18 : 26) { Count = Hard ? 6 : 4, Speed = 3.4f, Spread = 0.3f },
+				// A black hole drifts round the box, pulling you in while it swallows debris
+				() => new BlackHole(bolt) { Pull = Hard ? 1.1f : 0.9f, DebrisEvery = Hard ? 11 : 14 },
 				() => new Orbiters(sphere, Hard ? 90 : 110) { Count = Hard ? 10 : 8, AngularSpeed = 0.028f, Shrink = 0.4f },
 				() => new Homing(eye, Hard ? 18 : 26) { Speed = 2.2f, Turn = 0.05f, SteerTicks = 90 },
 				// The Phantasmal Deathray sweeps the whole field from above
