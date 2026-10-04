@@ -91,8 +91,11 @@ namespace MercyMode.Battle
 			_ => Main.hardMode ? (140f, 420f, 40f) : (45f, 220f, 14f),
 		};
 
-		/// <summary>Share of a typical player's max HP one ordinary boss bullet takes (Deltarune hits take about a tenth).</summary>
-		private const float BossHitShare = 0.09f;
+		/// <summary>
+		/// Share of a typical player's max HP one ordinary boss bullet takes: about six or seven hits down a typical
+		/// health bar (9% left fights too easy at 120 HP).
+		/// </summary>
+		private const float BossHitShare = 0.15f;
 
 		/// <summary>
 		/// A boss bullet's damage before the player's defense: a share of the typical HP for its stage, plus the

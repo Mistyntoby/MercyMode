@@ -19,7 +19,7 @@ namespace MercyMode.Battle
 		/// <summary>The first row shown (the list scrolls).</summary>
 		private int buffScroll;
 
-		private const float DrawerWidth = 128f, BuffRowH = 21f;
+		private const float DrawerWidth = 176f, BuffRowH = 21f;
 
 		/// <summary>The text box's line, before wrapping, and the width it's wrapped to.</summary>
 		private string rawText = "";

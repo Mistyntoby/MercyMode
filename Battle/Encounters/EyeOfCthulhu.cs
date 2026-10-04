@@ -158,8 +158,9 @@ namespace MercyMode.Battle.Encounters
 				() => new Converge(EyeTear, hard ? 50 : 66) { Count = hard ? 10 : 8, Speed = hard ? 4.6f : 3.8f },
 				// A ring of tears forms around you and fires in one at a time
 				() => new RingVolley(EyeTear, hard ? 100 : 120) { Count = hard ? 12 : 10, Gap = hard ? 5 : 6, Speed = hard ? 4f : 3.6f },
-				() => hard ? new Combo(BattleConstants.DefaultEnemyTurnTicks, new EyeRing(), new ServantSwarm(false))
-					: new Combo(BattleConstants.DefaultEnemyTurnTicks, new EyeRing(), new TearRain(false)),
+				// Rings of blood close in, each with one way out: four of them
+				() => hard ? new Combo(EyeRing.Ticks, new EyeRing { Duration = EyeRing.Ticks }, new ServantSwarm(false))
+					: new Combo(EyeRing.Ticks, new EyeRing { Duration = EyeRing.Ticks }, new TearRain(false)),
 				// Servants line up over the SOUL and dive at it, trailing blood
 				() => new Diver((p, v) => servant(p, v).Dripping(new Color(200, 30, 40)), hard ? 22 : 32) { DiveSpeed = hard ? 8.5f : 7f },
 				// Phase 2's full-screen frenzy: its gaze slashes across everything while it cries blood
@@ -337,9 +338,13 @@ namespace MercyMode.Battle.Encounters
 		/// <summary>Phase 2: rings of tears close in on the box centre, with a gap to slip through.</summary>
 		private class EyeRing : EnemyAttack
 		{
+			/// <summary>Long enough for four rings to close in and pass.</summary>
+			public const int Ticks = 380;
+
 			public override void Update(BattleSystem battle, int tick)
 			{
-				if (tick % 75 != 0 || tick > Duration - 100)
+				// A ring every 70 ticks from the start, four in a turn
+				if (tick < 10 || (tick - 10) % 70 != 0 || tick > Duration - 110)
 					return;
 				Vector2 center = battle.Box.Center.ToVector2();
 				const int count = 16;
