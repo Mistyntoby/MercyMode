@@ -92,10 +92,10 @@ namespace MercyMode.Battle
 		};
 
 		/// <summary>
-		/// Share of a typical player's max HP one ordinary boss bullet takes: five hits down a typical health bar
-		/// (9% and then 15% still left fights too easy at 120 HP).
+		/// Share of a typical player's max HP one ordinary boss bullet takes: four hits down a typical health bar
+		/// (9%, 15% and 20% all still left fights too easy at 120 HP).
 		/// </summary>
-		private const float BossHitShare = 0.2f;
+		private const float BossHitShare = 0.25f;
 
 		/// <summary>
 		/// A boss bullet's damage before the player's defense: a share of the typical HP for its stage, plus the

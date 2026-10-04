@@ -1335,7 +1335,7 @@ namespace MercyMode.Lab
 				int raw = BattleSystem.BossBulletDamage(enc, 0.8f);
 				float taken = raw - def * 0.5f;
 				Log($"  {label}: ordinary bullet {raw} raw, {taken:0} to a typical {hp:0} HP / {def:0} defense player ({taken / hp:P0})");
-				Check(taken / hp > 0.16f && taken / hp < 0.25f, $"{label}'s bullets take {taken / hp:P0} of a typical health bar");
+				Check(taken / hp > 0.21f && taken / hp < 0.3f, $"{label}'s bullets take {taken / hp:P0} of a typical health bar");
 			}
 
 			// A slime bullet is drawn blue, not grey
