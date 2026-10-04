@@ -32,6 +32,8 @@ namespace MercyMode.Battle
 		/// </summary>
 		private const float FlipAt = 80f;
 		private const int FlipTicks = 30;
+		/// <summary>How long a trickster takes to swing round to the other side.</summary>
+		private const int SwingTicks = 18;
 
 		public ShieldSpears(Func<Vector2, Vector2, Bullet> make, int every = 22)
 		{
@@ -55,34 +57,57 @@ namespace MercyMode.Battle
 			// from another side, with no time to turn the shield. Slow it so it comes a beat after the last one
 			float now = FirstAt + index * (float)Every;
 			float travel = Distance - ShieldReach;
-			float arrival = trickster ? now + (Distance - FlipAt) / speed + FlipTicks : now + travel / speed;
+			float arrival = trickster ? now + (Distance - FlipAt) / speed + SwingTicks + FlipTicks : now + travel / speed;
 			float earliest = lastArrival + (lastTrickster || trickster ? TricksterGap : MinGap);
 			if (arrival < earliest)
 			{
-				speed = trickster ? (Distance - FlipAt) / Math.Max(1f, earliest - FlipTicks - now) : travel / Math.Max(1f, earliest - now);
+				speed = trickster ? (Distance - FlipAt) / Math.Max(1f, earliest - SwingTicks - FlipTicks - now) : travel / Math.Max(1f, earliest - now);
 				arrival = earliest;
 			}
 			lastArrival = arrival;
 			lastTrickster = trickster;
 			Bullet b = Make(centre + from * Distance, -from * speed);
 			b.RotateWithVelocity = true;
-			b.Lifetime = (int)(Distance * 2f / speed) + 20 + (trickster ? FlipTicks : 0);
+			b.Lifetime = (int)(Distance * 2f / speed) + 20 + (trickster ? SwingTicks + FlipTicks : 0);
 			b.OffscreenMargin = 300f;
 			b.Trail = 3;
 			if (trickster)
 			{
-				b.Color = new Color(255, 230, 80);
-				bool flipped = false;
+				// Solid yellow: tinting the dark stinger sprite left it hard to tell apart
+				b.Color = new Color(255, 230, 40);
+				b.Solid = true;
+				// Undertale's reversing spear: it stops at the edge, swings half way round the SOUL (still pointing at it),
+				// then comes in from the other side, slower, so there's time to turn the shield
+				int swingStart = -1;
+				float startAngle = 0f;
+				int sense = Main.rand.NextBool() ? 1 : -1;
 				b.OnUpdate += x =>
 				{
-					if (!flipped && Vector2.Distance(x.Position, centre) < FlipAt)
+					if (swingStart < 0 && Vector2.Distance(x.Position, centre) < FlipAt)
 					{
-						// Jumps round to come in from the other side, slower, so there's time to turn the shield
-						flipped = true;
-						x.Position = centre - (x.Position - centre);
-						x.Velocity = Vector2.Normalize(-x.Velocity) * ((FlipAt - ShieldReach) / FlipTicks);
+						swingStart = x.Age;
+						startAngle = (x.Position - centre).ToRotation();
+						x.Velocity = Vector2.Zero;
+						x.RotateWithVelocity = false;
 						AttackSfx.Appear();
-						Sparks.Burst(battle, x.Position, 4, new Color(255, 230, 80), 1.5f);
+					}
+					if (swingStart < 0)
+						return;
+					float t = (x.Age - swingStart) / (float)SwingTicks;
+					if (t <= 1f)
+					{
+						// Eased: quick through the middle, settling at the far side
+						float e = t * t * (3f - 2f * t);
+						float a = startAngle + sense * MathHelper.Pi * e;
+						x.Position = centre + a.ToRotationVector2() * FlipAt;
+						x.Rotation = (centre - x.Position).ToRotation() + x.RotationOffset;
+						if ((x.Age - swingStart) % 3 == 0)
+							Sparks.Burst(battle, x.Position, 1, new Color(255, 230, 40), 0.6f);
+					}
+					if (x.Age - swingStart == SwingTicks)
+					{
+						x.Velocity = Vector2.Normalize(centre - x.Position) * ((FlipAt - ShieldReach) / FlipTicks);
+						x.RotateWithVelocity = true;
 					}
 				};
 			}

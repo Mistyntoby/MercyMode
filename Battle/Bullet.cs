@@ -33,6 +33,8 @@ namespace MercyMode.Battle
 		public float RotationOffset;
 		public bool FlipX;
 		public Color Color = Color.White;
+		/// <summary>Drawn as a flat silhouette in <see cref="Color"/> (a tint on a dark sprite barely shows).</summary>
+		public bool Solid;
 		public float Alpha = 1f;
 
 		/// <summary>Multiplies the boss's damage for this bullet.</summary>
@@ -145,7 +147,7 @@ namespace MercyMode.Battle
 			if (Texture != null)
 			{
 				Rectangle src = Source ?? Texture.Bounds;
-				DrDraw.Sb.Draw(Texture, pos, src, color, rotation, src.Size() / 2f, Scale, effects, 0f);
+				DrDraw.Sb.Draw(Solid ? WhiteMask.Of(Texture) : Texture, pos, src, color, rotation, src.Size() / 2f, Scale, effects, 0f);
 				return;
 			}
 			// Fallback: a white diamond-ish square the size of the hitbox
