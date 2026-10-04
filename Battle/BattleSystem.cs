@@ -187,8 +187,12 @@ namespace MercyMode.Battle
 			return true;
 		}
 
-		/// <summary>Player turns left before a healing item can be used again (Terraria's potion sickness, in turns).</summary>
+		/// <summary>Player turns left before a potion can be used again (Terraria's potion sickness, in turns).</summary>
 		private int potionSickTurns;
+
+		/// <summary>Whether potion sickness keeps this item from being used right now.</summary>
+		private bool SickLocked(int type) =>
+			potionSickTurns > 0 && Terraria.ID.ContentSamples.ItemsByType.TryGetValue(type, out Item sample) && sample.potion;
 
 		private void Start(NPC root, string reason, List<NPC> given = null)
 		{
@@ -893,12 +897,6 @@ namespace MercyMode.Battle
 						Sfx("cantselect");
 						break;
 					}
-					if (potionSickTurns > 0)
-					{
-						Sfx("cantselect");
-						SetText($"* Potion sickness! {potionSickTurns} more turn{(potionSickTurns == 1 ? "" : "s")} before you can heal again.");
-						break;
-					}
 					Sfx("select");
 					listIndex = 0;
 					SetPhase(Phase.ItemSelect);
@@ -1131,6 +1129,12 @@ namespace MercyMode.Battle
 				return;
 
 			var (type, _, name, heal) = items[listIndex];
+			// Potion sickness locks potions only; anything else in the list can still be used
+			if (SickLocked(type))
+			{
+				Sfx("cantselect");
+				return;
+			}
 			// In a party: on whom? (a downed partner can be brought back up)
 			if (Net.BattleNet.InParty && HealTargets().Count > 1)
 			{
@@ -2209,9 +2213,14 @@ namespace MercyMode.Battle
 					break;
 				case Phase.ItemSelect:
 					var items = HealingItems();
-					DrawItemList(textY, items.Select(i => $"{i.name} x{i.count}").ToList());
+					DrawItemList(textY, items.Select(i => $"{i.name} x{i.count}").ToList(), items.Select(i => SickLocked(i.type)).ToList());
 					if (listIndex < items.Count)
-						DrDraw.Text($"Heals\n{items[listIndex].heal} HP", 500, textY, new Color(128, 128, 128), DrDraw.BigFont);
+					{
+						if (SickLocked(items[listIndex].type))
+							DrDraw.Text($"Potion\nsickness:\n{potionSickTurns} turn{(potionSickTurns == 1 ? "" : "s")}", 500, textY, new Color(255, 110, 110), DrDraw.BigFont);
+						else
+							DrDraw.Text($"Heals\n{items[listIndex].heal} HP", 500, textY, new Color(128, 128, 128), DrDraw.BigFont);
+					}
 					break;
 				case Phase.FightBar:
 				case Phase.FightResult:
@@ -2422,14 +2431,15 @@ namespace MercyMode.Battle
 			}
 		}
 
-		private void DrawItemList(float y, List<string> names)
+		private void DrawItemList(float y, List<string> names, List<bool> locked = null)
 		{
 			const int rows = 3;
 			int first = Math.Clamp(listIndex - rows + 1, 0, Math.Max(0, names.Count - rows));
 			for (int i = first; i < Math.Min(names.Count, first + rows); i++)
 			{
 				float ey = y + (i - first) * 30;
-				DrDraw.Text(names[i], 80, ey, Color.White);
+				bool off = locked != null && i < locked.Count && locked[i];
+				DrDraw.Text(names[i], 80, ey, off ? new Color(128, 128, 128) : Color.White);
 				if (i == listIndex)
 					DrawHeartCursor(55, ey + 10);
 			}

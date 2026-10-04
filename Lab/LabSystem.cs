@@ -1338,9 +1338,14 @@ namespace MercyMode.Lab
 			yield return Menu();
 			Log($"  potion sickness: {B.LabPotionSick} turns left");
 			Check(B.LabPotionSick > 0, "using a potion didn't bring on potion sickness");
+			// ITEM still opens; the potion in it can't be used while sick
 			yield return Choose(2);
+			yield return Until(() => B.LabPhase == Phase.ItemSelect, "the item list while sick", skipText: false);
+			yield return Press(Keys.Z);
 			yield return Wait(10);
-			Check(B.LabPhase == Phase.Menu && B.LabText.Contains("Potion sickness"), $"ITEM wasn't refused while sick (phase {B.LabPhase}, \"{B.LabText}\")");
+			Check(B.LabPhase == Phase.ItemSelect, $"a potion was used while sick (phase {B.LabPhase})");
+			yield return Press(Keys.X);
+			yield return Wait(5);
 			P.statLife = 500;
 			foreach (NPC m in eye.Members().ToList())
 				m.active = false;
