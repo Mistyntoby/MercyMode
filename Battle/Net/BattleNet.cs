@@ -1085,6 +1085,8 @@ namespace MercyMode.Battle.Net
 			b.Ready.Remove(player);
 			if (b.Players.Count == 0 && b.Pending.Count == 0)
 			{
+				// Everyone died or left before it was over: its enemies leave too (a win or spare removes them first)
+				DespawnBattle(b);
 				EndBattle(b);
 				return;
 			}
@@ -1226,6 +1228,30 @@ namespace MercyMode.Battle.Net
 				SendFrozen(b, player);
 				SendState(b);
 			}
+		}
+
+		/// <summary>Server: removes a battle's enemies without killing them (no loot, kill credit or achievement).</summary>
+		private static void DespawnBattle(NetBattle b)
+		{
+			var gone = new List<int>();
+			foreach (var (i, (_, type)) in frozen.Where(f => f.Value.Battle == b.Id).ToList())
+			{
+				NPC n = Main.npc[i];
+				if (!n.active || n.type != type)
+					continue;
+				n.active = false;
+				gone.Add(i);
+			}
+			// Worm segments and other pieces that hang off a held root
+			foreach (NPC n in Main.ActiveNPCs)
+				if (n.realLife >= 0 && gone.Contains(n.realLife))
+				{
+					n.active = false;
+					gone.Add(n.whoAmI);
+				}
+			SyncNpcs(gone);
+			if (gone.Count > 0)
+				ModContent.GetInstance<MercyMode>().Logger.Info($"MP battle {b.Id}: the party is gone, {gone.Count} enemies despawned");
 		}
 
 		private static void EndBattle(NetBattle b)

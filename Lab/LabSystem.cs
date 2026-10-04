@@ -197,6 +197,7 @@ namespace MercyMode.Lab
 				("everyone-talks", EveryoneTalks),
 				("twins-summoned", TwinsSummoned),
 				("twins-change", TwinsChange),
+				("lose-despawns", LoseDespawns),
 			};
 			string want = Wanted.Trim().ToLowerInvariant();
 			foreach (var s in all)
@@ -769,13 +770,13 @@ namespace MercyMode.Lab
 				Check(BattleNet.LabBattleCount == 0, "the battle stayed open with nobody in it");
 				Check(BattleNet.LabSent.Contains("Unfrozen>all"), "clients weren't told the battle ended");
 
-				// A frozen enemy gets its velocity back when the battle ends
+				// The whole party gone mid-battle (died or left): its enemies despawn, they aren't let go or killed
 				int id2 = BattleNet.ServerStartBattle(3, new List<NPC> { z2 });
 				// Player 3 is far from everyone: only close players come along, even if others stand by the enemy
 				Check(BattleNet.LabPlayers(id2).SequenceEqual(new[] { 3 }), $"party {string.Join(",", BattleNet.LabPlayers(id2))}: players far from the starter were pulled in");
 				Check(z2.velocity == Vector2.Zero && BattleNet.IsFrozen(z2), "z2 didn't freeze");
 				BattleNet.ServerLeave(3, id2);
-				Check(z2.velocity == new Vector2(-2f, 1f), $"z2's velocity came back as {z2.velocity}");
+				Check(!z2.active, "z2 stayed in the world after its party left mid-battle");
 				Check(!BattleNet.IsFrozen(z2), "z2 stayed frozen");
 				Log("  server bookkeeping ok");
 			}
@@ -1307,6 +1308,28 @@ namespace MercyMode.Lab
 			foreach (NPC m in eoc.Members().ToList())
 				m.active = false;
 			yield return Until(() => !BattleSystem.Active, "the battle ending", 60 * 30);
+		}
+
+		/// <summary>Losing the battle (the SOUL breaks) despawns its enemies: no kill, no loot, no downed flag.</summary>
+		private IEnumerable LoseDespawns()
+		{
+			bool downedBefore = NPC.downedQueenBee;
+			yield return StartWith(NPCID.QueenBee);
+			yield return Menu();
+			NPC bee = B.LabTarget.Npc;
+			int items = Main.item.Count(i => i.active);
+			B.RequestSoulDeath(Terraria.DataStructures.PlayerDeathReason.ByCustomReason(Terraria.Localization.NetworkText.FromLiteral("lab")), 9999);
+			yield return Until(() => !BattleSystem.Active, "the battle ending after the SOUL broke", 60 * 10, skipText: false);
+			Log($"  after losing: Queen Bee active {bee.active}, life {bee.life}, downed {NPC.downedQueenBee}, items {items} -> {Main.item.Count(i => i.active)}");
+			Check(!bee.active, "the Queen Bee is still there after the player lost");
+			Check(NPC.downedQueenBee == downedBefore, "losing counted as defeating the Queen Bee");
+			Check(Main.item.Count(i => i.active) <= items, "losing dropped loot");
+			// Back on our feet for the next scenario
+			P.respawnTimer = 0;
+			if (P.dead)
+				P.Spawn(PlayerSpawnContext.ReviveFromDeath);
+			P.statLife = 500;
+			yield return Wait(30);
 		}
 
 		/// <summary>A twin below 40% spends a turn changing form (laser cannon / mouth), once; the other keeps its eye.</summary>

@@ -321,6 +321,11 @@ namespace MercyMode.Battle
 		{
 			Mod.Logger.Info($"Battle ended (enemy alive: {encounter?.Alive}, player dead: {Player.dead}, killed by the battle: {killPlayer})");
 			lastEndTick = (uint)Main.GameUpdateCount;
+			// Lost (the SOUL broke): the enemies leave instead of carrying on, like a boss leaving when its target dies;
+			// nothing is killed, so no loot, no kill credit, no achievement. In multiplayer the server does this once the
+			// whole party is gone (BattleNet.ServerLeave)
+			if (killPlayer && !Net.BattleNet.Online)
+				DespawnEnemies();
 			// Put everything back in motion where it was
 			foreach (var (i, (type, vel)) in npcVelocities)
 			{
@@ -368,6 +373,17 @@ namespace MercyMode.Battle
 				Player.immune = true;
 				Player.immuneTime = Math.Max(Player.immuneTime, 60);
 			}
+		}
+
+		/// <summary>Removes the battle's enemies from the world, every part of them, without killing them.</summary>
+		private void DespawnEnemies()
+		{
+			foreach (BattleEnemy en in enemies)
+				foreach (NPC m in en.E.Members().Append(en.E.Npc).Where(m => m.active).Distinct().ToList())
+				{
+					m.active = false;
+					m.netUpdate = true;
+				}
 		}
 
 		private void CreatePlayerHeadPortrait()
