@@ -187,8 +187,12 @@ namespace MercyMode.Battle
 			return true;
 		}
 
+		/// <summary>Player turns left before a healing item can be used again (Terraria's potion sickness, in turns).</summary>
+		private int potionSickTurns;
+
 		private void Start(NPC root, string reason, List<NPC> given = null)
 		{
+			potionSickTurns = 0;
 			boss = root;
 			// The enemy, plus nearby ones (a squad, during an event) for regular fights; the first is the target
 			SetUpEnemies(root, given);
@@ -831,6 +835,8 @@ namespace MercyMode.Battle
 
 		private void BeginPlayerTurn(bool keepText = false)
 		{
+			if (potionSickTurns > 0 && phase != Phase.Intro)
+				potionSickTurns--;
 			defending = false;
 			enemyTurnGranted = false;
 			faceAction = FaceNone;
@@ -885,6 +891,12 @@ namespace MercyMode.Battle
 					if (HealingItems().Count == 0)
 					{
 						Sfx("cantselect");
+						break;
+					}
+					if (potionSickTurns > 0)
+					{
+						Sfx("cantselect");
+						SetText($"* Potion sickness! {potionSickTurns} more turn{(potionSickTurns == 1 ? "" : "s")} before you can heal again.");
 						break;
 					}
 					Sfx("select");
@@ -1140,6 +1152,9 @@ namespace MercyMode.Battle
 				if (item.type != type || item.IsAir)
 					continue;
 				heal = Player.GetHealLife(item, true);
+				// Terraria's potion sickness, counted in turns (about 10 seconds each) instead of time
+				if (item.potion)
+					potionSickTurns = Math.Max(1, (int)Math.Ceiling((item.type == ItemID.RestorationPotion ? Player.restorationDelayTime : Player.potionDelayTime) / 600f));
 				item.stack--;
 				if (item.stack <= 0)
 					item.TurnToAir();
@@ -1557,7 +1572,10 @@ namespace MercyMode.Battle
 			if (downed)
 				return;
 			Encounter by = b.Owner ?? encounter;
-			int damage = Math.Max(1, (int)Math.Round((b.Owner?.Damage ?? turnDamage) * b.DamageMult));
+			// Bosses hit harder than their contact damage suggests: Terraria takes half the player's defense off every
+			// hit, which left early boss bullets at 1-5 damage
+			float bossScale = by != null && by.IsBoss && duelWith < 0 ? BossBulletScale : 1f;
+			int damage = Math.Max(1, (int)Math.Round((b.Owner?.Damage ?? turnDamage) * b.DamageMult * bossScale));
 			Player.immune = false;
 			Player.immuneTime = 0;
 			HurtingPlayer = true;
@@ -1594,7 +1612,8 @@ namespace MercyMode.Battle
 			if (!b.Grazed)
 			{
 				b.Grazed = true;
-				tension = b.GrazePoints;
+				// One TP per bullet grazed (Deltarune's graze points filled the bar far too fast here)
+				tension = GrazeTP / TensionToTP;
 				if (turnTimer >= GrazeTurnCutMinTicks && duelWith < 0)
 					turnTimer -= b.TimePoints * TicksPerFrame;
 				grazeTimer = GrazeFlashTicks;
@@ -1602,8 +1621,8 @@ namespace MercyMode.Battle
 			}
 			else
 			{
-				// grazepoints / 20 per frame = / 40 per tick
-				tension = b.GrazePoints / GrazeHoldDivisor / TicksPerFrame;
+				// Staying close keeps the graze flash (and cuts the turn short) but gives no more TP
+				tension = 0f;
 				if (turnTimer >= GrazeTurnCutMinTicks && duelWith < 0)
 					turnTimer -= b.TimePoints / GrazeHoldDivisor;
 				if (grazeTimer >= 0 && grazeTimer < 4 * TicksPerFrame)

@@ -198,6 +198,7 @@ namespace MercyMode.Lab
 				("twins-summoned", TwinsSummoned),
 				("twins-change", TwinsChange),
 				("lose-despawns", LoseDespawns),
+				("balance", Balance),
 			};
 			string want = Wanted.Trim().ToLowerInvariant();
 			foreach (var s in all)
@@ -1308,6 +1309,42 @@ namespace MercyMode.Lab
 			foreach (NPC m in eoc.Members().ToList())
 				m.active = false;
 			yield return Until(() => !BattleSystem.Active, "the battle ending", 60 * 30);
+		}
+
+		/// <summary>Boss hits scale to a fair number of turns; potions bring on potion sickness; slime bullets keep their colour.</summary>
+		private IEnumerable Balance()
+		{
+			yield return StartWith(NPCID.EyeofCthulhu);
+			yield return Menu();
+			Encounter eye = B.LabTarget;
+			float scale = BattleSystem.HitScale(eye);
+			float turns30 = eye.LifeMax / (30f * scale);
+			Log($"  Eye of Cthulhu: {eye.LifeMax} HP, hits x{scale:0.0}; a 30-damage turn wins in {turns30:0.0} turns");
+			Check(turns30 > 9f && turns30 < 15f, $"a fair weapon takes {turns30:0.0} turns");
+
+			// A slime bullet is drawn blue, not grey
+			Bullet slime = Shots.Npc(NPCID.BlueSlime, Vector2.Zero, Vector2.Zero, 1f, 1f, new Vector2(8, 8));
+			Log($"  blue slime bullet colour {slime.Color}");
+			Check(slime.Color.B > slime.Color.R + 60, $"slime bullet is {slime.Color}, not blue");
+
+			// A potion, then ITEM is locked for a few turns
+			P.inventory[1].SetDefaults(ItemID.LesserHealingPotion);
+			P.inventory[1].stack = 5;
+			P.statLife = 200;
+			yield return Choose(2);
+			yield return Until(() => B.LabPhase == Phase.ItemSelect, "the item list", skipText: false);
+			yield return Press(Keys.Z);
+			yield return Until(() => B.LabPhase is Phase.EnemyTalk or Phase.EnemyIntro or Phase.EnemyTurn, "the enemy turn after healing");
+			yield return Menu();
+			Log($"  potion sickness: {B.LabPotionSick} turns left");
+			Check(B.LabPotionSick > 0, "using a potion didn't bring on potion sickness");
+			yield return Choose(2);
+			yield return Wait(10);
+			Check(B.LabPhase == Phase.Menu && B.LabText.Contains("Potion sickness"), $"ITEM wasn't refused while sick (phase {B.LabPhase}, \"{B.LabText}\")");
+			P.statLife = 500;
+			foreach (NPC m in eye.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
 		}
 
 		/// <summary>Losing the battle (the SOUL breaks) despawns its enemies: no kill, no loot, no downed flag.</summary>

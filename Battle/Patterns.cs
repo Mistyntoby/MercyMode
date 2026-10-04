@@ -51,6 +51,9 @@ namespace MercyMode.Battle
 				RotationOffset = rotationOffset,
 				OffscreenMargin = 200f,
 			};
+			// Slimes and other recoloured NPCs have a grey sprite that Terraria tints with npc.color
+			if (Terraria.ID.ContentSamples.NpcsByNetId.TryGetValue(type, out NPC sample) && sample.color != default)
+				b.Color = new Color(sample.color.R, sample.color.G, sample.color.B);
 			if (frames > 1)
 				b.OnUpdate += x => x.Source = new Rectangle(0, (x.Age / ticksPerFrame % frames) * fh, tex.Width, fh);
 			return b;

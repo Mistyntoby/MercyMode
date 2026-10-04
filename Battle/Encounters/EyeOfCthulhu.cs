@@ -140,35 +140,36 @@ namespace MercyMode.Battle.Encounters
 				ripProgress = 0f;
 				return new RipOpen(this);
 			}
-			// Its second move: tears well up along the path you just took
-			int pick = Turn % 9;
-			if (pick == 1)
-				return new EchoTrail(EyeTear) { Delay = hard ? 30 : 38, RecordEvery = hard ? 5 : 6 };
-			if (pick > 1)
-				pick--;
-			return pick switch
+			Bullet servant(Vector2 p, Vector2 v) => Shots.Npc(NPCID.ServantofCthulhu, p, v, 1f, 0.9f, new Vector2(14, 14), rotate: false);
+			var moves = new Func<EnemyAttack>[]
 			{
-				0 => new TearRain(hard),
-				1 => new ServantSwarm(hard),
-				2 => new EyeDash(hard),
-				// Its stare, as a beam aimed at the SOUL; in phase 2 it keeps crying while it stares
-				3 => hard
-					? new Combo(BattleConstants.DefaultEnemyTurnTicks, new Beam(50) { Width = 16f }, new TearRain(false))
-					: new Beam(70) { Width = 14f },
+				() => new TearRain(hard),
+				// Tears well up along the path you just took
+				() => new EchoTrail(EyeTear) { Delay = hard ? 30 : 38, RecordEvery = hard ? 5 : 6 },
+				() => new ServantSwarm(hard),
+				// Deltarune's sword throwers: servants bob off to the side and hurl tears at you
+				() => new Slashers(EyeTear, p => { Bullet b = servant(p, Vector2.Zero); b.Rotation = MathHelper.PiOver2; return b; }) { Count = hard ? 3 : 2 },
+				() => new EyeDash(hard),
+				// Its stare: beams aimed at the SOUL, quicker and wider; in phase 2 it keeps crying while it stares
+				() => hard
+					? new Combo(BattleConstants.DefaultEnemyTurnTicks, new Beam(38) { Width = 18f, Warn = 30 }, new TearRain(false))
+					: new Beam(46) { Width = 16f, Warn = 34 },
 				// Tears gather around the SOUL, then fall in on it
-				4 => new Converge(EyeTear, hard ? 50 : 66) { Count = hard ? 10 : 8, Speed = hard ? 4.6f : 3.8f },
-				5 => hard ? new Combo(BattleConstants.DefaultEnemyTurnTicks, new EyeRing(), new ServantSwarm(false))
-					: new TearRain(false) { WithServants = true },
+				() => new Converge(EyeTear, hard ? 50 : 66) { Count = hard ? 10 : 8, Speed = hard ? 4.6f : 3.8f },
+				// A ring of tears forms around you and fires in one at a time
+				() => new RingVolley(EyeTear, hard ? 100 : 120) { Count = hard ? 12 : 10, Gap = hard ? 5 : 6, Speed = hard ? 4f : 3.6f },
+				() => hard ? new Combo(BattleConstants.DefaultEnemyTurnTicks, new EyeRing(), new ServantSwarm(false))
+					: new Combo(BattleConstants.DefaultEnemyTurnTicks, new EyeRing(), new TearRain(false)),
 				// Servants line up over the SOUL and dive at it, trailing blood
-				7 => new Diver((p, v) => Shots.Npc(NPCID.ServantofCthulhu, p, v, 1f, 0.8f, new Vector2(14, 14), rotate: false)
-					.Dripping(new Color(200, 30, 40)), hard ? 22 : 32) { DiveSpeed = hard ? 8.5f : 7f },
+				() => new Diver((p, v) => servant(p, v).Dripping(new Color(200, 30, 40)), hard ? 22 : 32) { DiveSpeed = hard ? 8.5f : 7f },
 				// Phase 2's full-screen frenzy: its gaze slashes across everything while it cries blood
-				_ => hard
+				() => hard
 					? new Combo(BattleConstants.FullScreenTurnTicks,
 						new Slashes(64) { Color = new Color(255, 70, 70), PerBurst = 3 },
 						new TearRain(false)) { FullScreen = true }
 					: new ServantSwarm(false),
 			};
+			return moves[Turn % moves.Length]();
 		}
 
 		private static Bullet EyeTear(Vector2 p, Vector2 v) => new()
@@ -179,7 +180,7 @@ namespace MercyMode.Battle.Encounters
 			Color = new Color(255, 90, 90),
 			Scale = 1.5f,
 			HitSize = new Vector2(10, 10),
-			DamageMult = 0.7f,
+			DamageMult = 0.9f,
 		};
 
 		// ================================================================== patterns
@@ -371,7 +372,7 @@ namespace MercyMode.Battle.Encounters
 						Sprite = "spr_ponman_eyebullet",
 						Scale = 1.5f,
 						HitSize = new Vector2(10, 10),
-						DamageMult = 0.7f,
+						DamageMult = 1.1f,
 						Lifetime = 115,
 					});
 				}

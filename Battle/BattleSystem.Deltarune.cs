@@ -226,7 +226,12 @@ namespace MercyMode.Battle
 				{
 					float sc = EnemyScaleNow(out _, out Rectangle frame);
 					if (frame.Width > 0)
-						half = MathHelper.Clamp(frame.Width * sc / 2f, 16f, 70f);
+					{
+						// Turned sideways (the Eye of Cthulhu looks left), it's as wide as its frame is tall
+						bool sideways = Math.Abs(Math.Sin(en.E.DrawRotation(time))) > 0.5;
+						float across = sideways ? frame.Height : frame.Width;
+						half = MathHelper.Clamp(across * sc / 2f, 16f, 110f);
+					}
 				});
 				// (The box isn't open yet while they talk, so a bubble can reach across the middle of the screen)
 				float room = at.X - half - 8f - tail - 8f;

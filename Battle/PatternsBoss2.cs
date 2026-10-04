@@ -630,4 +630,148 @@ namespace MercyMode.Battle
 			}
 		}
 	}
+
+	/// <summary>
+	/// Deltarune's sword throwers (chapter 1's obj_dknight_slasher, from the decompiled code in the mod kit): throwers
+	/// hover off the right of the box, bobbing (40 px, ystart + sin(siner / 16) * 40, easing in and out with the
+	/// turn), and each throws at the SOUL on its own rhythm: a 6-frame wind-up, the throw on frame 4, then a pause of
+	/// 3 frames per thrower. A throw flies at 9 + sin(siner / 10) * 4 px a frame, 5 degrees either way, slower with
+	/// more throwers (x0.85 for two, x0.7 for three). Frames are Deltarune's 30 a second, so per tick it's half.
+	/// </summary>
+	public class Slashers : EnemyAttack
+	{
+		public Func<Vector2, Vector2, Bullet> Thrown;
+		public Func<Vector2, Bullet> Thrower;
+		public int Count = 2;
+		private readonly List<(Bullet body, float ystart, float siner, int timer, int con, float frame, bool thrown)> throwers = new();
+		private float factor;
+
+		public Slashers(Func<Vector2, Vector2, Bullet> thrown, Func<Vector2, Bullet> thrower)
+		{
+			Thrown = thrown;
+			Thrower = thrower;
+			Duration = BattleConstants.DefaultEnemyTurnTicks;
+		}
+
+		public override void Update(BattleSystem battle, int tick)
+		{
+			Rectangle box = battle.Box;
+			if (throwers.Count == 0)
+			{
+				for (int i = 0; i < Count; i++)
+				{
+					float y = box.Top + box.Height * (i + 1f) / (Count + 1f);
+					Bullet body = Thrower(new Vector2(box.Right + 36f + (i % 2) * 22f, y));
+					body.Harmful = false;
+					body.DestroyOnHit = false;
+					body.Lifetime = Duration;
+					body.OffscreenMargin = 2000f;
+					battle.Spawn(body);
+					// Staggered, so they don't all throw together
+					throwers.Add((body, y, i * 20f, -i * 8, 10, 0f, false));
+				}
+			}
+			// movefactor: eases in while the turn has time left, out in its last 30 frames
+			int left = Duration - tick;
+			factor = left >= 60 ? Math.Min(1f, factor + 0.05f) : Math.Max(0f, factor - 0.05f);
+			for (int i = 0; i < throwers.Count; i++)
+			{
+				var t = throwers[i];
+				t.siner += 0.5f;
+				t.body.Position.Y = t.ystart + (float)Math.Sin(t.siner / 16f) * 40f * factor;
+				if (left > 30)
+				{
+					if (t.con == 10)
+					{
+						t.frame = 0f;
+						t.thrown = false;
+						t.con = 11;
+					}
+					else if (t.con == 11)
+					{
+						t.frame += 0.334f / 2f;
+						if (t.frame >= 4f && !t.thrown)
+						{
+							t.thrown = true;
+							Vector2 from = t.body.Position + new Vector2(-6f, 0f);
+							float speed = (9f + (float)Math.Sin(t.siner / 10f) * 4f) / 2f;
+							if (Count == 2)
+								speed *= 0.85f;
+							else if (Count >= 3)
+								speed *= 0.7f;
+							float angle = (battle.SoulCenter - from).ToRotation() + MathHelper.ToRadians(Main.rand.NextFloat(-5f, 5f));
+							battle.Spawn(Thrown(from, angle.ToRotationVector2() * speed));
+							AttackSfx.Vanilla(SoundID.Item1, 0.4f, 0.3f);
+						}
+						if (t.frame >= 6f)
+						{
+							t.con = 12;
+							t.timer = 0;
+						}
+					}
+					else if (t.con == 12 && ++t.timer >= Count * 3 * 2)
+						t.con = 10;
+				}
+				throwers[i] = t;
+			}
+		}
+	}
+
+	/// <summary>
+	/// A ring of bullets forms around the SOUL, turning, then fires in at it one at a time (like Hathy's hearts):
+	/// each aims where the SOUL is when its turn comes.
+	/// </summary>
+	public class RingVolley : RepeatingAttack
+	{
+		public Func<Vector2, Vector2, Bullet> Make;
+		public int Count = 10, Form = 40, Gap = 6;
+		public float Radius = 72f, Spin = 0.03f, Speed = 3.6f;
+
+		public RingVolley(Func<Vector2, Vector2, Bullet> make, int every = 120)
+		{
+			Make = make;
+			Every = every;
+			StopBeforeEnd = 100;
+		}
+
+		protected override void Spawn(BattleSystem battle, int index)
+		{
+			Vector2 centre = battle.SoulCenter;
+			float start = Main.rand.NextFloat(MathHelper.TwoPi);
+			float spin = index % 2 == 0 ? Spin : -Spin;
+			int form = Form;
+			float radius = Radius, speed = Speed;
+			AttackSfx.Appear();
+			for (int i = 0; i < Count; i++)
+			{
+				float a0 = start + MathHelper.TwoPi * i / Count;
+				int fireAt = form + i * Gap;
+				Bullet b = Make(centre + a0.ToRotationVector2() * radius, Vector2.Zero);
+				b.Harmful = false;
+				b.Alpha = 0f;
+				b.RotateWithVelocity = false;
+				b.Lifetime = fireAt + 160;
+				b.OnUpdate += x =>
+				{
+					if (x.Age < fireAt)
+					{
+						float a = a0 + spin * x.Age;
+						x.Position = centre + a.ToRotationVector2() * radius;
+						x.Velocity = Vector2.Zero;
+						x.Alpha = Math.Min(1f, x.Age / (form * 0.6f));
+						x.Harmful = x.Age > form * 0.6f;
+						if (fireAt - x.Age < 6)
+							x.Flash = 2;
+					}
+					else if (x.Age == fireAt)
+					{
+						x.Velocity = (battle.SoulCenter - x.Position).SafeNormalize(Vector2.UnitX) * speed;
+						x.Trail = 3;
+						AttackSfx.Vanilla(SoundID.Item17, 0.35f);
+					}
+				};
+				battle.Spawn(b);
+			}
+		}
+	}
 }

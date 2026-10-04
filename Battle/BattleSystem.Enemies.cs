@@ -249,8 +249,14 @@ namespace MercyMode.Battle
 				EnemyAttack big = first.FullScreen ? first : second;
 				return new OwnedAttack(boss, big);
 			}
-			int length = (int)(Math.Max(first.Duration, second.Duration) * 1.25f);
-			return new Combo(length, new OwnedAttack(boss, first) { DamageScale = 0.75f }, new OwnedAttack(boss, second) { DamageScale = 0.75f });
+			// Everything it's got: both attacks at once, harder and for longer
+			int length = (int)(Math.Max(first.Duration, second.Duration) * 1.6f);
+			if (first is RepeatingAttack r1)
+				r1.StopBeforeEnd = Math.Max(40, r1.StopBeforeEnd);
+			if (second is RepeatingAttack r2)
+				r2.StopBeforeEnd = Math.Max(40, r2.StopBeforeEnd);
+			first.Duration = second.Duration = length;
+			return new Combo(length, new OwnedAttack(boss, first) { DamageScale = 1.15f }, new OwnedAttack(boss, second) { DamageScale = 1.15f });
 		}
 
 		/// <summary>Runs one enemy's attack, tagging its bullets as its own.</summary>

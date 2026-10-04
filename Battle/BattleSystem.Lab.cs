@@ -13,6 +13,7 @@ namespace MercyMode.Battle
 		internal int LabListIndex => listIndex;
 		internal string LabText => text;
 		internal bool LabFirstStrike => firstStrike;
+		internal int LabPotionSick => potionSickTurns;
 		internal Encounter LabTarget => targetEnemy?.E;
 		internal List<(Encounter E, bool Out)> LabEnemies => enemies.Select(e => (e.E, e.Out)).ToList();
 		internal List<string> LabBubbles => enemies.Where(e => e.Living).Select(e => e.Bubble).ToList();

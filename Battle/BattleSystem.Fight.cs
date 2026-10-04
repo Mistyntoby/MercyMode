@@ -66,6 +66,42 @@ namespace MercyMode.Battle
 		public static float DamageScale =>
 			(ModContent.GetInstance<MercyConfig>()?.FightDamageMultiplier ?? 1f) * (float)Math.Sqrt(Math.Max(1f, Main.GameModeInfo.EnemyMaxLifeMultiplier));
 
+		/// <summary>About how many turns of a weapon typical for its stage a boss takes to beat.</summary>
+		public const int BossTargetTurns = 12;
+
+		/// <summary>
+		/// The damage a weapon typical for this boss's stage does in one good FIGHT turn (normal mode), from the
+		/// weapons players usually carry into it. A boss's hits are scaled so that weapon beats it in about
+		/// <see cref="BossTargetTurns"/> turns; a better weapon is faster, a worse one slower.
+		/// </summary>
+		private static float ParTurnDamage(int type) => type switch
+		{
+			NPCID.KingSlime or NPCID.EyeofCthulhu or NPCID.BrainofCthulhu or NPCID.EaterofWorldsHead
+				or NPCID.EaterofWorldsBody or NPCID.EaterofWorldsTail => 30f,
+			NPCID.QueenBee or NPCID.SkeletronHead or NPCID.Deerclops => 45f,
+			NPCID.WallofFlesh => 60f,
+			NPCID.QueenSlimeBoss or NPCID.Retinazer or NPCID.Spazmatism or NPCID.TheDestroyer or NPCID.SkeletronPrime => 100f,
+			NPCID.Plantera => 140f,
+			NPCID.Golem or NPCID.GolemHead => 160f,
+			NPCID.DukeFishron or NPCID.HallowBoss or NPCID.CultistBoss => 200f,
+			NPCID.MoonLordCore or NPCID.MoonLordHand or NPCID.MoonLordHead => 280f,
+			_ => Main.hardMode ? 140f : 45f,
+		};
+
+		/// <summary>
+		/// What a hit on <paramref name="e"/> is multiplied by. Regular enemies: <see cref="DamageScale"/>. Bosses: scaled
+		/// to their health (which already includes Expert's and Master's), so a fight takes about
+		/// <see cref="BossTargetTurns"/> turns with a fair weapon; the config multiplier still applies.
+		/// </summary>
+		public static float HitScale(Encounter e)
+		{
+			if (e == null || !e.IsBoss || e.Npc == null)
+				return DamageScale;
+			float config = ModContent.GetInstance<MercyConfig>()?.FightDamageMultiplier ?? 1f;
+			float boss = Math.Max(1f, e.LifeMax / (BossTargetTurns * ParTurnDamage(e.Npc.type)));
+			return config * boss;
+		}
+
 		/// <summary>The weapon chosen in this battle's FIGHT menu (inventory slot and type), or -1 for the held one.</summary>
 		private int fightWeaponSlot = -1, fightWeaponType;
 		private List<WeaponOption> weaponOptions = new();
@@ -280,7 +316,7 @@ namespace MercyMode.Battle
 			NPC foe = encounter?.TargetableParts == true && Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : encounter?.StrikeTarget();
 			if (foe != null)
 			{
-				int perHit = AfterDefense(Math.Max(1, (int)Math.Round(sel.ShotDamage * sel.HitShare * DamageScale)), foe);
+				int perHit = AfterDefense(Math.Max(1, (int)Math.Round(sel.ShotDamage * sel.HitShare * HitScale(encounter))), foe);
 				DrDraw.Text($"VS DEF {foe.defense}: {perHit}/HIT", sx, sy + 80, new Color(255, 200, 80), DrDraw.SmallFont);
 			}
 		}
@@ -786,7 +822,7 @@ namespace MercyMode.Battle
 				return;
 
 			float timing = hit.Points / 150f;
-			int raw = Math.Max(1, (int)Math.Round(hit.Damage * fightWeapon.HitShare * timing * DamageScale));
+			int raw = Math.Max(1, (int)Math.Round(hit.Damage * fightWeapon.HitShare * timing * HitScale(encounter)));
 			// A breakable boss: the part picked in the enemy list (or the next one, if an earlier hit broke it)
 			NPC chosen = encounter.ChosenPart;
 			NPC core = encounter.TargetableParts ? encounter.CorePart : null;
@@ -1543,7 +1579,7 @@ namespace MercyMode.Battle
 				AddEffect(new Shockwave(spot, new Color(180, 140, 255), 26f));
 				var strike = new NPC.HitInfo
 				{
-					Damage = AfterDefense(Math.Max(1, (int)Math.Round(SummonEntryDamage(new SummonEntry(m, null)) * DamageScale)), target),
+					Damage = AfterDefense(Math.Max(1, (int)Math.Round(SummonEntryDamage(new SummonEntry(m, null)) * HitScale(encounter))), target),
 					HitDirection = Player.direction,
 					DamageType = DamageClass.Summon,
 				};
