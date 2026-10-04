@@ -288,6 +288,10 @@ namespace MercyMode.Battle
 				// SpawnWOF only works in the Underworld; for testing elsewhere, spawn the mouth directly
 			}
 			int i = NPC.NewNPC(player.GetSource_FromThis(), (int)player.Center.X + dx, (int)player.Center.Y + dy, type);
+			// The Twins come as a pair (the Mechanical Eye summons both)
+			int twin = type == NPCID.Retinazer ? NPCID.Spazmatism : type == NPCID.Spazmatism ? NPCID.Retinazer : 0;
+			if (twin != 0 && !NPC.AnyNPCs(twin))
+				NPC.NewNPC(player.GetSource_FromThis(), (int)player.Center.X + dx, (int)player.Center.Y + dy + 120, twin);
 			return Main.npc[i];
 		}
 

@@ -122,11 +122,92 @@ namespace MercyMode.Battle.Encounters
 				at.Y += (float)Math.Sin(time / 24f + i * 2.1f) * 6f;
 				p.position = mid + at - p.Size / 2f;
 				p.rotation = MathHelper.PiOver2 + (float)Math.Sin(time / 33f + i * 1.3f) * 0.08f - attacking * (i == 0 ? 0.12f : -0.12f);
+				// Changing form: five whole turns, speeding up and winding down
+				if (change.TryGetValue(p.type, out float c) && c < 1f)
+					p.rotation += c * c * (3f - 2f * c) * MathHelper.TwoPi * 5f;
+				// Their eye frames (0-2), or once changed the laser cannon / mouth frames (3-5); their AI would pick
+				// these, but it's paused
+				if (!Main.dedServ && Main.npcFrameCount[p.type] >= 6)
+				{
+					int frameH = Terraria.GameContent.TextureAssets.Npc[p.type].Height() / Main.npcFrameCount[p.type];
+					if (frameH > 0)
+						p.frame = new Rectangle(0, ((Changed(p.type) ? 3 : 0) + time / 8 % 3) * frameH, p.frame.Width > 0 ? p.frame.Width : Terraria.GameContent.TextureAssets.Npc[p.type].Width(), frameH);
+				}
+			}
+		}
+
+		// ---- changing form (phase 2) ----
+
+		/// <summary>Each twin's change: 0..1 through the turn it changes; missing before.</summary>
+		private readonly Dictionary<int, float> change = new();
+		/// <summary>Like Terraria: a twin changes below 40% of its health.</summary>
+		private const float ChangeLife = 0.4f;
+		private const int ChangeTicks = 150;
+		private const float BurstAt = 0.5f;
+		public bool Changed(int type) => change.TryGetValue(type, out float c) && c >= BurstAt;
+
+		/// <summary>
+		/// The turn a twin (or both) changes form instead of attacking: it spins up with a roar, bursts open in a shower
+		/// of metal and blood halfway through (Retinazer into its laser cannon, Spazmatism into its mouth), and slows to
+		/// a stop. Harmless.
+		/// </summary>
+		private class ChangeForm : EnemyAttack
+		{
+			private readonly Twins twins;
+			private readonly List<NPC> changing;
+			private bool burst;
+
+			public ChangeForm(Twins twins, List<NPC> changing)
+			{
+				this.twins = twins;
+				this.changing = changing;
+				Duration = ChangeTicks;
+			}
+
+			public override void Update(BattleSystem battle, int tick)
+			{
+				float progress = Math.Min(1f, tick / (float)(ChangeTicks - 20));
+				foreach (NPC n in changing)
+					twins.change[n.type] = progress;
+				if (tick == 1)
+					AttackSfx.Vanilla(SoundID.ForceRoar, 0.9f);
+				if (!burst && tick % 12 == 0)
+					battle.ShakeScreen(1);
+				if (burst || progress < BurstAt)
+					return;
+				burst = true;
+				AttackSfx.Vanilla(SoundID.NPCHit4, 1f, -0.2f);
+				AttackSfx.Vanilla(SoundID.Roar, 0.9f);
+				battle.ShakeScreen(6);
+				foreach (NPC n in changing)
+				{
+					Vector2 at = battle.PartScreen(n);
+					for (int i = 0; i < 24; i++)
+					{
+						Vector2 v = Main.rand.NextVector2Unit() * Main.rand.NextFloat(1.5f, 5f);
+						bool metal = i % 3 == 0;
+						Bullet b = Shots.Ball(at, v, metal ? new Color(170, 175, 185) : new Color(200, 20, 30), 0f, metal ? 1f : Main.rand.NextFloat(0.5f, 0.9f));
+						b.Harmful = false;
+						b.GrazePoints = 0f;
+						b.Acceleration = new Vector2(0f, 0.18f);
+						b.Lifetime = 70;
+						b.OffscreenMargin = 2000f;
+						battle.Spawn(b);
+					}
+				}
 			}
 		}
 
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
+			// A twin below 40% spends this turn changing form (both, if both are due)
+			var due = Members().Where(m => m.life > 0 && m.life < m.lifeMax * ChangeLife && !change.ContainsKey(m.type)).ToList();
+			if (due.Count > 0)
+			{
+				foreach (NPC d in due)
+					change[d.type] = 0f;
+				return new ChangeForm(this, due);
+			}
 			Bullet laser(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.EyeLaser, p, v, 1f, 0.7f, new Vector2(10, 6), rotationOffset: MathHelper.PiOver2);
 			Bullet flame(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(120, 255, 60), 0.6f, 1.2f).Fiery(6);
 			Bullet spaz(Vector2 p, Vector2 d) => Shots.Npc(NPCID.Spazmatism, p, Vector2.Zero, 0.35f, 1.2f, new Vector2(30, 30), rotate: false);

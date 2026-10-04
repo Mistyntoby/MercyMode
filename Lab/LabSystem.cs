@@ -195,6 +195,8 @@ namespace MercyMode.Lab
 				("eye-rips", EyeRips),
 				("first-strike", FirstStrike),
 				("everyone-talks", EveryoneTalks),
+				("twins-summoned", TwinsSummoned),
+				("twins-change", TwinsChange),
 			};
 			string want = Wanted.Trim().ToLowerInvariant();
 			foreach (var s in all)
@@ -1305,6 +1307,54 @@ namespace MercyMode.Lab
 			foreach (NPC m in eoc.Members().ToList())
 				m.active = false;
 			yield return Until(() => !BattleSystem.Active, "the battle ending", 60 * 30);
+		}
+
+		/// <summary>A twin below 40% spends a turn changing form (laser cannon / mouth), once; the other keeps its eye.</summary>
+		private IEnumerable TwinsChange()
+		{
+			yield return StartWith(NPCID.Retinazer, NPCID.Spazmatism);
+			yield return Menu();
+			var twins = (Twins)B.LabTarget;
+			NPC ret = twins.Members().First(n => n.type == NPCID.Retinazer);
+			ret.life = (int)(ret.lifeMax * 0.35f);
+			yield return Choose(4);
+			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the enemy turn");
+			string name = B.LabAttack?.GetType().Name;
+			Log($"  Retinazer at 35%: {name}");
+			Check(name == "ChangeForm", $"Retinazer attacked with {name} instead of changing form");
+			yield return Menu();
+			Check(twins.Changed(NPCID.Retinazer), "Retinazer didn't change form");
+			Check(!twins.Changed(NPCID.Spazmatism), "Spazmatism changed form above 40%");
+			yield return Choose(4);
+			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the next enemy turn");
+			Check(B.LabAttack?.GetType().Name != "ChangeForm", "Retinazer changed form twice");
+			foreach (NPC m in twins.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
+		}
+
+		/// <summary>The Twins as the Mechanical Eye summons them: both in the fight, both listed, drawn apart.</summary>
+		private IEnumerable TwinsSummoned()
+		{
+			Main.dayTime = false;
+			Main.time = 0;
+			NPC.SpawnOnPlayer(P.whoAmI, NPCID.Retinazer);
+			NPC.SpawnOnPlayer(P.whoAmI, NPCID.Spazmatism);
+			yield return Wait(30);
+			foreach (NPC n in Main.npc.Where(n => n.active && n.type is NPCID.Retinazer or NPCID.Spazmatism))
+				Log($"  world: {n.FullName} #{n.whoAmI} life {n.life}/{n.lifeMax} realLife {n.realLife} at {n.Center - P.Center}");
+			NPC ret = Main.npc.First(n => n.active && n.type == NPCID.Retinazer);
+			BattleSystem.QueueStart(ret, 1, "touch");
+			yield return Until(() => BattleSystem.Active, "the battle starting", 60 * 5);
+			yield return Menu();
+			foreach (NPC n in B.LabTarget.Members())
+				Log($"  member: {n.FullName} #{n.whoAmI} life {n.life}/{n.lifeMax} active {n.active}");
+			var rows = B.LabTarget.TargetParts();
+			Log($"  target rows: {string.Join(", ", rows.Select(B.LabTarget.PartName))}");
+			Check(rows.Count == 2, $"{rows.Count} twin(s) listed");
+			foreach (NPC m in B.LabTarget.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
 		}
 
 		/// <summary>Every living enemy says something before the box opens, the ones sitting the turn out and bosses too.</summary>

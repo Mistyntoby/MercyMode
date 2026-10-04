@@ -897,6 +897,9 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>Where a part of the enemy is on the battle screen (as last drawn), or the enemy's spot.</summary>
+		/// <summary>Where a part of the enemy being drawn is on the battle screen (for an attack's effects).</summary>
+		public Vector2 PartScreen(NPC part) => PartSpot(part);
+
 		private Vector2 PartSpot(NPC part) =>
 			part != null && encounter.TargetableParts && partScreen.TryGetValue(part.whoAmI, out Vector2 at) ? at : encounter.ScreenCenter;
 
