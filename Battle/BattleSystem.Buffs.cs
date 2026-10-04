@@ -19,7 +19,14 @@ namespace MercyMode.Battle
 		/// <summary>The first row shown (the list scrolls).</summary>
 		private int buffScroll;
 
-		private const float DrawerWidth = 170f, BuffRowH = 21f;
+		private const float DrawerWidth = 128f, BuffRowH = 21f;
+
+		/// <summary>The text box's line, before wrapping, and the width it's wrapped to.</summary>
+		private string rawText = "";
+		private float textWrap = 570f;
+
+		/// <summary>Lines stop short of the buff drawer while it's out (it sits over the right end of the text box).</summary>
+		private float TextWrapWidth => buffsWanted && BuffRows().Count > 0 ? ScreenWidth - DrawerWidth - 30f - 46f : 570f;
 
 		/// <summary>Menus that use the right side of the panel (the drawer slides away for them).</summary>
 		private bool PanelRightBusy => phase is Phase.WeaponSelect or Phase.ActSelect or Phase.ItemSelect or Phase.SummonSelect
@@ -177,6 +184,18 @@ namespace MercyMode.Battle
 				clicked = false;
 			}
 			bool open = buffsWanted && !PanelRightBusy && rows.Count > 0 && panel > 0;
+			// The text box wraps around the drawer: re-wrap the line when it comes or goes
+			if (TextWrapWidth != textWrap)
+			{
+				// (Only if what's shown is still that line: the text box may have been cleared or set some other way)
+				bool same = rawText.Length > 0 && text == DrDraw.Wrap(rawText, textWrap);
+				textWrap = TextWrapWidth;
+				if (same)
+				{
+					text = DrDraw.Wrap(rawText, textWrap);
+					textShown = Math.Min(textShown, text.Length);
+				}
+			}
 			// Slides out and back with an ease
 			buffDrawer = MathHelper.Clamp(buffDrawer + (open ? 0.09f : -0.12f), 0f, 1f);
 

@@ -451,7 +451,9 @@ namespace MercyMode.Battle
 			// Multiplayer: the others watch this player's turn in their own text box
 			if (executing)
 				Net.BattleNet.SendPartyText(s);
-			text = DrDraw.Wrap(s, 570f);
+			rawText = s ?? "";
+			textWrap = TextWrapWidth;
+			text = DrDraw.Wrap(rawText, textWrap);
 			textShown = 0;
 			textSoundedThrough = 0;
 		}
