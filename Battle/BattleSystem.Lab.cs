@@ -12,6 +12,7 @@ namespace MercyMode.Battle
 		internal int LabMenuChoice => (int)menuChoice;
 		internal int LabListIndex => listIndex;
 		internal string LabText => text;
+		internal bool LabFirstStrike => firstStrike;
 		internal Encounter LabTarget => targetEnemy?.E;
 		internal List<(Encounter E, bool Out)> LabEnemies => enemies.Select(e => (e.E, e.Out)).ToList();
 		internal int LabWeaponCount => weaponOptions.Count;

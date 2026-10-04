@@ -152,11 +152,13 @@ namespace MercyMode.Battle
 			return EncounterRegistry.Eligible(EncounterRegistry.ResolveRoot(npc));
 		}
 
-		public static void TryStart(NPC npc, Player player, string reason = "")
+		public static void TryStart(NPC npc, Player player, string reason = "", bool queued = false)
 		{
-			bool command = reason == "command";
+			bool command = reason == "command" || queued;
 			if (!CanStart(npc, player, command))
 				return;
+			if (IsFirstStrikeReason(reason))
+				firstStrikeAskedAt = Main.GameUpdateCount;
 			NPC root = EncounterRegistry.ResolveRoot(npc);
 			// Multiplayer: the server sets the battle up (and pulls nearby players in), then tells us to start
 			if (Net.BattleNet.Online)
@@ -271,6 +273,8 @@ namespace MercyMode.Battle
 			if (bossMusic)
 				AmbienceMute.BoostMusic(ModContent.GetInstance<MercyConfig>()?.BossMusicBoost ?? 1.6f);
 
+			firstStrike = OpensWithStrike(reason);
+			firstStrikeAskedAt = 0;
 			SetText(OpeningText());
 			SetPhase(Phase.Intro);
 			Mod.Logger.Info($"Battle started with {boss.FullName} as {encounter.GetType().Name} ({encounter.Life}/{encounter.LifeMax} HP) by {reason}");
@@ -483,11 +487,15 @@ namespace MercyMode.Battle
 		private int queuedTicks;
 
 		/// <summary>Starts a battle with this NPC after a few ticks (test command).</summary>
-		public static void QueueStart(NPC npc, int ticks)
+		public static void QueueStart(NPC npc, int ticks, string reason = "command")
 		{
 			Instance.queuedNpc = npc.whoAmI;
 			Instance.queuedTicks = ticks;
+			Instance.queuedReason = reason;
 		}
+
+		/// <summary>Why the queued battle starts ("command", or "hit by ..." for a first strike).</summary>
+		private string queuedReason = "command";
 
 		/// <summary>Ticks after entering a world during which touching an enemy doesn't start a battle.</summary>
 		private int enterGrace;
@@ -514,7 +522,7 @@ namespace MercyMode.Battle
 				if (q.active && CanStart(EncounterRegistry.ResolveRoot(q), Player, ignoreGrace: true))
 				{
 					queuedNpc = -1;
-					TryStart(q, Player, "command");
+					TryStart(q, Player, queuedReason, queued: true);
 				}
 				else if (!q.active || queuedTicks < -QueueRetryTicks)
 				{
@@ -762,13 +770,18 @@ namespace MercyMode.Battle
 		{
 			// 1. glide in (FlyProgress) while the background fades in
 			// 2. the hero swings their weapon, with the weapon-draw sound
-			if (phaseTicks == IntroSwingAt)
+			// (or, having hit the enemy to start the battle, strikes it: see FirstStrikeUpdate)
+			if (phaseTicks == IntroSwingAt && !firstStrike)
 			{
 				SetHeroPose(HeroPose.Attack);
 				Sfx("weaponpull");
 			}
+			FirstStrikeUpdate();
+			// The strike may have won the battle outright
+			if (!encounter.Alive)
+				return;
 			// 3. after the swing, the bottom UI glides up and the TP bar slides in (hspeed 13, friction 1)
-			if (phaseTicks == IntroPanelAt)
+			if (phaseTicks == IntroPanelTick)
 			{
 				panelDir = 1;
 				tpBarIn = 0f;
@@ -782,7 +795,7 @@ namespace MercyMode.Battle
 				}
 			}
 			textShown = 0; // the encounter text types out once the panel is up
-			if (panel >= PanelHeight && phaseTicks > IntroPanelAt)
+			if (panel >= PanelHeight && phaseTicks > IntroPanelTick)
 			{
 				// Multiplayer: the party's bullet box already started, or joined mid-battle and watching for now
 				if (enemyTurnQueued)
@@ -1733,6 +1746,7 @@ namespace MercyMode.Battle
 				DrawFightBeam();
 				DrawDuelOppBeam();
 				DrawEffects();
+				DrawFirstStrikeLine();
 				if (arenaBlend > 0f)
 				{
 					// A full-screen attack: everything, the HUD included, goes black; only the arena's border,

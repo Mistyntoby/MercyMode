@@ -193,6 +193,7 @@ namespace MercyMode.Lab
 				("mp-server", MultiplayerServer),
 				("frames", Frames),
 				("eye-rips", EyeRips),
+				("first-strike", FirstStrike),
 			};
 			string want = Wanted.Trim().ToLowerInvariant();
 			foreach (var s in all)
@@ -1303,6 +1304,38 @@ namespace MercyMode.Lab
 			foreach (NPC m in eoc.Members().ToList())
 				m.active = false;
 			yield return Until(() => !BattleSystem.Active, "the battle ending", 60 * 30);
+		}
+
+		/// <summary>Hitting an enemy to start the battle lands a FIGHT hit before the panel comes up.</summary>
+		private IEnumerable FirstStrike()
+		{
+			int idx = NPC.NewNPC(P.GetSource_FromThis(), (int)P.Center.X + 160, (int)P.Center.Y - 40, NPCID.Zombie);
+			NPC z = Main.npc[idx];
+			z.lifeMax = z.life = 500;
+			BattleSystem.QueueStart(z, 20, "hit by lab");
+			yield return Until(() => BattleSystem.Active, "the battle starting", 60 * 5);
+			int before = z.life;
+			bool sawLine = false;
+			while (B.LabPhase == Phase.Intro)
+			{
+				sawLine |= B.LabFirstStrike;
+				yield return null;
+			}
+			Log($"  first strike: {before} -> {z.life} HP, then {B.LabPhase}");
+			Check(sawLine, "the battle didn't open with a first strike");
+			Check(z.life < before, "the first strike did no damage");
+			yield return Menu();
+			foreach (NPC m in B.LabTarget.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
+
+			// A battle started any other way opens as usual
+			yield return StartWith(NPCID.Zombie);
+			Check(!B.LabFirstStrike, "a battle not started by a hit opened with a strike");
+			yield return Menu();
+			foreach (NPC m in B.LabTarget.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
 		}
 
 		/// <summary>Below half HP the Eye spends a turn tearing open, then shows its mouth.</summary>

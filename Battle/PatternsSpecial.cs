@@ -26,6 +26,12 @@ namespace MercyMode.Battle
 		private const float MinGap = 16f, TricksterGap = 26f;
 		/// <summary>Where they reach the shield, from the middle of the box.</summary>
 		private const float ShieldReach = 22f;
+		/// <summary>
+		/// A trickster jumps sides this far from the middle (just outside the box's edge) and then takes this long to come
+		/// back in: at 52 px and full speed it reappeared about 10 ticks from the shield, too close to react to.
+		/// </summary>
+		private const float FlipAt = 80f;
+		private const int FlipTicks = 30;
 
 		public ShieldSpears(Func<Vector2, Vector2, Bullet> make, int every = 22)
 		{
@@ -49,18 +55,18 @@ namespace MercyMode.Battle
 			// from another side, with no time to turn the shield. Slow it so it comes a beat after the last one
 			float now = FirstAt + index * (float)Every;
 			float travel = Distance - ShieldReach;
-			float arrival = now + travel / speed;
+			float arrival = trickster ? now + (Distance - FlipAt) / speed + FlipTicks : now + travel / speed;
 			float earliest = lastArrival + (lastTrickster || trickster ? TricksterGap : MinGap);
 			if (arrival < earliest)
 			{
-				speed = travel / Math.Max(1f, earliest - now);
+				speed = trickster ? (Distance - FlipAt) / Math.Max(1f, earliest - FlipTicks - now) : travel / Math.Max(1f, earliest - now);
 				arrival = earliest;
 			}
 			lastArrival = arrival;
 			lastTrickster = trickster;
 			Bullet b = Make(centre + from * Distance, -from * speed);
 			b.RotateWithVelocity = true;
-			b.Lifetime = (int)(Distance * 2f / speed) + 20;
+			b.Lifetime = (int)(Distance * 2f / speed) + 20 + (trickster ? FlipTicks : 0);
 			b.OffscreenMargin = 300f;
 			b.Trail = 3;
 			if (trickster)
@@ -69,12 +75,13 @@ namespace MercyMode.Battle
 				bool flipped = false;
 				b.OnUpdate += x =>
 				{
-					if (!flipped && Vector2.Distance(x.Position, centre) < 52f)
+					if (!flipped && Vector2.Distance(x.Position, centre) < FlipAt)
 					{
-						// Jumps round to come in from the other side
+						// Jumps round to come in from the other side, slower, so there's time to turn the shield
 						flipped = true;
 						x.Position = centre - (x.Position - centre);
-						x.Velocity = -x.Velocity;
+						x.Velocity = Vector2.Normalize(-x.Velocity) * ((FlipAt - ShieldReach) / FlipTicks);
+						AttackSfx.Appear();
 						Sparks.Burst(battle, x.Position, 4, new Color(255, 230, 80), 1.5f);
 					}
 				};
