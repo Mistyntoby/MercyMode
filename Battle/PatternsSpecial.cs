@@ -19,6 +19,13 @@ namespace MercyMode.Battle
 		/// <summary>One in this many is a trickster (0 = none).</summary>
 		public int TricksterEvery = 5;
 		private int lastDir = -1;
+		/// <summary>When the last spear reaches the shield (ticks into the attack), and whether it was a trickster.</summary>
+		private float lastArrival = -1000f;
+		private bool lastTrickster;
+		/// <summary>The least time between two spears reaching the shield: enough to turn it (more after a trickster).</summary>
+		private const float MinGap = 16f, TricksterGap = 26f;
+		/// <summary>Where they reach the shield, from the middle of the box.</summary>
+		private const float ShieldReach = 22f;
 
 		public ShieldSpears(Func<Vector2, Vector2, Bullet> make, int every = 22)
 		{
@@ -37,12 +44,25 @@ namespace MercyMode.Battle
 			lastDir = dir;
 			Vector2 from = (dir * MathHelper.PiOver2 - MathHelper.PiOver2).ToRotationVector2();
 			float speed = Speed * Main.rand.NextFloat(0.85f, 1.25f);
+			bool trickster = TricksterEvery > 0 && index > 1 && index % TricksterEvery == 0;
+			// Never two at once: a faster spear spawned after a slower one could catch up and land on the same moment
+			// from another side, with no time to turn the shield. Slow it so it comes a beat after the last one
+			float now = FirstAt + index * (float)Every;
+			float travel = Distance - ShieldReach;
+			float arrival = now + travel / speed;
+			float earliest = lastArrival + (lastTrickster || trickster ? TricksterGap : MinGap);
+			if (arrival < earliest)
+			{
+				speed = travel / Math.Max(1f, earliest - now);
+				arrival = earliest;
+			}
+			lastArrival = arrival;
+			lastTrickster = trickster;
 			Bullet b = Make(centre + from * Distance, -from * speed);
 			b.RotateWithVelocity = true;
 			b.Lifetime = (int)(Distance * 2f / speed) + 20;
 			b.OffscreenMargin = 300f;
 			b.Trail = 3;
-			bool trickster = TricksterEvery > 0 && index > 1 && index % TricksterEvery == 0;
 			if (trickster)
 			{
 				b.Color = new Color(255, 230, 80);
