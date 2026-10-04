@@ -1912,7 +1912,10 @@ namespace MercyMode.Battle
 			// Only the enemy being targeted flashes
 			bool selecting = (phase == Phase.EnemySelect || phase == Phase.ActSelect) && focus == targetEnemy;
 			Color color = Tint(encounter.DrawColor(npc), worldLight) * alpha;
+			int frameIndex = frame.Y / Math.Max(1, frameHeight);
+			encounter.DrawBehindSprite(pos, frameIndex, rotation, spriteScale, Tint(Color.White, worldLight) * alpha);
 			DrDraw.Sb.Draw(tex, pos, frame, color, rotation, frame.Size() / 2f, spriteScale, SpriteEffects.None, 0f);
+			encounter.DrawOverSprite(pos, frameIndex, rotation, spriteScale, Tint(Color.White, worldLight) * alpha);
 			enemySnap = new EnemySnapshot
 			{
 				Texture = tex, Frame = frame, Position = pos, Rotation = rotation,

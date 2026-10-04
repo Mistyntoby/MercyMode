@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Terraria;
+using Terraria.GameContent;
 using Terraria.ID;
 
 namespace MercyMode.Battle.Encounters
@@ -114,6 +116,35 @@ namespace MercyMode.Battle.Encounters
 	{
 		public override string Name => "KING SLIME";
 		public override string EncounterText => "* KING SLIME bounces into view!";
+
+		// Terraria draws the ninja and the crown separately from the slime's sheet (Main.DrawNPCDirect, type 50).
+		// At scale 1 the sheet's 120 px frames sit 4 px low on the 92 px hitbox, so the frame's centre is 10 px above
+		// the NPC's: the ninja sits 10 px below the frame's centre, the crown 70 px above the NPC's centre, less a
+		// little per frame as the slime squashes and stretches.
+		private static readonly float[] NinjaLift = { 0f, -2f, 0f, 2f, 6f, 0f };
+		private static readonly float[] CrownLift = { 2f, -6f, 2f, 10f, 2f, 0f };
+
+		private static void DrawExtra(Texture2D tex, Vector2 pos, Vector2 offset, float rotation, Vector2 scale, Color color)
+		{
+			Vector2 at = pos + (offset * scale).RotatedBy(rotation);
+			DrDraw.Sb.Draw(tex, at, null, color, rotation, tex.Size() / 2f, scale, SpriteEffects.None, 0f);
+		}
+
+		public override void DrawBehindSprite(Vector2 pos, int frame, float rotation, Vector2 scale, Color color)
+		{
+			if (Main.dedServ)
+				return;
+			int f = Math.Clamp(frame, 0, NinjaLift.Length - 1);
+			DrawExtra(TextureAssets.Ninja.Value, pos, new Vector2(0f, 10f - NinjaLift[f]), rotation, scale, color);
+		}
+
+		public override void DrawOverSprite(Vector2 pos, int frame, float rotation, Vector2 scale, Color color)
+		{
+			if (Main.dedServ)
+				return;
+			int f = Math.Clamp(frame, 0, CrownLift.Length - 1);
+			DrawExtra(TextureAssets.Extra[39].Value, pos, new Vector2(0f, 10f - (70f - CrownLift[f])), rotation, scale, color);
+		}
 
 		public override string FlavorText()
 		{

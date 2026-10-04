@@ -183,6 +183,15 @@ namespace MercyMode.Battle
 		/// <param name="attacking">0..1, how hard the enemy is attacking this moment.</param>
 		public virtual void PoseForBattle(List<NPC> parts, NPC anchor, int time, float attacking) { }
 
+		/// <summary>
+		/// Extras Terraria draws apart from the NPC's sprite sheet (King Slime's ninja and crown), drawn behind or over
+		/// the battle sprite. <paramref name="pos"/> is the frame's centre; <paramref name="scale"/> is battle pixels per
+		/// sprite pixel; <paramref name="color"/> is the light on it (not the sprite's own tint).
+		/// </summary>
+		public virtual void DrawBehindSprite(Vector2 pos, int frame, float rotation, Vector2 scale, Color color) { }
+		/// <inheritdoc cref="DrawBehindSprite"/>
+		public virtual void DrawOverSprite(Vector2 pos, int frame, float rotation, Vector2 scale, Color color) { }
+
 		/// <summary>Ends the fight peacefully: removes every other part, then drops the loot from one.</summary>
 		public virtual void Spare()
 		{
