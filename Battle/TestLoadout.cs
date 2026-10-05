@@ -77,6 +77,7 @@ namespace MercyMode.Battle
 			Player.statLife = Player.statLifeMax;
 			Player.ClearBuff(BuffID.PotionSickness);
 			Player.potionDelay = 0;
+			SyncGear();
 			return $"{Lang.GetItemNameValue(weapon)}, {Lang.GetItemNameValue(head).Split(' ')[0]} armour, 5 {Lang.GetItemNameValue(potion)}, {Player.statLifeMax} HP (typical: {hp:0} HP, {defense:0} defense)";
 		}
 
@@ -94,8 +95,24 @@ namespace MercyMode.Battle
 			Player.statLifeMax = lifeMax > 0 ? lifeMax : 100 + crystals * 20 + fruit * 5;
 			Player.statLife = Math.Clamp(life, 1, Player.statLifeMax);
 			inventory = armor = null;
+			SyncGear();
 			if (Player.whoAmI == Main.myPlayer)
 				Main.NewText("* Your own gear is back.", MercyMode.Gray);
+		}
+
+		/// <summary>
+		/// Multiplayer: tells everyone the gear changed (worn armour shows on the character and counts for its
+		/// defense right away; singleplayer needs nothing, the armour slots are what's worn).
+		/// </summary>
+		private void SyncGear()
+		{
+			if (Main.netMode != NetmodeID.MultiplayerClient || Player.whoAmI != Main.myPlayer)
+				return;
+			for (int i = 0; i < Player.inventory.Length; i++)
+				NetMessage.SendData(MessageID.SyncEquipment, -1, -1, null, Player.whoAmI, PlayerItemSlotID.Inventory0 + i);
+			for (int i = 0; i < Player.armor.Length; i++)
+				NetMessage.SendData(MessageID.SyncEquipment, -1, -1, null, Player.whoAmI, PlayerItemSlotID.Armor0 + i);
+			NetMessage.SendData(MessageID.PlayerLifeMana, -1, -1, null, Player.whoAmI);
 		}
 
 		// The backup goes into the save while a test is on, so it survives a crash or an autosave mid-battle
