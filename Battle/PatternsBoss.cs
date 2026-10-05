@@ -399,6 +399,13 @@ namespace MercyMode.Battle
 	public class EchoTrail : EnemyAttack
 	{
 		public int RecordEvery = 6, Delay = 36, Warn = 14, Active = 34;
+		/// <summary>
+		/// Where each drop is thrown from (the boss, on the battle screen). Set, every spot the SOUL passes gets a
+		/// harmless drop flying at it from there first, so the trail is seen coming instead of just appearing under you.
+		/// </summary>
+		public Func<BattleSystem, Vector2> From;
+		/// <summary>Nothing is recorded before this tick: a beat for the first throws to show where it's coming from.</summary>
+		public int LeadIn;
 		public Func<Vector2, Vector2, Bullet> Make;
 		private readonly Queue<(int At, Vector2 Pos)> path = new();
 
@@ -406,8 +413,13 @@ namespace MercyMode.Battle
 
 		public override void Update(BattleSystem battle, int tick)
 		{
-			if (tick < Duration - 60 && tick % RecordEvery == 0)
-				path.Enqueue((tick, battle.SoulCenter));
+			if (tick >= LeadIn && tick < Duration - 60 && tick % RecordEvery == 0)
+			{
+				Vector2 spot = battle.SoulCenter;
+				path.Enqueue((tick, spot));
+				if (From != null)
+					Throw(battle, From(battle), spot);
+			}
 			while (path.Count > 0 && tick - path.Peek().At >= Delay)
 			{
 				Vector2 at = path.Dequeue().Pos;
@@ -435,6 +447,27 @@ namespace MercyMode.Battle
 				};
 				battle.Spawn(b);
 			}
+		}
+
+		/// <summary>A harmless drop arcs from the boss and lands on the spot just as its warning starts.</summary>
+		private void Throw(BattleSystem battle, Vector2 from, Vector2 to)
+		{
+			Bullet b = Make(from, Vector2.Zero);
+			int flight = Delay;
+			b.Harmful = false;
+			b.DestroyOnHit = false;
+			b.Lifetime = flight;
+			b.Scale *= 0.7f;
+			b.Alpha = 0.8f;
+			b.OnUpdate += x =>
+			{
+				float t = MathHelper.Clamp(x.Age / (float)flight, 0f, 1f);
+				// Eased in so it slows as it lands, with a small hop so the stream reads as thrown
+				float e = 1f - (1f - t) * (1f - t);
+				x.Position = Vector2.Lerp(from, to, e) - new Vector2(0f, (float)Math.Sin(t * MathHelper.Pi) * 24f);
+				x.Velocity = Vector2.Zero;
+			};
+			battle.Spawn(b);
 		}
 	}
 

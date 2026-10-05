@@ -185,6 +185,7 @@ namespace MercyMode.Lab
 				("attacks-signatures", AttacksSignatures),
 				("attacks-armies", AttacksArmies),
 				("attacks-bosses", AttacksBosses),
+				("attacks-eye", AttacksEye),
 				("boss-kill", () => BossKill(NPCID.EyeofCthulhu)),
 				("boss-kill-king-slime", () => BossKill(NPCID.KingSlime)),
 				("boss-spare", BossSpare),
@@ -980,6 +981,12 @@ namespace MercyMode.Lab
 			};
 			foreach (var (label, types) in bosses)
 				yield return SweepAttacks(label, 9, types);
+		}
+
+		/// <summary>Every Eye of Cthulhu move (the boss tuned most often), without the full sweep.</summary>
+		private IEnumerable AttacksEye()
+		{
+			yield return SweepAttacks("eye of cthulhu", 9, new int[] { NPCID.EyeofCthulhu });
 		}
 
 		/// <summary>Worms are drawn as a chain of segments from the head to the tail, not just their head.</summary>

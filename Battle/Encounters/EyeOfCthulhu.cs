@@ -144,8 +144,12 @@ namespace MercyMode.Battle.Encounters
 			var moves = new Func<EnemyAttack>[]
 			{
 				() => new TearRain(hard),
-				// Tears well up along the path you just took
-				() => new EchoTrail(EyeTear) { Delay = hard ? 30 : 38, RecordEvery = hard ? 5 : 6 },
+				// Tears well up along the path you just took, each one cried at the spot from the Eye first
+				() => new EchoTrail(EyeTear)
+				{
+					Delay = hard ? 30 : 38, RecordEvery = hard ? 5 : 6, Warn = 18, LeadIn = 20,
+					From = b => b.PartScreen(b.Boss),
+				},
 				() => new ServantSwarm(hard),
 				// Deltarune's sword throwers: servants bob off to the side and hurl tears at you
 				() => new Slashers(EyeTear, p => { Bullet b = servant(p, Vector2.Zero); b.Rotation = MathHelper.PiOver2; return b; }) { Count = hard ? 3 : 2 },
@@ -158,9 +162,8 @@ namespace MercyMode.Battle.Encounters
 				() => new Converge(EyeTear, hard ? 50 : 66) { Count = hard ? 10 : 8, Speed = hard ? 4.6f : 3.8f },
 				// A ring of tears forms around you and fires in one at a time
 				() => new RingVolley(EyeTear, hard ? 100 : 120) { Count = hard ? 12 : 10, Gap = hard ? 5 : 6, Speed = hard ? 4f : 3.6f },
-				// Rings of blood close in, each with one way out: three of them (with servants once it's torn open)
-				() => hard ? new Combo(EyeRing.Ticks, new EyeRing { Duration = EyeRing.Ticks }, new ServantSwarm(false))
-					: new EyeRing { Duration = EyeRing.Ticks },
+				// Rings of blood close in, each with one way out: three of them, one at a time
+				() => new EyeRing { Duration = EyeRing.Ticks },
 				// Servants line up over the SOUL and dive at it, trailing blood
 				() => new Diver((p, v) => servant(p, v).Dripping(new Color(200, 30, 40)), hard ? 22 : 32) { DiveSpeed = hard ? 8.5f : 7f },
 				// Phase 2's full-screen frenzy: its gaze slashes across everything while it cries blood
@@ -350,8 +353,8 @@ namespace MercyMode.Battle.Encounters
 				if (tick < 10 || (tick - 10) % 120 != 0 || tick > Duration - 120)
 					return;
 				Vector2 center = battle.Box.Center.ToVector2();
-				// 12 drops with three missing in a row: nine on screen at once, an opening you can see and fit through, its edges glowing
-				const int count = 12, gapSize = 3;
+				// 12 places with four empty in a row: eight drops, a wide opening you can see and fit through, its edges glowing
+				const int count = 12, gapSize = 4;
 				int gap = Main.rand.Next(count);
 				AttackSfx.Appear();
 				for (int i = 0; i < count; i++)
@@ -363,7 +366,7 @@ namespace MercyMode.Battle.Encounters
 					Vector2 dir = a.ToRotationVector2();
 					// No drips here: they cluttered the ring and hid the opening. Softer than an ordinary tear
 					// 0.6: about 30 in the Eye's kit armour (Platinum), scaled by armour like every boss bullet
-					Bullet drop = Shots.Blood(center + dir * Radius, Vector2.Zero, 1.3f, 0.6f, drips: false);
+					Bullet drop = Shots.Blood(center + dir * Radius, Vector2.Zero, 1.1f, 0.6f, drips: false);
 					drop.Harmful = false;
 					drop.Alpha = 0f;
 					drop.Lifetime = Form + (int)((Radius - GoneAt) / Speed) + 2;
