@@ -21,27 +21,35 @@ namespace MercyMode.Battle
 
 		public bool Testing => inventory != null;
 
-		/// <summary>What a typical player brings to each boss: weapon, armour (head, body, legs), healing potion.</summary>
-		private static (int weapon, int head, int body, int legs, int potion) Kit(int boss) => boss switch
+		/// <summary>
+		/// What a typical player brings to each boss (melee): weapon, armour (head, body, legs), healing potion and max
+		/// HP, from the Terraria Wiki's boss strategy guides and class setups (Eye of Cthulhu: 200 HP and Gold or
+		/// Platinum armour recommended; Queen Bee and Skeletron 300 HP; Deerclops 260-280 HP with Starfury or Blade of
+		/// Grass; Molten for the Wall of Flesh; Titanium/Adamantite for the mechanical bosses...). The battle's balance
+		/// is worked out from these very items (<see cref="BattleSystem.BossStage"/>), so the kit is the player the boss
+		/// is tuned against.
+		/// </summary>
+		public static (int weapon, int head, int body, int legs, int potion, int hp) Kit(int boss) => boss switch
 		{
-			NPCID.KingSlime => (ItemID.GoldBroadsword, ItemID.IronHelmet, ItemID.IronChainmail, ItemID.IronGreaves, ItemID.LesserHealingPotion),
-			NPCID.EyeofCthulhu => (ItemID.PlatinumBroadsword, ItemID.IronHelmet, ItemID.IronChainmail, ItemID.IronGreaves, ItemID.LesserHealingPotion),
+			NPCID.KingSlime => (ItemID.GoldBroadsword, ItemID.IronHelmet, ItemID.IronChainmail, ItemID.IronGreaves, ItemID.LesserHealingPotion, 140),
+			NPCID.EyeofCthulhu => (ItemID.PlatinumBroadsword, ItemID.PlatinumHelmet, ItemID.PlatinumChainmail, ItemID.PlatinumGreaves, ItemID.LesserHealingPotion, 200),
 			NPCID.BrainofCthulhu or NPCID.EaterofWorldsHead or NPCID.EaterofWorldsBody or NPCID.EaterofWorldsTail
-				=> (ItemID.LightsBane, ItemID.SilverHelmet, ItemID.SilverChainmail, ItemID.SilverGreaves, ItemID.LesserHealingPotion),
-			NPCID.QueenBee or NPCID.Deerclops => (ItemID.BloodButcherer, ItemID.GoldHelmet, ItemID.GoldChainmail, ItemID.GoldGreaves, ItemID.HealingPotion),
-			NPCID.SkeletronHead => (ItemID.BladeofGrass, ItemID.ShadowHelmet, ItemID.ShadowScalemail, ItemID.ShadowGreaves, ItemID.HealingPotion),
-			NPCID.WallofFlesh => (ItemID.FieryGreatsword, ItemID.MoltenHelmet, ItemID.MoltenBreastplate, ItemID.MoltenGreaves, ItemID.HealingPotion),
+				=> (ItemID.LightsBane, ItemID.PlatinumHelmet, ItemID.PlatinumChainmail, ItemID.PlatinumGreaves, ItemID.LesserHealingPotion, 240),
+			NPCID.QueenBee => (ItemID.BladeofGrass, ItemID.ShadowHelmet, ItemID.ShadowScalemail, ItemID.ShadowGreaves, ItemID.HealingPotion, 300),
+			NPCID.Deerclops => (ItemID.Starfury, ItemID.PlatinumHelmet, ItemID.PlatinumChainmail, ItemID.PlatinumGreaves, ItemID.HealingPotion, 280),
+			NPCID.SkeletronHead => (ItemID.BladeofGrass, ItemID.ShadowHelmet, ItemID.ShadowScalemail, ItemID.ShadowGreaves, ItemID.HealingPotion, 300),
+			NPCID.WallofFlesh => (ItemID.FieryGreatsword, ItemID.MoltenHelmet, ItemID.MoltenBreastplate, ItemID.MoltenGreaves, ItemID.HealingPotion, 400),
 			NPCID.QueenSlimeBoss or NPCID.Retinazer or NPCID.Spazmatism or NPCID.TheDestroyer or NPCID.SkeletronPrime
-				=> (ItemID.AdamantiteSword, ItemID.AdamantiteHelmet, ItemID.AdamantiteBreastplate, ItemID.AdamantiteLeggings, ItemID.HealingPotion),
-			NPCID.Plantera => (ItemID.TrueExcalibur, ItemID.HallowedMask, ItemID.HallowedPlateMail, ItemID.HallowedGreaves, ItemID.GreaterHealingPotion),
-			NPCID.Golem or NPCID.GolemHead => (ItemID.TerraBlade, ItemID.TurtleHelmet, ItemID.TurtleScaleMail, ItemID.TurtleLeggings, ItemID.GreaterHealingPotion),
+				=> (ItemID.TitaniumSword, ItemID.TitaniumMask, ItemID.TitaniumBreastplate, ItemID.TitaniumLeggings, ItemID.HealingPotion, 400),
+			NPCID.Plantera => (ItemID.TrueExcalibur, ItemID.HallowedMask, ItemID.HallowedPlateMail, ItemID.HallowedGreaves, ItemID.GreaterHealingPotion, 480),
+			NPCID.Golem or NPCID.GolemHead => (ItemID.TerraBlade, ItemID.TurtleHelmet, ItemID.TurtleScaleMail, ItemID.TurtleLeggings, ItemID.GreaterHealingPotion, 500),
 			NPCID.DukeFishron or NPCID.HallowBoss or NPCID.CultistBoss
-				=> (ItemID.InfluxWaver, ItemID.TurtleHelmet, ItemID.TurtleScaleMail, ItemID.TurtleLeggings, ItemID.GreaterHealingPotion),
+				=> (ItemID.TerraBlade, ItemID.BeetleHelmet, ItemID.BeetleScaleMail, ItemID.BeetleLeggings, ItemID.GreaterHealingPotion, 500),
 			NPCID.MoonLordCore or NPCID.MoonLordHand or NPCID.MoonLordHead
-				=> (ItemID.InfluxWaver, ItemID.SolarFlareHelmet, ItemID.SolarFlareBreastplate, ItemID.SolarFlareLeggings, ItemID.GreaterHealingPotion),
+				=> (ItemID.InfluxWaver, ItemID.SolarFlareHelmet, ItemID.SolarFlareBreastplate, ItemID.SolarFlareLeggings, ItemID.GreaterHealingPotion, 500),
 			_ => Main.hardMode
-				? (ItemID.AdamantiteSword, ItemID.AdamantiteHelmet, ItemID.AdamantiteBreastplate, ItemID.AdamantiteLeggings, ItemID.HealingPotion)
-				: (ItemID.BloodButcherer, ItemID.GoldHelmet, ItemID.GoldChainmail, ItemID.GoldGreaves, ItemID.HealingPotion),
+				? (ItemID.TitaniumSword, ItemID.TitaniumMask, ItemID.TitaniumBreastplate, ItemID.TitaniumLeggings, ItemID.HealingPotion, 400)
+				: (ItemID.LightsBane, ItemID.PlatinumHelmet, ItemID.PlatinumChainmail, ItemID.PlatinumGreaves, ItemID.HealingPotion, 240),
 		};
 
 		/// <summary>Puts on the typical kit for <paramref name="boss"/>, backing up the player's own things first.</summary>
@@ -56,7 +64,7 @@ namespace MercyMode.Battle
 				life = Player.statLife;
 				lifeMax = Player.statLifeMax;
 			}
-			var (weapon, head, body, legs, potion) = Kit(boss);
+			var (weapon, head, body, legs, potion, _) = Kit(boss);
 			var (_, hp, defense) = BattleSystem.BossStage(boss);
 			// Max HP: 100, plus 20 a Life Crystal (up to 15), plus 5 a Life Fruit
 			int wantHp = (int)hp;

@@ -1378,9 +1378,10 @@ namespace MercyMode.Lab
 			yield return Menu();
 			Encounter eye = B.LabTarget;
 			float scale = BattleSystem.HitScale(eye);
-			float turns30 = eye.LifeMax / (30f * scale);
-			Log($"  Eye of Cthulhu: {eye.LifeMax} HP, hits x{scale:0.0}; a 30-damage turn wins in {turns30:0.0} turns");
-			Check(turns30 > 13f && turns30 < 19f, $"a fair weapon takes {turns30:0.0} turns");
+			float par = BattleSystem.BossStage(NPCID.EyeofCthulhu).turnDamage;
+			float turnsPar = eye.LifeMax / (par * scale);
+			Log($"  Eye of Cthulhu: {eye.LifeMax} HP, hits x{scale:0.0}; the kit weapon's turn ({par:0}) wins in {turnsPar:0.0} turns");
+			Check(turnsPar > 14f && turnsPar < 18f, $"the kit weapon takes {turnsPar:0.0} turns");
 
 			// Boss bullets against a typical player for the stage: an ordinary one takes about a tenth of the bar
 			foreach (var (type, label) in new[] { (NPCID.KingSlime, "King Slime"), (NPCID.EyeofCthulhu, "Eye of Cthulhu"), (NPCID.Plantera, "Plantera") })

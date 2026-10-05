@@ -70,27 +70,21 @@ namespace MercyMode.Battle
 		public const int BossTargetTurns = 16;
 
 		/// <summary>
-		/// Where a boss sits in a normal playthrough, from what players usually have when they reach it (normal mode):
-		/// the damage a fair weapon does in one good FIGHT turn, and the player's max HP and defense. FIGHT is scaled
-		/// so that weapon wins in about <see cref="BossTargetTurns"/> turns; its bullets are sized against that HP and
-		/// defense (<see cref="BossBulletDamage"/>), so a 40-damage hit isn't the same at 120 HP as at 400. The
-		/// defense is exactly what that stage's <c>-test</c> kit armour gives (<see cref="TestLoadoutPlayer"/>).
+		/// Where a boss sits in a normal playthrough, from the gear players usually bring to it: its <c>-test</c> kit
+		/// (<see cref="TestLoadoutPlayer.Kit"/>). Worked out from those very items, so the kit you test with is exactly
+		/// the player the boss is tuned against: the kit weapon's FIGHT turn (its damage times its bolts; FIGHT is
+		/// scaled so it wins in about <see cref="BossTargetTurns"/> turns), the kit's max HP, and its armour's defense
+		/// (boss bullets are sized against those two, <see cref="BossBulletDamage"/>).
 		/// </summary>
-		public static (float turnDamage, float hp, float defense) BossStage(int type) => type switch
+		public static (float turnDamage, float hp, float defense) BossStage(int type)
 		{
-			NPCID.KingSlime => (30f, 140f, 7f),
-			NPCID.EyeofCthulhu => (30f, 160f, 7f),
-			NPCID.BrainofCthulhu or NPCID.EaterofWorldsHead or NPCID.EaterofWorldsBody or NPCID.EaterofWorldsTail => (32f, 200f, 10f),
-			NPCID.QueenBee or NPCID.Deerclops => (45f, 260f, 13f),
-			NPCID.SkeletronHead => (45f, 280f, 19f),
-			NPCID.WallofFlesh => (60f, 360f, 25f),
-			NPCID.QueenSlimeBoss or NPCID.Retinazer or NPCID.Spazmatism or NPCID.TheDestroyer or NPCID.SkeletronPrime => (100f, 400f, 50f),
-			NPCID.Plantera => (140f, 440f, 50f),
-			NPCID.Golem or NPCID.GolemHead => (160f, 460f, 65f),
-			NPCID.DukeFishron or NPCID.HallowBoss or NPCID.CultistBoss => (200f, 480f, 65f),
-			NPCID.MoonLordCore or NPCID.MoonLordHand or NPCID.MoonLordHead => (280f, 500f, 78f),
-			_ => Main.hardMode ? (140f, 420f, 50f) : (45f, 220f, 13f),
-		};
+			var (weapon, head, body, legs, _, hp) = TestLoadoutPlayer.Kit(type);
+			static Item Sample(int id) => ContentSamples.ItemsByType.TryGetValue(id, out Item item) ? item : new Item();
+			Item w = Sample(weapon);
+			int bolts = Math.Clamp((int)Math.Round(BoltTierTicks / Math.Max(1, w.useAnimation)), 1, MaxBolts);
+			float defense = Sample(head).defense + Sample(body).defense + Sample(legs).defense;
+			return (Math.Max(1, w.damage) * bolts, hp, defense);
+		}
 
 		/// <summary>
 		/// Share of a typical player's max HP one ordinary boss bullet takes: four hits down a typical health bar
