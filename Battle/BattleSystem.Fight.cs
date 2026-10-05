@@ -73,22 +73,23 @@ namespace MercyMode.Battle
 		/// Where a boss sits in a normal playthrough, from what players usually have when they reach it (normal mode):
 		/// the damage a fair weapon does in one good FIGHT turn, and the player's max HP and defense. FIGHT is scaled
 		/// so that weapon wins in about <see cref="BossTargetTurns"/> turns; its bullets are sized against that HP and
-		/// defense (<see cref="BossBulletDamage"/>), so a 40-damage hit isn't the same at 120 HP as at 400.
+		/// defense (<see cref="BossBulletDamage"/>), so a 40-damage hit isn't the same at 120 HP as at 400. The
+		/// defense is exactly what that stage's <c>-test</c> kit armour gives (<see cref="TestLoadoutPlayer"/>).
 		/// </summary>
 		public static (float turnDamage, float hp, float defense) BossStage(int type) => type switch
 		{
-			NPCID.KingSlime => (30f, 140f, 6f),
-			NPCID.EyeofCthulhu => (30f, 160f, 8f),
-			NPCID.BrainofCthulhu or NPCID.EaterofWorldsHead or NPCID.EaterofWorldsBody or NPCID.EaterofWorldsTail => (32f, 200f, 12f),
-			NPCID.QueenBee or NPCID.Deerclops => (45f, 260f, 16f),
-			NPCID.SkeletronHead => (45f, 280f, 18f),
-			NPCID.WallofFlesh => (60f, 360f, 24f),
-			NPCID.QueenSlimeBoss or NPCID.Retinazer or NPCID.Spazmatism or NPCID.TheDestroyer or NPCID.SkeletronPrime => (100f, 400f, 34f),
-			NPCID.Plantera => (140f, 440f, 45f),
-			NPCID.Golem or NPCID.GolemHead => (160f, 460f, 55f),
+			NPCID.KingSlime => (30f, 140f, 7f),
+			NPCID.EyeofCthulhu => (30f, 160f, 7f),
+			NPCID.BrainofCthulhu or NPCID.EaterofWorldsHead or NPCID.EaterofWorldsBody or NPCID.EaterofWorldsTail => (32f, 200f, 10f),
+			NPCID.QueenBee or NPCID.Deerclops => (45f, 260f, 13f),
+			NPCID.SkeletronHead => (45f, 280f, 19f),
+			NPCID.WallofFlesh => (60f, 360f, 25f),
+			NPCID.QueenSlimeBoss or NPCID.Retinazer or NPCID.Spazmatism or NPCID.TheDestroyer or NPCID.SkeletronPrime => (100f, 400f, 50f),
+			NPCID.Plantera => (140f, 440f, 50f),
+			NPCID.Golem or NPCID.GolemHead => (160f, 460f, 65f),
 			NPCID.DukeFishron or NPCID.HallowBoss or NPCID.CultistBoss => (200f, 480f, 65f),
-			NPCID.MoonLordCore or NPCID.MoonLordHand or NPCID.MoonLordHead => (280f, 500f, 80f),
-			_ => Main.hardMode ? (140f, 420f, 40f) : (45f, 220f, 14f),
+			NPCID.MoonLordCore or NPCID.MoonLordHand or NPCID.MoonLordHead => (280f, 500f, 78f),
+			_ => Main.hardMode ? (140f, 420f, 50f) : (45f, 220f, 13f),
 		};
 
 		/// <summary>

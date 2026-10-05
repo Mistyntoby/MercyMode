@@ -397,6 +397,10 @@ namespace MercyMode.Battle
 			enemies.Clear();
 			SetTarget(null);
 
+			// A -test kit only lasts the battle
+			if (!killPlayer)
+				Player.GetModPlayer<TestLoadoutPlayer>().Restore();
+
 			if (killPlayer)
 			{
 				// The SOUL has shattered: now the player really dies, in the world, with Terraria's own death
@@ -404,6 +408,8 @@ namespace MercyMode.Battle
 				deathReason = null;
 				Player.statLife = 0;
 				Player.KillMe(reason, Math.Max(1.0, deathDamage), 0);
+				// After the death, so a mediumcore character drops the test kit, never their own gear
+				Player.GetModPlayer<TestLoadoutPlayer>().Restore();
 				return;
 			}
 
@@ -466,7 +472,13 @@ namespace MercyMode.Battle
 				Instance.OnWorldUnload();
 		}
 
-		public override void PreSaveAndQuit() => OnWorldUnload();
+		public override void PreSaveAndQuit()
+		{
+			// Quitting mid-test: save the player's own gear, not the test kit
+			if (!Main.dedServ)
+				Main.LocalPlayer.GetModPlayer<TestLoadoutPlayer>().Restore();
+			OnWorldUnload();
+		}
 
 		public override void OnWorldUnload()
 		{

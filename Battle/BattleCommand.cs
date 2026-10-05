@@ -40,6 +40,7 @@ namespace MercyMode.Battle
 			caller.Reply("  /mmbattle npc <id|name>  - spawn an enemy or boss and fight it", t);
 			caller.Reply("  /mmbattle group <n> <name>  or  group <a>, <b>, <c>  - fight a squad", t);
 			caller.Reply("  /mmbattle spawn [dx dy]  - spawn the Eye without starting  |  spawnnpc <id|name>", t);
+			caller.Reply("  add -test (e.g. /mmbattle npc eye -test)  - fight with a typical player's gear for that boss", t);
 			caller.Reply("Gear:", h);
 			caller.Reply("  /mmbattle loadout <starter|melee|spear|ranged|magic|thrown|endgame|summon|mixed>", t);
 			caller.Reply("  /mmbattle kit  - potions and one of each weapon kind", t);
@@ -55,6 +56,9 @@ namespace MercyMode.Battle
 		public override void Action(CommandCaller caller, string input, string[] args)
 		{
 			Player player = caller.Player;
+			// -test: fight with what a typical player has for that boss (restored when the battle ends)
+			bool test = args.Any(a => a.Equals("-test", StringComparison.OrdinalIgnoreCase));
+			args = args.Where(a => !a.Equals("-test", StringComparison.OrdinalIgnoreCase)).ToArray();
 			string cmd = args.Length > 0 ? args[0].ToLowerInvariant() : "";
 			// Nothing (or help): the list of commands
 			if (cmd is "" or "help" or "?")
@@ -233,6 +237,8 @@ namespace MercyMode.Battle
 					return;
 				}
 				NPC spawned = SpawnNear(player, type, 220, -60);
+				if (test && cmd == "npc")
+					GiveTestKit(caller, player, EncounterRegistry.ResolveRoot(spawned).type);
 				if (cmd == "npc")
 				{
 					// Worms, the Brain and others build their parts on their first AI ticks; start a moment later
@@ -262,12 +268,26 @@ namespace MercyMode.Battle
 				int dy = args.Length >= 3 && int.TryParse(args[2], out int y) ? y : -200;
 				eye = SpawnNear(player, NPCID.EyeofCthulhu, dx, dy);
 			}
+			if (test && cmd == "eye")
+				GiveTestKit(caller, player, NPCID.EyeofCthulhu);
 			if (cmd == "spawn")
 			{
 				caller.Reply("* The Eye of Cthulhu is here. Touch or hit it to start the battle.", MercyMode.TextWhite);
 				return;
 			}
 			Begin(caller, eye, player);
+		}
+
+		/// <summary>Puts on the typical kit for a boss, for one battle.</summary>
+		private static void GiveTestKit(CommandCaller caller, Player player, int boss)
+		{
+			if (BattleSystem.Active)
+			{
+				caller.Reply("* Finish this battle first (-test changes your gear).", MercyMode.Gray);
+				return;
+			}
+			string kit = player.GetModPlayer<TestLoadoutPlayer>().Apply(boss);
+			caller.Reply($"* Test kit: {kit}. Your own gear comes back when the battle ends.", MercyMode.MercyYellow);
 		}
 
 		private static void Begin(CommandCaller caller, NPC npc, Player player)

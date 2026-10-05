@@ -199,6 +199,7 @@ namespace MercyMode.Lab
 				("twins-change", TwinsChange),
 				("lose-despawns", LoseDespawns),
 				("balance", Balance),
+				("test-kits", TestKits),
 			};
 			string want = Wanted.Trim().ToLowerInvariant();
 			foreach (var s in all)
@@ -360,6 +361,11 @@ namespace MercyMode.Lab
 			{
 				if (++t > timeout)
 					throw new LabFail($"never reached: {what} (phase {B.LabPhase}, text \"{B.LabText}\")");
+				// Boss bullets are sized for a geared player of their stage; the lab's player has no armour, so scenarios
+				// that aren't about damage keep it topped up while waiting through enemy turns (the damage checks run
+				// their own loops)
+				if (BattleSystem.Active && B.LabPhase == Phase.EnemyTurn)
+					Heal();
 				if (skipText && B.LabPhase == Phase.Message)
 				{
 					down.Add(t % 4 < 2 ? Keys.X : Keys.Z);
@@ -1309,6 +1315,55 @@ namespace MercyMode.Lab
 			foreach (NPC m in eoc.Members().ToList())
 				m.active = false;
 			yield return Until(() => !BattleSystem.Active, "the battle ending", 60 * 30);
+		}
+
+		/// <summary>Each boss's -test kit: what it gives, how a typical fight with it adds up, and that the player's own gear comes back.</summary>
+		private IEnumerable TestKits()
+		{
+			var kit = P.GetModPlayer<TestLoadoutPlayer>();
+			int ownWeapon = P.inventory[0].type, ownMax = P.statLifeMax;
+			var bosses = new (string, int)[]
+			{
+				("King Slime", NPCID.KingSlime), ("Eye of Cthulhu", NPCID.EyeofCthulhu), ("Eater of Worlds", NPCID.EaterofWorldsHead),
+				("Brain of Cthulhu", NPCID.BrainofCthulhu), ("Queen Bee", NPCID.QueenBee), ("Skeletron", NPCID.SkeletronHead),
+				("Deerclops", NPCID.Deerclops), ("Wall of Flesh", NPCID.WallofFlesh), ("Queen Slime", NPCID.QueenSlimeBoss),
+				("The Twins", NPCID.Retinazer), ("The Destroyer", NPCID.TheDestroyer), ("Skeletron Prime", NPCID.SkeletronPrime),
+				("Plantera", NPCID.Plantera), ("Golem", NPCID.Golem), ("Duke Fishron", NPCID.DukeFishron),
+				("Empress of Light", NPCID.HallowBoss), ("Lunatic Cultist", NPCID.CultistBoss), ("Moon Lord", NPCID.MoonLordCore),
+			};
+			foreach (var (label, type) in bosses)
+			{
+				string given = kit.Apply(type);
+				yield return Wait(2); // armour counts from the next update
+				var sample = new NPC();
+				sample.SetDefaults(type);
+				var enc = EncounterRegistry.Create(sample);
+				int weaponDamage = P.GetWeaponDamage(P.inventory[0]);
+				int raw = BattleSystem.BossBulletDamage(enc, 0.8f);
+				// (The lab's player never runs Terraria's equipment update, so the armour's own defense is added up here)
+				int armour = P.armor[0].defense + P.armor[1].defense + P.armor[2].defense;
+				int taken = Math.Max(1, raw - armour / 2);
+				float scale = BattleSystem.HitScale(enc);
+				float turnsToWin = enc.LifeMax / Math.Max(1f, weaponDamage * 2f * scale);
+				var (_, stageHp, stageDef) = BattleSystem.BossStage(type);
+				Check(Math.Abs(armour - stageDef) <= 1, $"{label}'s kit armour gives {armour} defense, the balance assumes {stageDef}");
+				Log($"  {label}: {given}; armour {armour} defense; ordinary bullet hits for {taken} ({stageHp / taken:0.0} hits to die); weapon {weaponDamage} a hit, ~{turnsToWin:0} turns to win with 2 good hits a turn");
+				Check(P.statLifeMax > 100 || type == NPCID.KingSlime, $"{label}'s kit left max HP at {P.statLifeMax}");
+				Check(P.inventory[0].type != ownWeapon, $"{label}'s kit didn't give a weapon");
+			}
+			kit.Restore();
+			Check(P.inventory[0].type == ownWeapon && P.statLifeMax == ownMax, $"own gear not back: weapon {P.inventory[0].type}, max HP {P.statLifeMax}");
+
+			// In a real battle: the kit goes on, and comes off when it ends
+			kit.Apply(NPCID.EyeofCthulhu);
+			yield return StartWith(NPCID.EyeofCthulhu);
+			Check(kit.Testing && P.inventory[0].type == ItemID.PlatinumBroadsword, "the Eye's kit isn't on in the battle");
+			yield return Menu();
+			foreach (NPC m in B.LabTarget.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
+			Check(!kit.Testing && P.inventory[0].type == ownWeapon, "the kit stayed on after the battle");
+			P.statLife = 500;
 		}
 
 		/// <summary>Boss hits scale to a fair number of turns; potions bring on potion sickness; slime bullets keep their colour.</summary>
