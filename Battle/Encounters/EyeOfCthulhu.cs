@@ -148,7 +148,7 @@ namespace MercyMode.Battle.Encounters
 				() => new EchoTrail(EyeTear)
 				{
 					Delay = hard ? 30 : 38, RecordEvery = hard ? 5 : 6, Warn = 18, LeadIn = 20,
-					From = b => b.PartScreen(b.Boss),
+					From = IrisSpot,
 				},
 				() => new ServantSwarm(hard),
 				// Deltarune's sword throwers: servants bob off to the side and hurl tears at you
@@ -158,8 +158,8 @@ namespace MercyMode.Battle.Encounters
 				() => hard
 					? new Combo(BattleConstants.DefaultEnemyTurnTicks, new Beam(38) { Width = 18f, Warn = 30 }, new TearRain(false))
 					: new Beam(46) { Width = 16f, Warn = 34 },
-				// Tears gather around the SOUL, then fall in on it
-				() => new Converge(EyeTear, hard ? 50 : 66) { Count = hard ? 10 : 8, Speed = hard ? 4.6f : 3.8f },
+				// Tears gather around the SOUL, then fall in on it all at once: few and far enough apart to read
+				() => new Converge(EyeTear, hard ? 90 : 100) { Count = hard ? 6 : 5, Warn = 48, Speed = hard ? 3.8f : 3.4f },
 				// A ring of tears forms around you and fires in one at a time: few enough to track, harmless until thrown
 				() => new RingVolley(EyeTear, 150) { Count = hard ? 7 : 6, Gap = hard ? 11 : 13, Speed = hard ? 3.8f : 3.4f, SafeWhileCircling = true },
 				// Rings of blood close in, each with one way out: three of them, one at a time
@@ -178,6 +178,13 @@ namespace MercyMode.Battle.Encounters
 
 		/// <summary>A tear of blood (drawn by hand: dark red, a tail along its path, dripping).</summary>
 		private static Bullet EyeTear(Vector2 p, Vector2 v) => Shots.Blood(p, v, 1.2f, 0.9f);
+
+		/// <summary>
+		/// The iris on the battle screen: the sprite's eyeball is the bottom of the frame (it looks down), about 48
+		/// pixels from the sprite's centre, turned by <see cref="DrawRotation"/> so it faces the party.
+		/// </summary>
+		private Vector2 IrisSpot(BattleSystem battle) =>
+			battle.PartScreen(battle.Boss) + new Vector2(0f, 48f).RotatedBy(DrawRotation(0));
 
 		// ================================================================== patterns
 
