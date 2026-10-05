@@ -346,12 +346,12 @@ namespace MercyMode.Battle.Encounters
 
 			public override void Update(BattleSystem battle, int tick)
 			{
-				// A ring every 100 ticks from the start: three in a turn, with time to read each one
-				if (tick < 10 || (tick - 10) % 100 != 0 || tick > Duration - 110)
+				// A ring every 120 ticks from the start: three in a turn, each gone before the next forms
+				if (tick < 10 || (tick - 10) % 120 != 0 || tick > Duration - 120)
 					return;
 				Vector2 center = battle.Box.Center.ToVector2();
-				// 18 drops with four missing in a row: an opening you can see and fit through, its edges glowing
-				const int count = 18, gapSize = 4;
+				// 12 drops with three missing in a row: nine on screen at once, an opening you can see and fit through, its edges glowing
+				const int count = 12, gapSize = 3;
 				int gap = Main.rand.Next(count);
 				AttackSfx.Appear();
 				for (int i = 0; i < count; i++)
