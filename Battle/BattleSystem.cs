@@ -316,6 +316,10 @@ namespace MercyMode.Battle
 				AmbienceMute.BoostMusic(ModContent.GetInstance<MercyConfig>()?.BossMusicBoost ?? 1.6f);
 
 			firstStrike = OpensWithStrike(reason);
+			// A -test run is timed and its turns counted
+			testRun = Player.GetModPlayer<TestLoadoutPlayer>().Testing;
+			testTurns = 0;
+			testClock.Restart();
 			firstStrikeAskedAt = 0;
 			SetText(OpeningText());
 			SetPhase(Phase.Intro);
@@ -360,6 +364,7 @@ namespace MercyMode.Battle
 		private void End(bool killPlayer = false)
 		{
 			Mod.Logger.Info($"Battle ended (enemy alive: {encounter?.Alive}, player dead: {Player.dead}, killed by the battle: {killPlayer})");
+			ReportTestRun(killPlayer);
 			lastEndTick = (uint)Main.GameUpdateCount;
 			// Lost (the SOUL broke): the enemies leave instead of carrying on, like a boss leaving when its target dies;
 			// nothing is killed, so no loot, no kill credit, no achievement. In multiplayer the server does this once the
@@ -419,6 +424,44 @@ namespace MercyMode.Battle
 				Player.immune = true;
 				Player.immuneTime = Math.Max(Player.immuneTime, 60);
 			}
+		}
+
+		// ---- -test runs: turns and time ----
+
+		private bool testRun;
+		private int testTurns;
+		/// <summary>The last -test run's report.</summary>
+		internal static string LastTestReport;
+		private readonly System.Diagnostics.Stopwatch testClock = new();
+
+		private static string Clock(TimeSpan t) => $"{(int)t.TotalMinutes}:{t.Seconds:00}";
+
+		/// <summary>The turn and the clock in the corner, during a -test run.</summary>
+		private void DrawTestRun()
+		{
+			if (!testRun || phase == Phase.None)
+				return;
+			string text = $"TEST  TURN {Math.Max(1, testTurns)}  {Clock(testClock.Elapsed)}";
+			float w = DrDraw.Measure(text, DrDraw.SmallFont) * 0.8f;
+			DrDraw.Rect(ScreenWidth - w - 14, 4, w + 10, 18, Color.Black * 0.6f);
+			DrDraw.Text(text, ScreenWidth - w - 9, 5, MercyMode.MercyYellow, DrDraw.SmallFont, 0.8f);
+		}
+
+		/// <summary>How a -test run went, in chat (before the player's own gear comes back).</summary>
+		private void ReportTestRun(bool lost)
+		{
+			if (!testRun)
+				return;
+			testRun = false;
+			testClock.Stop();
+			string name = encounter?.Name ?? boss?.FullName ?? "the boss";
+			string result = lost ? "LOST" : encounter != null && !encounter.Alive ? "WON" : "ENDED";
+			string hp = lost ? "" : $", {Math.Max(0, Player.statLife)}/{Player.statLifeMax2} HP left";
+			string text = $"* Test run vs {name}: {result} after {testTurns} turn{(testTurns == 1 ? "" : "s")} in {Clock(testClock.Elapsed)}{hp}.";
+			Mod.Logger.Info(text);
+			LastTestReport = text;
+			if (!Main.dedServ)
+				Main.NewText(text, MercyMode.MercyYellow);
 		}
 
 		/// <summary>Removes the battle's enemies from the world, every part of them, without killing them.</summary>
@@ -1384,6 +1427,7 @@ namespace MercyMode.Battle
 			WithNetRand(() =>
 			{
 				attack = BuildEnemyTurn();
+				testTurns++;
 				BeginSoulMode(attack.Soul);
 			});
 			turnTimer = attack.Duration;
@@ -1844,6 +1888,7 @@ namespace MercyMode.Battle
 				DrawDuelOppBeam();
 				DrawEffects();
 				DrawFirstStrikeLine();
+				DrawTestRun();
 				if (arenaBlend > 0f)
 				{
 					// A full-screen attack: everything, the HUD included, goes black; only the arena's border,

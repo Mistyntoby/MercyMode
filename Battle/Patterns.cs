@@ -34,22 +34,23 @@ namespace MercyMode.Battle
 		/// A drop of blood: a dark red bead with a tail stretched back along its path, a glint, and drips falling off it.
 		/// Drawn by hand, so it looks the same whatever Deltarune files there are.
 		/// </summary>
-		public static Bullet Blood(Vector2 pos, Vector2 vel, float scale = 1f, float damage = 0.9f)
+		public static Bullet Blood(Vector2 pos, Vector2 vel, float scale = 1f, float damage = 0.9f, bool drips = true)
 		{
-			var body = new Color(170, 12, 24);
-			var dark = new Color(90, 0, 10);
+			// Bright and big enough to read at a glance
+			var body = new Color(235, 25, 40);
+			var dark = new Color(150, 0, 18);
 			var b = new Bullet
 			{
 				Position = pos,
 				Velocity = vel,
 				Scale = scale,
-				HitSize = new Vector2(9, 9) * scale,
+				HitSize = new Vector2(10, 10) * scale,
 				DamageMult = damage,
 				Color = body,
 			};
 			b.OnDraw = x =>
 			{
-				float r = 4.5f * x.Scale;
+				float r = 5.5f * x.Scale;
 				Color tint = (x.Flash > 0 ? Color.Lerp(body, Color.White, 0.6f) : x.Color) * x.Alpha;
 				Vector2 back = x.Velocity.LengthSquared() > 0.01f ? -Vector2.Normalize(x.Velocity) : new Vector2(0f, -1f);
 				float stretch = MathHelper.Clamp(x.Velocity.Length() * 2.2f, 3f, 12f) * x.Scale;
@@ -58,7 +59,8 @@ namespace MercyMode.Battle
 				DrDraw.Line(x.Position + back * stretch * 0.4f, x.Position + back * stretch * 1.3f, r * 0.7f, dark * (0.8f * x.Alpha));
 				DrDraw.Ball(x.Position, r, tint);
 			};
-			return b.Dripping(dark, 7);
+			// Fewer, bigger drips (lots of small ones were noise)
+			return drips ? b.Dripping(new Color(200, 10, 28), 14, 4f) : b;
 		}
 
 		/// <summary>A bullet drawn with a Terraria NPC's sprite, animated through its frames.</summary>

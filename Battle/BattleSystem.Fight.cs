@@ -67,7 +67,7 @@ namespace MercyMode.Battle
 			(ModContent.GetInstance<MercyConfig>()?.FightDamageMultiplier ?? 1f) * (float)Math.Sqrt(Math.Max(1f, Main.GameModeInfo.EnemyMaxLifeMultiplier));
 
 		/// <summary>About how many turns of a weapon typical for its stage a boss takes to beat.</summary>
-		public const int BossTargetTurns = 12;
+		public const int BossTargetTurns = 16;
 
 		/// <summary>
 		/// Where a boss sits in a normal playthrough, from what players usually have when they reach it (normal mode):

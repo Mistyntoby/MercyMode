@@ -347,16 +347,28 @@ namespace MercyMode.Battle.Encounters
 				if (tick < 10 || (tick - 10) % 70 != 0 || tick > Duration - 110)
 					return;
 				Vector2 center = battle.Box.Center.ToVector2();
-				const int count = 16;
+				// 18 drops with four missing in a row: an opening you can see and fit through, its edges glowing
+				const int count = 18, gapSize = 4;
 				int gap = Main.rand.Next(count);
 				for (int i = 0; i < count; i++)
 				{
-					if (i == gap || i == (gap + 1) % count)
+					int fromGap = (i - gap + count) % count;
+					if (fromGap < gapSize)
 						continue;
 					float a = MathHelper.TwoPi * i / count;
 					Vector2 dir = a.ToRotationVector2();
-					Bullet drop = Shots.Blood(center + dir * 120f, -dir * 1.1f, 1.3f, 1.1f);
+					// No drips here: they cluttered the ring and hid the opening
+					Bullet drop = Shots.Blood(center + dir * 120f, -dir * 1.1f, 1.3f, 1.1f, drips: false);
 					drop.Lifetime = 115;
+					if (fromGap == gapSize || fromGap == count - 1)
+					{
+						var draw = drop.OnDraw;
+						drop.OnDraw = x =>
+						{
+							DrDraw.Glow(x.Position, 16f, Color.White * (0.55f * x.Alpha));
+							draw(x);
+						};
+					}
 					battle.Spawn(drop);
 				}
 			}

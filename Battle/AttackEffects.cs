@@ -189,13 +189,13 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>Drips that fall away from it (gel, poison, blood).</summary>
-		public static Bullet Dripping(this Bullet b, Color color, int every = 9)
+		public static Bullet Dripping(this Bullet b, Color color, int every = 9, float size = 2.5f)
 		{
 			b.OnUpdate += x =>
 			{
 				if (x.Age % every != 0 || BattleSystem.Instance == null)
 					return;
-				BattleSystem.Instance.AddEffect(new Sparks(x.Position + new Vector2(Main.rand.NextFloat(-3f, 3f), x.HitSize.Y / 2f), new Vector2(0f, 0.3f), color, 2.5f, 0.12f, 0.05f));
+				BattleSystem.Instance.AddEffect(new Sparks(x.Position + new Vector2(Main.rand.NextFloat(-3f, 3f), x.HitSize.Y / 2f), new Vector2(0f, 0.3f), color, size, 0.12f, 0.05f));
 			};
 			return b;
 		}

@@ -1363,6 +1363,8 @@ namespace MercyMode.Lab
 				m.active = false;
 			yield return WaitForEnd();
 			Check(!kit.Testing && P.inventory[0].type == ownWeapon, "the kit stayed on after the battle");
+			Log($"  {BattleSystem.LastTestReport}");
+			Check(BattleSystem.LastTestReport?.Contains("turn") == true, "no turn and time report after the test run");
 			P.statLife = 500;
 		}
 
@@ -1378,7 +1380,7 @@ namespace MercyMode.Lab
 			float scale = BattleSystem.HitScale(eye);
 			float turns30 = eye.LifeMax / (30f * scale);
 			Log($"  Eye of Cthulhu: {eye.LifeMax} HP, hits x{scale:0.0}; a 30-damage turn wins in {turns30:0.0} turns");
-			Check(turns30 > 9f && turns30 < 15f, $"a fair weapon takes {turns30:0.0} turns");
+			Check(turns30 > 13f && turns30 < 19f, $"a fair weapon takes {turns30:0.0} turns");
 
 			// Boss bullets against a typical player for the stage: an ordinary one takes about a tenth of the bar
 			foreach (var (type, label) in new[] { (NPCID.KingSlime, "King Slime"), (NPCID.EyeofCthulhu, "Eye of Cthulhu"), (NPCID.Plantera, "Plantera") })
