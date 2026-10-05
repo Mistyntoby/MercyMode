@@ -1668,7 +1668,7 @@ namespace MercyMode.Battle
 			// Bosses: sized against a typical player for their stage (contact damage left early hits at 1-5 after
 			// defense, and King Slime's 40 was a third of a starting health bar)
 			int damage = by != null && by.IsBoss && duelWith < 0
-				? BossBulletDamage(by, b.DamageMult)
+				? BossBulletDamage(by, b.DamageMult, Player.statDefense)
 				: Math.Max(1, (int)Math.Round((b.Owner?.Damage ?? turnDamage) * b.DamageMult));
 			Player.immune = false;
 			Player.immuneTime = 0;

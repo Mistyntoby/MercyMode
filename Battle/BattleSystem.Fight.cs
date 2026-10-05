@@ -87,23 +87,29 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>
-		/// Share of a typical player's max HP one ordinary boss bullet takes: four hits down a typical health bar
-		/// (9%, 15% and 20% all still left fights too easy at 120 HP).
+		/// Share of a typical player's max HP one ordinary boss bullet takes (five hits down a typical health bar). 25%
+		/// lost every -test run with the typical kit around turn 7, so it's back to 20%.
 		/// </summary>
-		private const float BossHitShare = 0.25f;
+		private const float BossHitShare = 0.2f;
 
 		/// <summary>
-		/// A boss bullet's damage before the player's defense: a share of the typical HP for its stage, plus the
-		/// typical defense's worth, so a player as geared as expected takes about <see cref="BossHitShare"/> of a
-		/// typical health bar (better armour takes less, worse takes more). Expert and Master hit a little harder.
-		/// <paramref name="mult"/> is the bullet's own multiplier (0.8 is an ordinary bullet).
+		/// A boss bullet's damage before Terraria's own defense step. The bullet hits a player geared like the stage's
+		/// typical kit for <see cref="BossHitShare"/> of that kit's health bar; armour then counts as a ratio against
+		/// the kit's (<paramref name="playerDefense"/> + k) / (kit defense + k), with k = kit defense + 10, instead of
+		/// Terraria's flat half-defense, which hardly mattered against hits this size. Against the Eye of Cthulhu
+		/// (Platinum, 16): Iron takes about 27% more, Molten about 18% less, Hallowed about 45% less. The player's
+		/// defense is added back on top, so Terraria's own subtraction cancels and only the ratio counts. Expert and
+		/// Master hit a little harder. <paramref name="mult"/> is the bullet's own multiplier (0.8 is an ordinary bullet).
 		/// </summary>
-		public static int BossBulletDamage(Encounter e, float mult)
+		public static int BossBulletDamage(Encounter e, float mult, int playerDefense)
 		{
 			var (_, hp, defense) = BossStage(e.Npc?.type ?? 0);
 			float mode = (float)Math.Sqrt(Math.Max(1f, Main.GameModeInfo.EnemyDamageMultiplier));
 			float defenseTaken = Main.masterMode ? 1f : Main.expertMode ? 0.75f : 0.5f;
-			return Math.Max(1, (int)Math.Round(hp * BossHitShare * (mult / 0.8f) * mode + defense * defenseTaken));
+			float k = defense + 10f;
+			float armour = (defense + k) / (Math.Max(0, playerDefense) + k);
+			float hit = hp * BossHitShare * (mult / 0.8f) * mode * armour;
+			return Math.Max(1, (int)Math.Round(hit + Math.Max(0, playerDefense) * defenseTaken));
 		}
 
 		/// <summary>Players a boss's health counts: everyone on the server, but never more than three.</summary>

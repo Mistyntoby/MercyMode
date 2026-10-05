@@ -1339,9 +1339,9 @@ namespace MercyMode.Lab
 				sample.SetDefaults(type);
 				var enc = EncounterRegistry.Create(sample);
 				int weaponDamage = P.GetWeaponDamage(P.inventory[0]);
-				int raw = BattleSystem.BossBulletDamage(enc, 0.8f);
 				// (The lab's player never runs Terraria's equipment update, so the armour's own defense is added up here)
 				int armour = P.armor[0].defense + P.armor[1].defense + P.armor[2].defense;
+				int raw = BattleSystem.BossBulletDamage(enc, 0.8f, armour);
 				int taken = Math.Max(1, raw - armour / 2);
 				float scale = BattleSystem.HitScale(enc);
 				float turnsToWin = enc.LifeMax / Math.Max(1f, weaponDamage * 2f * scale);
@@ -1390,10 +1390,13 @@ namespace MercyMode.Lab
 				sample.SetDefaults(type);
 				var enc = EncounterRegistry.Create(sample);
 				var (_, hp, def) = BattleSystem.BossStage(type);
-				int raw = BattleSystem.BossBulletDamage(enc, 0.8f);
+				int raw = BattleSystem.BossBulletDamage(enc, 0.8f, (int)def);
 				float taken = raw - def * 0.5f;
-				Log($"  {label}: ordinary bullet {raw} raw, {taken:0} to a typical {hp:0} HP / {def:0} defense player ({taken / hp:P0})");
-				Check(taken / hp > 0.21f && taken / hp < 0.3f, $"{label}'s bullets take {taken / hp:P0} of a typical health bar");
+				// Armour counts: the stage's armour takes the standard hit, no armour takes more, twice the armour less
+				float bare = BattleSystem.BossBulletDamage(enc, 0.8f, 0), heavy = BattleSystem.BossBulletDamage(enc, 0.8f, (int)def * 2) - def;
+				Log($"  {label}: ordinary bullet {taken:0} to a typical {hp:0} HP / {def:0} defense player ({taken / hp:P0}); no armour {bare:0}, double armour {heavy:0}");
+				Check(taken / hp > 0.17f && taken / hp < 0.23f, $"{label}'s bullets take {taken / hp:P0} of a typical health bar");
+				Check(bare > taken * 1.1f && heavy < taken * 0.9f, $"{label}: armour barely matters (none {bare}, typical {taken}, double {heavy})");
 			}
 
 			// A slime bullet is drawn blue, not grey
