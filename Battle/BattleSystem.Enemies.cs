@@ -247,16 +247,44 @@ namespace MercyMode.Battle
 			if (first.FullScreen || second.FullScreen)
 			{
 				EnemyAttack big = first.FullScreen ? first : second;
-				return new OwnedAttack(boss, big);
+				return new OwnedAttack(boss, big) { DamageScale = 1.15f };
 			}
-			// Everything it's got: both attacks at once, harder and for longer
-			int length = (int)(Math.Max(first.Duration, second.Duration) * 1.6f);
-			if (first is RepeatingAttack r1)
-				r1.StopBeforeEnd = Math.Max(40, r1.StopBeforeEnd);
-			if (second is RepeatingAttack r2)
-				r2.StopBeforeEnd = Math.Max(40, r2.StopBeforeEnd);
-			first.Duration = second.Duration = length;
-			return new Combo(length, new OwnedAttack(boss, first) { DamageScale = 1.15f }, new OwnedAttack(boss, second) { DamageScale = 1.15f });
+			// The second half has to work with the same SOUL as the first (the turn has one): look a little further
+			// along its moves for one that does
+			for (int tries = 0; tries < 6 && (second.Soul != first.Soul || second.FullScreen); tries++)
+			{
+				WithEnemy(boss, () => second = boss.E.NextAttack(this));
+				boss.E.Turn++;
+			}
+			// Everything it's got: two of its attacks back to back, each at its own length, hitting harder. (Run
+			// together and stretched, they piled rings on rings that couldn't be dodged.)
+			if (second.Soul != first.Soul || second.FullScreen)
+				return new OwnedAttack(boss, first) { DamageScale = 1.15f };
+			return new Sequence(new OwnedAttack(boss, first) { DamageScale = 1.15f }, new OwnedAttack(boss, second) { DamageScale = 1.15f })
+			{
+				Soul = first.Soul,
+			};
+		}
+
+		/// <summary>Two attacks one after the other in one turn (the second starts when the first's time is up).</summary>
+		private sealed class Sequence : EnemyAttack
+		{
+			private readonly EnemyAttack first, second;
+
+			public Sequence(EnemyAttack first, EnemyAttack second)
+			{
+				this.first = first;
+				this.second = second;
+				Duration = first.Duration + second.Duration;
+			}
+
+			public override void Update(BattleSystem battle, int tick)
+			{
+				if (tick <= first.Duration)
+					first.Update(battle, tick);
+				else
+					second.Update(battle, tick - first.Duration);
+			}
 		}
 
 		/// <summary>Runs one enemy's attack, tagging its bullets as its own.</summary>
