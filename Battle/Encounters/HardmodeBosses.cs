@@ -451,7 +451,7 @@ namespace MercyMode.Battle.Encounters
 				// Seeds land around the box, then sprout thorns
 				() => new SeedBombs(Hard ? 44 : 54) { Seeds = Hard ? 4 : 3 },
 				() => new AimedBursts(seed, Hard ? 22 : 32) { Count = Hard ? 5 : 3, Speed = 2.8f, Spread = 0.3f },
-				() => new Bouncers(thorn, Hard ? 26 : 34) { Bounce = 1f },
+				() => new Bouncers(thorn, Hard ? 26 : 34) { BounceSpeed = 4.2f },
 				() => new Converge(poison, Hard ? 50 : 66) { Count = Hard ? 10 : 8, Speed = Hard ? 4.4f : 3.8f, RotationOffset = MathHelper.PiOver2 },
 				() => new Orbiters(tentacle, Hard ? 90 : 120) { Count = Hard ? 8 : 6, AngularSpeed = 0.03f },
 				// Phase 2: it lunges with its jaws

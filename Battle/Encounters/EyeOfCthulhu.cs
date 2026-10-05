@@ -362,7 +362,8 @@ namespace MercyMode.Battle.Encounters
 					float a = MathHelper.TwoPi * i / count;
 					Vector2 dir = a.ToRotationVector2();
 					// No drips here: they cluttered the ring and hid the opening. Softer than an ordinary tear
-					Bullet drop = Shots.Blood(center + dir * Radius, Vector2.Zero, 1.3f, 0.8f, drips: false);
+					// 0.6: about 30 in the Eye's kit armour (Platinum), scaled by armour like every boss bullet
+					Bullet drop = Shots.Blood(center + dir * Radius, Vector2.Zero, 1.3f, 0.6f, drips: false);
 					drop.Harmful = false;
 					drop.Alpha = 0f;
 					drop.Lifetime = Form + (int)((Radius - GoneAt) / Speed) + 2;

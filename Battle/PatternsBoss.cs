@@ -445,6 +445,8 @@ namespace MercyMode.Battle
 	public class ShockwaveRings : RepeatingAttack
 	{
 		public float GrowSpeed = 1.5f, Thickness = 5f, GapAngle = 1.1f;
+		/// <summary>How far from the SOUL a slam lands at the least.</summary>
+		public float MinFromSoul = 60f;
 		public int Warn = 26, RingsPerSlam = 2, RingGap = 22;
 		public Color Color = new(90, 150, 255);
 
@@ -457,7 +459,14 @@ namespace MercyMode.Battle
 		protected override void Spawn(BattleSystem battle, int index)
 		{
 			Rectangle box = battle.Box;
-			Vector2 origin = new(Main.rand.NextFloat(box.Left + 30, box.Right - 30), Main.rand.NextFloat(box.Top + 30, box.Bottom - 30));
+			// Never right on the SOUL: a ring starting under it hit before there was time to move
+			Vector2 origin = Vector2.Zero;
+			for (int tries = 0; tries < 30; tries++)
+			{
+				origin = new(Main.rand.NextFloat(box.Left + 30, box.Right - 30), Main.rand.NextFloat(box.Top + 30, box.Bottom - 30));
+				if (Vector2.Distance(origin, battle.SoulCenter) >= MinFromSoul)
+					break;
+			}
 			// The first gap points at the SOUL's side of the spot, give or take
 			float gap = (battle.SoulCenter - origin).ToRotation() + Main.rand.NextFloat(-0.6f, 0.6f);
 			float maxR = new Vector2(box.Width, box.Height).Length();
@@ -496,6 +505,9 @@ namespace MercyMode.Battle
 						if (!x.Harmful)
 							return false;
 						float radius = (x.Age - warn) * grow;
+						// Harmless while it's still the slam itself
+						if (radius < 14f)
+							return false;
 						Vector2 d = r.Center.ToVector2() - origin;
 						if (Math.Abs(d.Length() - radius) > thick + Math.Max(r.Width, r.Height) / 2f)
 							return false;

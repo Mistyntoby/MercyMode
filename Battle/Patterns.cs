@@ -272,7 +272,8 @@ namespace MercyMode.Battle
 	{
 		public Func<Vector2, Vector2, Bullet> Make;
 		public float Gravity = 0.09f;
-		public float Bounce = 0.92f;
+		/// <summary>Sideways speed, and the upward speed of every bounce (the same height each time).</summary>
+		public float Speed = 1.2f, BounceSpeed = 3.6f;
 
 		public Bouncers(Func<Vector2, Vector2, Bullet> make, int every = 28)
 		{
@@ -284,19 +285,21 @@ namespace MercyMode.Battle
 		protected override void Spawn(BattleSystem battle, int index)
 		{
 			Rectangle box = battle.Box;
-			bool fromLeft = Main.rand.NextBool();
-			var pos = new Vector2(fromLeft ? box.Left - 20 : box.Right + 20, box.Top + Main.rand.NextFloat(0, 40));
-			var vel = new Vector2((fromLeft ? 1 : -1) * Main.rand.NextFloat(0.8f, 1.6f), Main.rand.NextFloat(-1f, 0.5f));
+			// Readable: they come from each side in turn, at one speed and height, and every bounce is the same
+			// height, so the rhythm can be learned (random speeds, heights and bounces were all over the place)
+			bool fromLeft = index % 2 == 0;
+			var pos = new Vector2(fromLeft ? box.Left - 20 : box.Right + 20, box.Top + 10);
+			var vel = new Vector2((fromLeft ? 1 : -1) * Speed, 0f);
 			Bullet b = Make(pos, vel);
 			b.Acceleration = new Vector2(0, Gravity);
 			float floor = box.Bottom - 6 - b.HitSize.Y / 2f;
-			float bounce = Bounce;
+			float hop = BounceSpeed;
 			b.OnUpdate += x =>
 			{
 				if (x.Position.Y > floor && x.Velocity.Y > 0)
 				{
 					x.Position.Y = floor;
-					x.Velocity.Y = -Math.Max(2.2f, x.Velocity.Y * bounce);
+					x.Velocity.Y = -hop;
 					battle.AddEffect(new Sparks(new Vector2(x.Position.X - 4, floor + x.HitSize.Y / 2f), new Vector2(-1.2f, -0.6f), x.Color, 3f, 0.08f));
 					battle.AddEffect(new Sparks(new Vector2(x.Position.X + 4, floor + x.HitSize.Y / 2f), new Vector2(1.2f, -0.6f), x.Color, 3f, 0.08f));
 				}
