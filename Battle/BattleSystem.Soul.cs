@@ -353,7 +353,7 @@ namespace MercyMode.Battle
 					AddEffect(new SpriteAnim("spr_yheart_shot_hit", s.Pos, 0.25f, s.Big ? 3f : 1f));
 					if (!toughness.TryGetValue(b, out int left))
 						left = b.Toughness > 0 ? b.Toughness : Math.Max(b.HitSize.X, b.HitSize.Y) >= 18f ? 3 : 1;
-					left -= s.Damage;
+					left -= b.MaxShotDamage > 0 ? Math.Min(s.Damage, b.MaxShotDamage) : s.Damage;
 					b.Flash = 6;
 					if (left <= 0)
 					{

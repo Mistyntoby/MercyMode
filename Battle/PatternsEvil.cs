@@ -105,6 +105,8 @@ namespace MercyMode.Battle
 		public int Head, Body, Tail;
 		public float Scale = 0.7f, Damage = 0.8f;
 		public Vector2 HeadHit = new(16, 16), BodyHit = new(13, 13);
+		/// <summary>Armour: the most a single yellow shot (even a charged one) takes off a segment.</summary>
+		public int ShotCap = 2;
 
 		public static readonly WormLook Eater = new() { Head = NPCID.EaterofWorldsHead, Body = NPCID.EaterofWorldsBody, Tail = NPCID.EaterofWorldsTail };
 
@@ -112,6 +114,10 @@ namespace MercyMode.Battle
 		{
 			Bullet b = Shots.Npc(type, at, Vector2.Zero, Scale, Damage, hit, rotate: false);
 			b.Toughness = toughness;
+			b.MaxShotDamage = ShotCap;
+			// Heads glow in the dark (Underground)
+			if (type == Head)
+				b.Light = 20f;
 			b.Lifetime = 2000;
 			b.OffscreenMargin = 400f;
 			return b;
@@ -140,6 +146,7 @@ namespace MercyMode.Battle
 			b.Texture = look.Texture;
 			b.Source = look.Source;
 			b.HitSize = HeadHit;
+			b.Light = 20f;
 			b.Flash = 6;
 		}
 	}
@@ -151,8 +158,10 @@ namespace MercyMode.Battle
 	public class SplittingWorms : RepeatingAttack
 	{
 		public WormLook Look = WormLook.Eater;
-		public int Segments = 9, Toughness = 2;
+		public int Segments = 9, Toughness = 3;
 		public float Speed = 1.5f, Wave = 1.1f, SplitSpeed = 1.9f;
+		/// <summary>How hard a worm that split off turns toward the SOUL (radians a tick).</summary>
+		public float Hunt = 0.025f;
 		/// <summary>Red SOUL instead: the worm splits by itself in the middle of the box, into three.</summary>
 		public bool SplitsItself;
 		private readonly List<WormRig> rigs = new();
@@ -252,8 +261,15 @@ namespace MercyMode.Battle
 			for (int k = segs.Count - 1; k >= 0; k--)
 				rig.Path.Add(segs[k].Position);
 			rig.Segs.AddRange(segs);
-			Vector2 v = vel;
-			rig.Steer = (r, age) => r.Vel = v;
+			float hunt = Hunt;
+			rig.Steer = (r, age) =>
+			{
+				// It hunts you for a while, then gives up and carries on
+				if (age > 150 || hunt <= 0f)
+					return;
+				float want = (battle.SoulCenter - r.HeadPos).ToRotation(), now = r.Vel.ToRotation();
+				r.Vel = (now + MathHelper.Clamp(MathHelper.WrapAngle(want - now), -hunt, hunt)).ToRotationVector2() * r.Vel.Length();
+			};
 			rigs.Add(rig);
 		}
 	}
@@ -267,6 +283,8 @@ namespace MercyMode.Battle
 		public WormLook Look = WormLook.Eater;
 		public int Segments = 8, Warn = 40;
 		public float Gravity = 0.1f, Launch = 6.1f;
+		/// <summary>Once past the top of its leap it turns toward the SOUL this much a tick as it dives.</summary>
+		public float Hunt = 0.07f;
 		private readonly List<WormRig> rigs = new();
 
 		public Eruption(int every = 90)
@@ -287,9 +305,10 @@ namespace MercyMode.Battle
 			// The ground cracking: a column flashes with dirt kicked up at the bottom of the box
 			battle.Spawn(new Bullet
 			{
-				Position = new Vector2(x, box.Bottom),
+				Position = new Vector2(x, box.Bottom - 6f),
 				Harmful = false,
 				Lifetime = warn,
+				Light = 16f,
 				OnDraw = b =>
 				{
 					float a = b.Age / 3 % 2 == 0 ? 0.4f : 0.18f;
@@ -314,7 +333,25 @@ namespace MercyMode.Battle
 					if (b.Age != warn)
 						return;
 					WormRig rig = Look.Build(battle, new Vector2(x, box.Bottom + 30f), new Vector2(drift, -launch), segments, 13f);
-					rig.Steer = (r, age) => r.Vel.Y += gravity;
+					float hunt = Hunt;
+					bool diving = false;
+					rig.Steer = (r, age) =>
+					{
+						if (!diving)
+						{
+							r.Vel.Y += gravity;
+							diving = r.Vel.Y > 0f;
+							if (diving)
+								AttackSfx.Vanilla(SoundID.Roar, 0.3f, 0.5f);
+							return;
+						}
+						// Over the top: it turns and dives at the SOUL, picking up speed
+						float speed = Math.Min(5.5f, r.Vel.Length() + gravity);
+						float want = (battle.SoulCenter - r.HeadPos).ToRotation(), now = r.Vel.ToRotation();
+						if (r.HeadPos.Y < battle.SoulCenter.Y + 10f)
+							now += MathHelper.Clamp(MathHelper.WrapAngle(want - now), -hunt, hunt);
+						r.Vel = now.ToRotationVector2() * speed;
+					};
 					rigs.Add(rig);
 					battle.ShakeScreen(3f);
 					AttackSfx.Vanilla(SoundID.Roar, 0.45f, 0.2f);
@@ -327,7 +364,9 @@ namespace MercyMode.Battle
 			base.Update(battle, tick);
 			foreach (WormRig rig in rigs)
 				rig.Step();
-			rigs.RemoveAll(rig => rig.HeadPos.Y > battle.Box.Bottom + 260f);
+			Rectangle far = battle.Box;
+			far.Inflate(300, 300);
+			rigs.RemoveAll(rig => !far.Contains(rig.HeadPos.ToPoint()));
 		}
 	}
 
@@ -720,6 +759,307 @@ namespace MercyMode.Battle
 			b.RotateWithVelocity = false;
 			b.OnUpdate += x => x.Rotation += 0.2f;
 			battle.Spawn(b);
+		}
+	}
+
+	/// <summary>
+	/// "It knows what you're going to do": Ichor marks land where the SOUL is heading (a moment ahead of it), then
+	/// splash. Running straight walks into them; standing still gets one dropped on you.
+	/// </summary>
+	public class MindRead : RepeatingAttack
+	{
+		public int Warn = 34, Active = 14, Lead = 34;
+		public float Radius = 13f;
+		public Color Color = new(255, 210, 60);
+		private Vector2 last, vel;
+
+		public MindRead(int every = 26)
+		{
+			Every = every;
+			FirstAt = 20;
+			StopBeforeEnd = 60;
+		}
+
+		public override void Update(BattleSystem battle, int tick)
+		{
+			Vector2 now = battle.SoulCenter;
+			if (tick > 1)
+				vel = Vector2.Lerp(vel, now - last, 0.25f);
+			last = now;
+			base.Update(battle, tick);
+		}
+
+		protected override void Spawn(BattleSystem battle, int index)
+		{
+			Rectangle box = battle.Box;
+			Vector2 at = battle.SoulCenter + vel * Lead;
+			at.X = MathHelper.Clamp(at.X, box.Left + 10, box.Right - 10);
+			at.Y = MathHelper.Clamp(at.Y, box.Top + 10, box.Bottom - 10);
+			int warn = Warn, active = Active;
+			float radius = Radius;
+			Color color = Color;
+			battle.Spawn(new Bullet
+			{
+				Position = at,
+				Harmful = false,
+				DestroyOnHit = false,
+				HitSize = new Vector2(radius * 1.6f),
+				Lifetime = warn + active,
+				OnUpdate = x =>
+				{
+					if (x.Age == warn)
+					{
+						x.Harmful = true;
+						AttackSfx.Vanilla(SoundID.NPCDeath13, 0.35f, 0.3f);
+					}
+				},
+				OnDraw = x =>
+				{
+					if (x.Age < warn)
+					{
+						// A shrinking ring where it'll land, filling in as it gets close
+						float k = x.Age / (float)warn;
+						for (int i = 0; i < 12; i++)
+						{
+							float a = i * MathHelper.TwoPi / 12f + x.Age * 0.05f;
+							DrDraw.Ball(at + a.ToRotationVector2() * radius * (2f - k), 1.5f, color * (0.4f + 0.5f * k));
+						}
+						DrDraw.Ball(at, radius * k * 0.6f, color * 0.25f);
+						return;
+					}
+					float fade = 1f - (x.Age - warn) / (float)active;
+					DrDraw.Glow(at, radius * 1.6f, color * (0.5f * fade));
+					DrDraw.Ball(at, radius, color * fade);
+					for (int i = 0; i < 6; i++)
+					{
+						float a = i * MathHelper.TwoPi / 6f;
+						DrDraw.Ball(at + a.ToRotationVector2() * radius * (1f + (x.Age - warn) * 0.08f), 2.5f, color * fade);
+					}
+				},
+			});
+		}
+	}
+
+	/// <summary>
+	/// The Brain shows you your own reflection: a dark SOUL mirrors yours through the middle of the box. Touch it and
+	/// it hurts, so the centre is where you meet it.
+	/// </summary>
+	public class MirrorSoul : EnemyAttack
+	{
+		public int Fade = 40;
+
+		public override void Update(BattleSystem battle, int tick)
+		{
+			if (tick != 1)
+				return;
+			Vector2 c = battle.Box.Center.ToVector2();
+			int fade = Fade, duration = Duration;
+			AttackSfx.Vanilla(SoundID.Item8, 0.6f, -0.6f);
+			battle.Spawn(new Bullet
+			{
+				Position = c * 2f - battle.SoulCenter,
+				Harmful = false,
+				DestroyOnHit = false,
+				HitSize = new Vector2(12, 12),
+				Lifetime = duration - 4,
+				GrazePoints = 2f,
+				OnUpdate = x =>
+				{
+					x.Position = c * 2f - battle.SoulCenter;
+					x.Alpha = Math.Min(1f, x.Age / (float)fade) * (x.Age > duration - 20 ? (duration - 4 - x.Age) / 16f : 1f);
+					x.Harmful = x.Age > fade;
+				},
+				OnDraw = x =>
+				{
+					var dark = new Color(120, 30, 160);
+					DrDraw.Glow(x.Position, 14f, dark * (0.5f * x.Alpha));
+					if (!DrDraw.Sprite("spr_heart", 0, x.Position.X - 8f, x.Position.Y - 8f, dark, alpha: x.Alpha))
+						DrDraw.HeartShapeAt(x.Position.X - 8f, x.Position.Y - 8f, 16, dark * x.Alpha);
+				},
+			});
+		}
+	}
+
+	/// <summary>
+	/// A memory test: spots flash one after another, fade to faint outlines, then burst in the same order. Watch the
+	/// order, or watch the outlines.
+	/// </summary>
+	public class MemoryFlash : RepeatingAttack
+	{
+		public int Spots = 4, Step = 16, Hold = 40, Warn = 10, Active = 14;
+		public float Radius = 20f;
+		public Color Color = new(255, 120, 170);
+
+		public MemoryFlash(int every = 150)
+		{
+			Every = every;
+			StopBeforeEnd = 150;
+		}
+
+		protected override void Spawn(BattleSystem battle, int index)
+		{
+			Rectangle box = battle.Box;
+			var spots = new List<Vector2>();
+			for (int tries = 0; spots.Count < Spots && tries < 200; tries++)
+			{
+				var p = new Vector2(Main.rand.NextFloat(box.Left + 18, box.Right - 18), Main.rand.NextFloat(box.Top + 18, box.Bottom - 18));
+				if (spots.All(o => Vector2.Distance(o, p) > Radius * 2.2f))
+					spots.Add(p);
+			}
+			int n = spots.Count, step = Step, hold = Hold, warn = Warn, active = Active;
+			float radius = Radius;
+			Color color = Color;
+			for (int i = 0; i < n; i++)
+			{
+				Vector2 at = spots[i];
+				int shownAt = i * step, burstAt = n * step + hold + i * step;
+				battle.Spawn(new Bullet
+				{
+					Position = at,
+					Harmful = false,
+					DestroyOnHit = false,
+					HitSize = new Vector2(radius * 1.5f),
+					Lifetime = burstAt + warn + active,
+					OnUpdate = x =>
+					{
+						if (x.Age == shownAt)
+							AttackSfx.Vanilla(SoundID.Item4, 0.3f, -0.2f + 0.25f * (shownAt / Math.Max(1, step)));
+						if (x.Age == burstAt + warn)
+						{
+							x.Harmful = true;
+							AttackSfx.Vanilla(SoundID.Item14, 0.3f, 0.4f);
+						}
+					},
+					OnDraw = x =>
+					{
+						int t = x.Age;
+						if (t < shownAt)
+							return;
+						if (t < shownAt + 12)
+						{
+							// Its turn in the sequence: a bright flash
+							DrDraw.Glow(at, radius * 1.3f, color * 0.6f);
+							DrDraw.Ball(at, radius * 0.8f, color * 0.85f);
+						}
+						else if (t < burstAt)
+						{
+							// Then just a faint outline to remember it by
+							for (int k = 0; k < 10; k++)
+								DrDraw.Ball(at + (k * MathHelper.TwoPi / 10f).ToRotationVector2() * radius * 0.8f, 1.2f, color * 0.25f);
+						}
+						else if (t < burstAt + warn)
+						{
+							DrDraw.Ball(at, radius * 0.8f, Color.White * (t / 2 % 2 == 0 ? 0.6f : 0.3f));
+						}
+						else
+						{
+							float fade = 1f - (t - burstAt - warn) / (float)active;
+							DrDraw.Glow(at, radius * 1.5f, color * (0.6f * fade));
+							DrDraw.Ball(at, radius * 0.8f, color * fade);
+							DrDraw.Ball(at, radius * 0.35f, Color.White * fade);
+						}
+					},
+				});
+			}
+		}
+	}
+
+	/// <summary>
+	/// The Eater drags the fight underground: the box fades to black except a little light round the SOUL and
+	/// whatever glows (worm heads, the cracks they burst from). Draws itself over every other bullet.
+	/// </summary>
+	public class Underground : EnemyAttack
+	{
+		public float LightRadius = 40f, Darkness = 0.94f;
+		public int FadeIn = 30;
+		private Bullet shade;
+
+		public override void Update(BattleSystem battle, int tick)
+		{
+			if (shade == null)
+			{
+				int duration = Duration, fadeIn = FadeIn;
+				float radius = LightRadius, darkness = Darkness;
+				AttackSfx.Vanilla(SoundID.WormDig, 0.8f, -0.3f);
+				battle.ShakeScreen(3f);
+				shade = new Bullet
+				{
+					Harmful = false,
+					DestroyOnHit = false,
+					Lifetime = duration,
+					OffscreenMargin = 9999f,
+					OnDraw = x =>
+					{
+						float k = Math.Min(1f, x.Age / (float)fadeIn) * Math.Min(1f, (duration - x.Age) / 20f);
+						var lights = new List<(Vector2 At, float R)> { (battle.SoulCenter, radius) };
+						foreach (Bullet b in battle.Bullets)
+							if (b.Light > 0f && !b.Dead && !b.Waiting)
+								lights.Add((b.Position, b.Light));
+						DrawDark(battle.Box, lights, darkness * k);
+					},
+				};
+				battle.Spawn(shade);
+			}
+			shade.Position = battle.SoulCenter;
+			// Kept last in the list so it's drawn over everything else
+			if (battle.Bullets.Count > 0 && battle.Bullets[^1] != shade && battle.Bullets.Remove(shade))
+				battle.Bullets.Add(shade);
+		}
+
+		/// <summary>Darkness over the box in thin rows, leaving round holes (with a soft rim) where the lights are.</summary>
+		private static void DrawDark(Rectangle box, List<(Vector2 At, float R)> lights, float alpha)
+		{
+			const int row = 2;
+			var dark = new Color(4, 0, 10);
+			for (int y = box.Top; y < box.Bottom; y += row)
+			{
+				float cy = y + row / 2f;
+				// Each light's lit span on this row, inner (clear) and outer (half-dark rim)
+				var spans = new List<(float L, float R, bool Rim)>();
+				foreach (var (at, r) in lights)
+				{
+					float dy = cy - at.Y;
+					float outer = r * 1.35f;
+					if (Math.Abs(dy) < outer)
+					{
+						float w = (float)Math.Sqrt(outer * outer - dy * dy);
+						spans.Add((at.X - w, at.X + w, true));
+					}
+					if (Math.Abs(dy) < r)
+					{
+						float w = (float)Math.Sqrt(r * r - dy * dy);
+						spans.Add((at.X - w, at.X + w, false));
+					}
+				}
+				FillRow(box.Left, box.Right, y, row, spans.Where(s => s.Rim).Select(s => (s.L, s.R)).ToList(), dark * alpha);
+				// The rim: half dark between the outer and inner edges
+				foreach (var rim in spans.Where(s => s.Rim))
+					FillRow(rim.L, rim.R, y, row, spans.Where(s => !s.Rim).Select(s => (s.L, s.R)).ToList(), dark * (alpha * 0.55f), box);
+			}
+		}
+
+		/// <summary>Fills [left, right) on one row except where the holes are.</summary>
+		private static void FillRow(float left, float right, int y, int h, List<(float L, float R)> holes, Color color, Rectangle? clip = null)
+		{
+			if (clip is Rectangle c)
+			{
+				left = Math.Max(left, c.Left);
+				right = Math.Min(right, c.Right);
+			}
+			holes.Sort((a, b) => a.L.CompareTo(b.L));
+			float x = left;
+			foreach (var (l, r) in holes)
+			{
+				if (r <= x)
+					continue;
+				if (l > x)
+					DrDraw.Rect(x, y, Math.Min(l, right) - x, h, color);
+				x = Math.Max(x, r);
+				if (x >= right)
+					return;
+			}
+			if (x < right)
+				DrDraw.Rect(x, y, right - x, h, color);
 		}
 	}
 }

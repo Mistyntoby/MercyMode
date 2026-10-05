@@ -295,26 +295,40 @@ namespace MercyMode.Battle.Encounters
 		{
 			bool hard = LifeRatio < 0.5f;
 			// Its own Vile Spit, and the Worm Teeth it drops
-			Bullet vile(Vector2 p, Vector2 v) => Shots.Npc(NPCID.VileSpit, p, v, 0.8f, 0.8f, new Vector2(12, 12), rotate: false).Spin(0.08f);
+			// Two shots to pop, and a charged shot only counts as one
+			Bullet vile(Vector2 p, Vector2 v)
+			{
+				Bullet b = Shots.Npc(NPCID.VileSpit, p, v, 0.8f, 0.8f, new Vector2(12, 12), rotate: false).Spin(0.08f);
+				b.Toughness = 2;
+				b.MaxShotDamage = 1;
+				return b;
+			}
 			Bullet tooth(Vector2 p, Vector2 v) => Shots.Item(ItemID.WormTooth, p, v, 0.9f, 0.7f, new Vector2(8, 8), rotate: true);
 			Bullet soul(Vector2 p, Vector2 v) => Shots.Npc(NPCID.EaterofSouls, p, v, 0.7f, 0.8f, new Vector2(16, 16), rotate: false).FaceTravel();
 			return Cycle(
 				// Yellow SOUL: worms swim in; shoot a segment out and the worm splits, the back half coming for you
-				() => new SplittingWorms(hard ? 100 : 130) { Segments = hard ? 10 : 8, Speed = hard ? 1.7f : 1.5f },
+				() => new SplittingWorms(hard ? 90 : 110) { Segments = hard ? 10 : 9, Speed = hard ? 2f : 1.7f, SplitSpeed = hard ? 2.6f : 2.2f },
 				// It bursts up out of the ground under the box and dives back in
-				() => new Eruption(hard ? 70 : 90) { Segments = hard ? 9 : 8 },
+				() => new Eruption(hard ? 64 : 80) { Segments = hard ? 10 : 9, Hunt = hard ? 0.085f : 0.07f },
 				// Yellow SOUL: Vile Spit drifts in at you; Eaters of Souls hang back and spit more once it's hurt
 				() => hard
 					? new Combo(BattleConstants.DefaultEnemyTurnTicks,
-						new VileDrift(vile, 30) { Speed = 1.3f },
-						new Gunships(soul, vile, 110) { Toughness = 3, FireEvery = 60, ShotSpeed = 1.6f })
-					: new VileDrift(vile, 26),
+						new VileDrift(vile, 22) { Speed = 1.5f },
+						new Gunships(soul, vile, 90) { Toughness = 4, FireEvery = 50, ShotSpeed = 1.8f })
+					: new Combo(BattleConstants.DefaultEnemyTurnTicks,
+						new VileDrift(vile, 24) { Speed = 1.4f },
+						new Gunships(soul, vile, 130) { Toughness = 3, FireEvery = 64, ShotSpeed = 1.6f }),
+				// Underground: pitch dark but for a little light round the SOUL; the worms' heads glow, and so do the
+				// cracks they burst out of
+				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
+					new Underground { LightRadius = hard ? 34f : 40f },
+					new Eruption(hard ? 62 : 76) { Segments = 9, Hunt = hard ? 0.08f : 0.065f, FirstAt = 40 }),
 				// It burrows under the box toward you, then bursts out in a spray of teeth
 				() => new BurrowTrail(tooth, hard ? 64 : 80) { Speed = hard ? 1.8f : 1.5f, Shards = hard ? 9 : 7 },
 				// It coils round the box, closing in, spitting from its head
-				() => new Constrict { Segments = hard ? 16 : 13, EndRadius = hard ? 48f : 56f, Turn = hard ? 0.034f : 0.03f, Spit = vile, SpitEvery = hard ? 36 : 48 },
+				() => new Constrict { Segments = hard ? 17 : 15, EndRadius = hard ? 42f : 50f, Turn = hard ? 0.038f : 0.033f, Spit = vile, SpitEvery = hard ? 28 : 38 },
 				// A worm comes in and splits in three in front of you, like it does when you cut it in Terraria
-				() => new SplittingWorms(hard ? 95 : 120) { SplitsItself = true, Soul = SoulMode.Red, Segments = 12, Speed = 1.8f, SplitSpeed = 2f },
+				() => new SplittingWorms(hard ? 85 : 105) { SplitsItself = true, Soul = SoulMode.Red, Segments = 12, Speed = 2f, SplitSpeed = 2.3f },
 				// Teeth rain down from its gaping mouth while a worm leaps through
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new Eruption(hard ? 110 : 140) { Segments = 7, FirstAt = 30 },
@@ -414,7 +428,17 @@ namespace MercyMode.Battle.Encounters
 				},
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new Orbiters(creeper, 140) { Count = 5 },
-					new BoneLob(bone, hard ? 30 : 40)));
+					new BoneLob(bone, hard ? 30 : 40)),
+				// It reads your mind: Ichor lands where you're about to be
+				() => new MindRead(hard ? 20 : 26) { Lead = hard ? 40 : 34 },
+				// Your reflection mirrors you through the middle of the box while Ichor drips
+				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
+					new MirrorSoul(),
+					new Rain(ichor, hard ? 22 : 30) { SpeedMin = 1.3f, SpeedMax = 1.8f }),
+				// A memory test: spots flash in order, then burst in the same order
+				() => new MemoryFlash(150) { Spots = hard ? 5 : 4, Step = hard ? 13 : 16 },
+				// Creepers bounce round the walls of its mind
+				() => new Ricochet(creeper, hard ? 26 : 34) { Speed = hard ? 2.6f : 2.2f, Bounces = 2 });
 		}
 	}
 

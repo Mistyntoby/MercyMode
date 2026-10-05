@@ -47,6 +47,10 @@ namespace MercyMode.Battle
 
 		/// <summary>Yellow SOUL shots it takes to break (0 = 1 for small bullets, 3 for big ones).</summary>
 		public int Toughness;
+		/// <summary>The most one yellow shot takes off it (0 = no cap): the charged shot can't clear armoured bullets in one go.</summary>
+		public int MaxShotDamage;
+		/// <summary>Light it gives off in the dark (radius in pixels, 0 = none): see <see cref="Underground"/>.</summary>
+		public float Light;
 		/// <summary>Ticks left of a white flash (it was shot).</summary>
 		public int Flash;
 		/// <summary>Afterimages left behind while it moves (0 = none).</summary>

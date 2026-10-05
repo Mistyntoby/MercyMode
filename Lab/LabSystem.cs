@@ -1596,10 +1596,10 @@ namespace MercyMode.Lab
 		/// <summary>The Eater of Worlds' and Brain of Cthulhu's moves, healthy and below half HP.</summary>
 		private IEnumerable AttacksEvil()
 		{
-			yield return SweepAttacks("eater of worlds", 8, NPCID.EaterofWorldsHead);
-			yield return SweepAttacks("eater of worlds (hurt)", 8, 0.4f, NPCID.EaterofWorldsHead);
-			yield return SweepAttacks("brain of cthulhu", 12, NPCID.BrainofCthulhu);
-			yield return SweepAttacks("brain of cthulhu (hurt)", 12, 0.4f, NPCID.BrainofCthulhu);
+			yield return SweepAttacks("eater of worlds", 9, NPCID.EaterofWorldsHead);
+			yield return SweepAttacks("eater of worlds (hurt)", 9, 0.4f, NPCID.EaterofWorldsHead);
+			yield return SweepAttacks("brain of cthulhu", 16, NPCID.BrainofCthulhu);
+			yield return SweepAttacks("brain of cthulhu (hurt)", 16, 0.4f, NPCID.BrainofCthulhu);
 		}
 
 		/// <summary>Shooting a segment out of a yellow-SOUL worm splits it: the back half grows a head of its own.</summary>
