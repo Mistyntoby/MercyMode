@@ -158,9 +158,9 @@ namespace MercyMode.Battle.Encounters
 				() => new Converge(EyeTear, hard ? 50 : 66) { Count = hard ? 10 : 8, Speed = hard ? 4.6f : 3.8f },
 				// A ring of tears forms around you and fires in one at a time
 				() => new RingVolley(EyeTear, hard ? 100 : 120) { Count = hard ? 12 : 10, Gap = hard ? 5 : 6, Speed = hard ? 4f : 3.6f },
-				// Rings of blood close in, each with one way out: four of them
+				// Rings of blood close in, each with one way out: three of them (with servants once it's torn open)
 				() => hard ? new Combo(EyeRing.Ticks, new EyeRing { Duration = EyeRing.Ticks }, new ServantSwarm(false))
-					: new Combo(EyeRing.Ticks, new EyeRing { Duration = EyeRing.Ticks }, new TearRain(false)),
+					: new EyeRing { Duration = EyeRing.Ticks },
 				// Servants line up over the SOUL and dive at it, trailing blood
 				() => new Diver((p, v) => servant(p, v).Dripping(new Color(200, 30, 40)), hard ? 22 : 32) { DiveSpeed = hard ? 8.5f : 7f },
 				// Phase 2's full-screen frenzy: its gaze slashes across everything while it cries blood
@@ -338,18 +338,22 @@ namespace MercyMode.Battle.Encounters
 		/// <summary>Phase 2: rings of tears close in on the box centre, with a gap to slip through.</summary>
 		private class EyeRing : EnemyAttack
 		{
-			/// <summary>Long enough for four rings to close in and pass.</summary>
+			/// <summary>Long enough for three rings to form, close in and fade.</summary>
 			public const int Ticks = 380;
+			/// <summary>A ring holds still (harmless, its opening glowing) this long before it closes in.</summary>
+			private const int Form = 30;
+			private const float Radius = 120f, Speed = 1.2f, FadeFrom = 34f, GoneAt = 16f;
 
 			public override void Update(BattleSystem battle, int tick)
 			{
-				// A ring every 70 ticks from the start, four in a turn
-				if (tick < 10 || (tick - 10) % 70 != 0 || tick > Duration - 110)
+				// A ring every 100 ticks from the start: three in a turn, with time to read each one
+				if (tick < 10 || (tick - 10) % 100 != 0 || tick > Duration - 110)
 					return;
 				Vector2 center = battle.Box.Center.ToVector2();
 				// 18 drops with four missing in a row: an opening you can see and fit through, its edges glowing
 				const int count = 18, gapSize = 4;
 				int gap = Main.rand.Next(count);
+				AttackSfx.Appear();
 				for (int i = 0; i < count; i++)
 				{
 					int fromGap = (i - gap + count) % count;
@@ -357,9 +361,34 @@ namespace MercyMode.Battle.Encounters
 						continue;
 					float a = MathHelper.TwoPi * i / count;
 					Vector2 dir = a.ToRotationVector2();
-					// No drips here: they cluttered the ring and hid the opening
-					Bullet drop = Shots.Blood(center + dir * 120f, -dir * 1.1f, 1.3f, 1.1f, drips: false);
-					drop.Lifetime = 115;
+					// No drips here: they cluttered the ring and hid the opening. Softer than an ordinary tear
+					Bullet drop = Shots.Blood(center + dir * Radius, Vector2.Zero, 1.3f, 0.8f, drips: false);
+					drop.Harmful = false;
+					drop.Alpha = 0f;
+					drop.Lifetime = Form + (int)((Radius - GoneAt) / Speed) + 2;
+					drop.OnUpdate += x =>
+					{
+						if (x.Age < Form)
+						{
+							// Fading in where it stands, so the opening can be read before anything moves
+							x.Alpha = Math.Min(1f, x.Age / (Form * 0.6f));
+							return;
+						}
+						if (x.Age == Form)
+						{
+							x.Harmful = true;
+							x.Velocity = -dir * Speed;
+						}
+						// Fades out as it nears the middle instead of piling up there for the next ring
+						float d = Vector2.Distance(x.Position, center);
+						if (d < FadeFrom)
+						{
+							x.Alpha = MathHelper.Clamp((d - GoneAt) / (FadeFrom - GoneAt), 0f, 1f);
+							x.Harmful = d > GoneAt + 6f;
+						}
+						if (d <= GoneAt)
+							x.Dead = true;
+					};
 					if (fromGap == gapSize || fromGap == count - 1)
 					{
 						var draw = drop.OnDraw;
