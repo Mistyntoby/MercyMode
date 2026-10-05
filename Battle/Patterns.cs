@@ -92,6 +92,26 @@ namespace MercyMode.Battle
 			return b;
 		}
 
+		/// <summary>A bullet drawn with a Terraria item's sprite (a boss's drops make good, recognisable bullets).</summary>
+		public static Bullet Item(int type, Vector2 pos, Vector2 vel, float scale, float damage, Vector2 hitSize, bool rotate = false)
+		{
+			Main.instance.LoadItem(type);
+			Texture2D tex = TextureAssets.Item[type].Value;
+			// Animated items (souls, some drops) are vertical strips
+			Rectangle src = Main.itemAnimations[type] is { } anim ? anim.GetFrame(tex, 0) : tex.Bounds;
+			return new Bullet
+			{
+				Position = pos,
+				Velocity = vel,
+				Texture = tex,
+				Source = src,
+				Scale = scale,
+				HitSize = hitSize,
+				DamageMult = damage,
+				RotateWithVelocity = rotate,
+			};
+		}
+
 		/// <summary>A bullet drawn with a Terraria projectile's sprite.</summary>
 		public static Bullet Proj(int type, Vector2 pos, Vector2 vel, float scale, float damage, Vector2 hitSize,
 			bool rotate = true, float rotationOffset = 0f, float spin = 0f)

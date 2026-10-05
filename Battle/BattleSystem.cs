@@ -1511,6 +1511,9 @@ namespace MercyMode.Battle
 		private Vector2 soulPull;
 		/// <summary>Pulls the (red) SOUL this much this tick, on top of its own movement (capped below its speed).</summary>
 		public void PullSoul(Vector2 by) => soulPull += by;
+		private int confusedTicks;
+		/// <summary>Reverses the arrow keys for the (red) SOUL this tick (the Brain of Cthulhu's confusion).</summary>
+		public void Confuse() => confusedTicks = 2;
 		public void Spawn(Bullet b)
 		{
 			b.Owner ??= spawnOwner;
@@ -1645,6 +1648,12 @@ namespace MercyMode.Battle
 			else
 			{
 				disableSlow = false;
+			}
+			if (confusedTicks > 0)
+			{
+				px = -px;
+				py = -py;
+				confusedTicks--;
 			}
 			soul += new Vector2(px, py);
 			// An attack pulling at it (the Moon Lord's black hole); never faster than the SOUL can walk away

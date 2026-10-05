@@ -186,6 +186,9 @@ namespace MercyMode.Lab
 				("attacks-armies", AttacksArmies),
 				("attacks-bosses", AttacksBosses),
 				("attacks-eye", AttacksEye),
+				("eater-whole", EaterWhole),
+				("attacks-evil", AttacksEvil),
+				("eater-splits", EaterSplits),
 				("boss-kill", () => BossKill(NPCID.EyeofCthulhu)),
 				("boss-kill-king-slime", () => BossKill(NPCID.KingSlime)),
 				("boss-spare", BossSpare),
@@ -877,9 +880,15 @@ namespace MercyMode.Lab
 		/// Plays one enemy's turns 0..count-1 (DEFEND each time, healed every tick) and checks every attack runs:
 		/// spawns something, doesn't crash, and hands the turn back.
 		/// </summary>
-		private IEnumerable SweepAttacks(string label, int count, params int[] types)
+		private IEnumerable SweepAttacks(string label, int count, params int[] types) => SweepAttacks(label, count, 1f, types);
+
+		/// <summary>Every attack in turn; <paramref name="life"/> below 1 hurts the boss first, for its phase-2 versions.</summary>
+		private IEnumerable SweepAttacks(string label, int count, float life, params int[] types)
 		{
 			yield return TryStartWith(types);
+			if (life < 1f && lastStartFailed == 0)
+				foreach (NPC m in B.LabTarget.Members().ToList())
+					m.life = Math.Max(1, (int)(m.lifeMax * life));
 			if (lastStartFailed != 0)
 			{
 				Log($"  SKIP {label}: the battle didn't start here");
@@ -1580,6 +1589,76 @@ namespace MercyMode.Lab
 			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the next enemy turn");
 			Check(B.LabAttack?.GetType().Name != "RipOpen", "the Eye tore open twice");
 			foreach (NPC m in B.LabTarget.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
+		}
+
+		/// <summary>The Eater of Worlds' and Brain of Cthulhu's moves, healthy and below half HP.</summary>
+		private IEnumerable AttacksEvil()
+		{
+			yield return SweepAttacks("eater of worlds", 8, NPCID.EaterofWorldsHead);
+			yield return SweepAttacks("eater of worlds (hurt)", 8, 0.4f, NPCID.EaterofWorldsHead);
+			yield return SweepAttacks("brain of cthulhu", 12, NPCID.BrainofCthulhu);
+			yield return SweepAttacks("brain of cthulhu (hurt)", 12, 0.4f, NPCID.BrainofCthulhu);
+		}
+
+		/// <summary>Shooting a segment out of a yellow-SOUL worm splits it: the back half grows a head of its own.</summary>
+		private IEnumerable EaterSplits()
+		{
+			yield return StartWith(NPCID.EaterofWorldsHead);
+			yield return Menu();
+			B.LabTarget.Turn = 0;
+			B.LabTarget.DesperationUsed = true;
+			yield return Choose(4);
+			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the enemy turn");
+			Check(B.LabAttack is SplittingWorms, $"turn 0 was {B.LabAttack?.GetType().Name}, not the splitting worms");
+			Check(B.SoulMode == SoulMode.Yellow, "the worms aren't a yellow-SOUL attack");
+			// (The server has no real textures, so heads are told apart by their hitbox)
+			bool IsHead(Bullet b) => b.Toughness > 0 && b.HitSize == WormLook.Eater.HeadHit && !b.Dead;
+			bool IsBody(Bullet b) => b.Toughness > 0 && b.HitSize == WormLook.Eater.BodyHit && !b.Dead;
+			for (int i = 0; i < 40; i++)
+			{
+				Heal();
+				yield return null;
+			}
+			int heads = B.Bullets.Count(IsHead);
+			var bodies = B.Bullets.Where(IsBody).ToList();
+			Check(bodies.Count >= 4, $"only {bodies.Count} body segments on screen");
+			if (bodies.Count >= 4)
+				bodies[bodies.Count / 2].Dead = true;
+			for (int i = 0; i < 6; i++)
+			{
+				Heal();
+				yield return null;
+			}
+			int after = B.Bullets.Count(IsHead);
+			Log($"  heads before the shot: {heads}, after: {after}");
+			Check(after == heads + 1, "the worm didn't grow a new head where it was cut");
+			foreach (NPC m in B.LabTarget.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
+		}
+
+		/// <summary>The Eater of Worlds keeps its body as it's hurt (it used to shrink to a bare head by 90% HP).</summary>
+		private IEnumerable EaterWhole()
+		{
+			yield return StartWith(NPCID.EaterofWorldsHead);
+			yield return Menu();
+			var enc = B.LabTarget;
+			int start = enc.Life, hits = 0;
+			while (enc.Life > start * 0.6f && hits++ < 2000)
+			{
+				NPC t = enc.StrikeTarget();
+				if (t == null || !t.active)
+					break;
+				t.StrikeNPC(new NPC.HitInfo { Damage = 60, HitDirection = 1 });
+			}
+			NPC head = BossKit.OfTypes(NPCID.EaterofWorldsHead).FirstOrDefault();
+			int shown = BossKit.WormChain(head, 10).Count;
+			Log($"  at {enc.Life * 100 / Math.Max(1, start)}% HP after {hits} hits: {shown} segments drawn, {BossKit.OfTypes(NPCID.EaterofWorldsHead).Count()} head(s)");
+			Check(head != null && head.active, "the head died first");
+			Check(shown >= 10, $"the worm shrank to {shown} segments");
+			foreach (NPC m in enc.Members().ToList())
 				m.active = false;
 			yield return WaitForEnd();
 		}

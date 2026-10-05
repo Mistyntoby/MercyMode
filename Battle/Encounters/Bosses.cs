@@ -245,10 +245,20 @@ namespace MercyMode.Battle.Encounters
 			MercyGlobalNPC.Spare(keep);
 		}
 
+		/// <summary>
+		/// Hits eat it from the tail up. A random segment used to die each hit, and since a dead segment cuts the chain
+		/// the battle draws, the worm shrank to a bare head by 90% HP; from the tail it stays whole-looking (ten
+		/// segments shown) until it's nearly dead. Pieces already split off are finished first.
+		/// </summary>
 		public override NPC StrikeTarget()
 		{
-			var all = Members().Where(m => m.life > 0).ToList();
-			return all.Count > 0 ? all[Main.rand.Next(all.Count)] : Npc;
+			NPC head = DrawNpc;
+			var chain = BossKit.WormChain(head, int.MaxValue);
+			var onChain = new HashSet<int>(chain.Select(n => n.whoAmI));
+			NPC stray = Members().FirstOrDefault(m => m.life > 0 && !onChain.Contains(m.whoAmI));
+			if (stray != null)
+				return stray;
+			return chain.Count > 1 ? chain[^1] : head ?? Npc;
 		}
 
 		public override string FlavorText()
@@ -284,26 +294,37 @@ namespace MercyMode.Battle.Encounters
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			bool hard = LifeRatio < 0.5f;
-			Bullet spit(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Green, 0.6f);
-			Bullet bigSpit(Vector2 p, Vector2 v) => Shots.Ball(p, v, new Color(160, 255, 90), 0.9f, 1.8f).Dripping(Shots.Green);
+			// Its own Vile Spit, and the Worm Teeth it drops
+			Bullet vile(Vector2 p, Vector2 v) => Shots.Npc(NPCID.VileSpit, p, v, 0.8f, 0.8f, new Vector2(12, 12), rotate: false).Spin(0.08f);
+			Bullet tooth(Vector2 p, Vector2 v) => Shots.Item(ItemID.WormTooth, p, v, 0.9f, 0.7f, new Vector2(8, 8), rotate: true);
+			Bullet soul(Vector2 p, Vector2 v) => Shots.Npc(NPCID.EaterofSouls, p, v, 0.7f, 0.8f, new Vector2(16, 16), rotate: false).FaceTravel();
 			return Cycle(
-				// Eaters of Souls dive from above
-				() => new Diver((p, v) => Shots.Npc(NPCID.EaterofSouls, p, v, 0.8f, 0.8f, new Vector2(16, 16), rotate: false), hard ? 26 : 36),
-				// It burrows under the box toward you, then bursts out
-				() => new BurrowTrail((p, v) => Shots.Ball(p, v, new Color(150, 100, 60), 0.6f, 0.9f), hard ? 64 : 80) { Speed = hard ? 1.8f : 1.5f, Shards = hard ? 10 : 8 },
-				() => new Snake(Head, Body, hard ? 70 : 100) { Segments = 9, Speed = hard ? 2.8f : 2.3f },
-				// Corruption drips down in rows with a drifting gap
-				() => new GapRows(spit, hard ? 28 : 36) { Speed = hard ? 1.7f : 1.4f, GapSize = hard ? 42f : 50f },
-				// Vile spit lobbed in, bursting into a ring
-				() => new Fireworks(bigSpit, spit, hard ? 38 : 52) { Count = hard ? 10 : 8, ShardSpeed = hard ? 2f : 1.7f },
-				// Phase 2: two worms at once, one from each side
+				// Yellow SOUL: worms swim in; shoot a segment out and the worm splits, the back half coming for you
+				() => new SplittingWorms(hard ? 100 : 130) { Segments = hard ? 10 : 8, Speed = hard ? 1.7f : 1.5f },
+				// It bursts up out of the ground under the box and dives back in
+				() => new Eruption(hard ? 70 : 90) { Segments = hard ? 9 : 8 },
+				// Yellow SOUL: Vile Spit drifts in at you; Eaters of Souls hang back and spit more once it's hurt
 				() => hard
 					? new Combo(BattleConstants.DefaultEnemyTurnTicks,
-						new Snake(Head, Body, 95) { Segments = 7, Side = 1, Speed = 2.6f },
-						new Snake(Head, Body, 95) { Segments = 7, Side = -1, Speed = 2.6f, FirstAt = 45 })
-					: new Combo(BattleConstants.DefaultEnemyTurnTicks,
-						new Snake(Head, Body, 120) { Segments = 7 },
-						new Rain(spit, 22) { SpeedMin = 1.2f, SpeedMax = 1.6f }));
+						new VileDrift(vile, 30) { Speed = 1.3f },
+						new Gunships(soul, vile, 110) { Toughness = 3, FireEvery = 60, ShotSpeed = 1.6f })
+					: new VileDrift(vile, 26),
+				// It burrows under the box toward you, then bursts out in a spray of teeth
+				() => new BurrowTrail(tooth, hard ? 64 : 80) { Speed = hard ? 1.8f : 1.5f, Shards = hard ? 9 : 7 },
+				// It coils round the box, closing in, spitting from its head
+				() => new Constrict { Segments = hard ? 16 : 13, EndRadius = hard ? 48f : 56f, Turn = hard ? 0.034f : 0.03f, Spit = vile, SpitEvery = hard ? 36 : 48 },
+				// A worm comes in and splits in three in front of you, like it does when you cut it in Terraria
+				() => new SplittingWorms(hard ? 95 : 120) { SplitsItself = true, Soul = SoulMode.Red, Segments = 12, Speed = 1.8f, SplitSpeed = 2f },
+				// Teeth rain down from its gaping mouth while a worm leaps through
+				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
+					new Eruption(hard ? 110 : 140) { Segments = 7, FirstAt = 30 },
+					new Rain(tooth, hard ? 16 : 22) { SpeedMin = 1.6f, SpeedMax = 2.2f, Wobble = 0f }),
+				// Phase 2: two worms erupt at once, one chasing the other
+				() => hard
+					? new Combo(BattleConstants.DefaultEnemyTurnTicks,
+						new Eruption(80) { Segments = 8 },
+						new SplittingWorms(140) { Segments = 8, FirstAt = 40 })
+					: new Snake(Head, Body, 110) { Segments = 9, Speed = 2.3f });
 		}
 	}
 
@@ -361,29 +382,39 @@ namespace MercyMode.Battle.Encounters
 		{
 			bool hard = !CreepersLeft || LifeRatio < 0.5f;
 			Bullet creeper(Vector2 p, Vector2 v) => Shots.Npc(NPCID.Creeper, p, v, 0.8f, 0.7f, new Vector2(14, 14), rotate: false);
-			Bullet thought(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Red, 0.6f);
+			// Crimson drops for bullets: Ichor falling, Vertebrae thrown (no more plain red squares)
+			Bullet ichor(Vector2 p, Vector2 v) => Shots.Item(ItemID.Ichor, p, v, 0.8f, 0.6f, new Vector2(8, 10)).Sparkly(new Color(255, 220, 80), 8);
+			Bullet bone(Vector2 p, Vector2 v) => Shots.Item(ItemID.Vertebrae, p, v, 0.85f, 0.7f, new Vector2(10, 10));
 			return Cycle(
-				// Purple SOUL: caught in its mind, Creepers crawl the strings while thoughts drift down
+				// Purple SOUL: caught in its mind, Creepers crawl the strings while Ichor drips down
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new StringRunners(creeper, hard ? 20 : 28) { Speed = hard ? 3f : 2.5f },
-					new Rain((p, v) => thought(p, v).Sparkly(Shots.Red), hard ? 26 : 36) { SpeedMin = 1.2f, SpeedMax = 1.6f }),
+					new Rain(ichor, hard ? 26 : 36) { SpeedMin = 1.2f, SpeedMax = 1.6f }),
+				// Confused: the arrow keys turn around while Creepers drift across
+				() => new MindFlip(creeper, hard ? 30 : 38) { Speed = hard ? 1.5f : 1.3f },
+				// Its Creepers circle the box, then ram you one at a time
+				() => new CreeperCharge { Make = creeper, Count = hard ? 8 : 6, Every = hard ? 28 : 36, Speed = hard ? 4.8f : 4.2f },
 				// Illusions: they flicker between real and false together; the false ones can be passed through
 				() => new PhaseBullets(creeper, hard ? 8 : 11) { Speed = hard ? 1.7f : 1.4f, RealTicks = hard ? 56 : 46 },
+				// Copies of the Brain fade in round the box and all charge: only the steady one is real
+				() => new BrainIllusions(hard ? 70 : 84) { Copies = hard ? 4 : 3, Speed = hard ? 5.6f : 5f },
+				// Neurons fire along the lines between them
+				() => new NeuronWeb(hard ? 54 : 66) { Nodes = hard ? 4 : 3 },
 				() => new Orbiters(creeper, hard ? 90 : 120) { Count = hard ? 8 : 6, AngularSpeed = 0.03f },
-				// Bad thoughts close in from every side
-				() => new Converge(thought, hard ? 55 : 70) { Count = hard ? 10 : 8, Speed = hard ? 4.5f : 3.8f, Radius = 72f },
+				// It charges across the box itself
 				() => new LaneDash((p, d) => Shots.Npc(NPCID.BrainofCthulhu, p, Vector2.Zero, 0.4f, 1f, new Vector2(30, 26), rotate: false),
 					hard ? 50 : 70) { AllowVertical = true, Speed = hard ? 8f : 6.5f, LaunchSound = SoundID.ForceRoar },
-				// A psychic spiral from the middle of the box (it fades in, so it can't hit you where it starts)
-				() => new Sprinkler(thought)
+				// Vertebrae lobbed in arcs that come down on you
+				() => new BoneLob(bone, hard ? 16 : 22),
+				// A spiral of Ichor from the middle of the box (it fades in, so it can't hit you where it starts)
+				() => new Sprinkler(ichor)
 				{
 					Origin = new Vector2(BattleConstants.BoxCenterX, BattleConstants.BoxCenterY),
-					Spiral = true, Arms = hard ? 4 : 3, Every = hard ? 7 : 9, Speed = 1.8f, TurnSpeed = 0.045f, ArmTicks = 20,
+					Spiral = true, Arms = 3, Every = hard ? 11 : 14, Speed = 1.7f, TurnSpeed = 0.045f, ArmTicks = 20,
 				},
-				() => new Homing(thought, hard ? 24 : 34) { Speed = hard ? 2f : 1.6f },
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new Orbiters(creeper, 140) { Count = 5 },
-					new Homing(thought, 50)));
+					new BoneLob(bone, hard ? 30 : 40)));
 		}
 	}
 

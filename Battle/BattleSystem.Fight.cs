@@ -1068,6 +1068,17 @@ namespace MercyMode.Battle
 			// From over the head down to in front, the way the blade goes; fading out at the end
 			float rot = MathHelper.Lerp(-1.4f, 0.9f, k);
 			float a = (float)Math.Sin(k * Math.PI);
+			if (item.shoot == ProjectileID.LightsBane)
+			{
+				// Its slash is a 13-frame strip (drawing it whole stacked the frames up the screen): Terraria plays the
+				// frames through the swing, darkened underneath with a magenta glow on top (DrawProj_LightsBane)
+				var frame = tex.Frame(1, 13, 0, Math.Min(12, (int)(k * 13f)));
+				Vector2 origin = frame.Size() / 2f;
+				float scale = HeroScaleNow * 0.7f;
+				DrDraw.Sb.Draw(tex, center, frame, Color.Black * (0.5f * a), rot, origin, scale, SpriteEffects.None, 0f);
+				DrDraw.Sb.Draw(tex, center, frame, new Color(255, 0, 255, 0) * a, rot, origin, scale, SpriteEffects.None, 0f);
+				return;
+			}
 			DrDraw.Sb.Draw(tex, center, src, ItemColor(item.type) * (0.85f * a), rot, src.Size() / 2f, HeroScaleNow * 0.55f, SpriteEffects.None, 0f);
 		}
 
