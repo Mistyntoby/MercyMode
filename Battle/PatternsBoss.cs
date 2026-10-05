@@ -406,6 +406,8 @@ namespace MercyMode.Battle
 		public Func<BattleSystem, Vector2> From;
 		/// <summary>Nothing is recorded before this tick: a beat for the first throws to show where it's coming from.</summary>
 		public int LeadIn;
+		/// <summary>How long a thrown drop is in the air (it waits out the rest of the delay unseen).</summary>
+		public int ThrowTicks = 16;
 		public Func<Vector2, Vector2, Bullet> Make;
 		private readonly Queue<(int At, Vector2 Pos)> path = new();
 
@@ -453,15 +455,24 @@ namespace MercyMode.Battle
 		private void Throw(BattleSystem battle, Vector2 from, Vector2 to)
 		{
 			Bullet b = Make(from, Vector2.Zero);
-			int flight = Delay;
+			int flight = Math.Min(ThrowTicks, Delay), wait = Delay - flight;
 			b.Harmful = false;
 			b.DestroyOnHit = false;
-			b.Lifetime = flight;
+			b.Lifetime = Delay;
 			b.Scale *= 0.7f;
-			b.Alpha = 0.8f;
+			b.Alpha = 0f;
 			b.OnUpdate += x =>
 			{
-				float t = MathHelper.Clamp(x.Age / (float)flight, 0f, 1f);
+				// Thrown late and quick, so only a couple are ever in the air instead of a queue of them
+				if (x.Age < wait)
+				{
+					x.Alpha = 0f;
+					x.Position = from;
+					x.Velocity = Vector2.Zero;
+					return;
+				}
+				x.Alpha = 0.8f;
+				float t = MathHelper.Clamp((x.Age - wait) / (float)flight, 0f, 1f);
 				// Eased in so it slows as it lands, with a small hop so the stream reads as thrown
 				float e = 1f - (1f - t) * (1f - t);
 				x.Position = Vector2.Lerp(from, to, e) - new Vector2(0f, (float)Math.Sin(t * MathHelper.Pi) * 24f);

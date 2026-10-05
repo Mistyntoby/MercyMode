@@ -726,6 +726,8 @@ namespace MercyMode.Battle
 		public Func<Vector2, Vector2, Bullet> Make;
 		public int Count = 10, Form = 40, Gap = 6;
 		public float Radius = 72f, Spin = 0.03f, Speed = 3.6f;
+		/// <summary>The ring only hurts once a bullet fires: you can't be caught by it just while it circles.</summary>
+		public bool SafeWhileCircling;
 
 		public RingVolley(Func<Vector2, Vector2, Bullet> make, int every = 120)
 		{
@@ -741,6 +743,7 @@ namespace MercyMode.Battle
 			float spin = index % 2 == 0 ? Spin : -Spin;
 			int form = Form;
 			float radius = Radius, speed = Speed;
+			bool safe = SafeWhileCircling;
 			AttackSfx.Appear();
 			for (int i = 0; i < Count; i++)
 			{
@@ -759,13 +762,14 @@ namespace MercyMode.Battle
 						x.Position = centre + a.ToRotationVector2() * radius;
 						x.Velocity = Vector2.Zero;
 						x.Alpha = Math.Min(1f, x.Age / (form * 0.6f));
-						x.Harmful = x.Age > form * 0.6f;
+						x.Harmful = !safe && x.Age > form * 0.6f;
 						if (fireAt - x.Age < 6)
 							x.Flash = 2;
 					}
 					else if (x.Age == fireAt)
 					{
 						x.Velocity = (battle.SoulCenter - x.Position).SafeNormalize(Vector2.UnitX) * speed;
+						x.Harmful = true;
 						x.Trail = 3;
 						AttackSfx.Vanilla(SoundID.Item17, 0.35f);
 					}

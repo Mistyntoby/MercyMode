@@ -160,8 +160,8 @@ namespace MercyMode.Battle.Encounters
 					: new Beam(46) { Width = 16f, Warn = 34 },
 				// Tears gather around the SOUL, then fall in on it
 				() => new Converge(EyeTear, hard ? 50 : 66) { Count = hard ? 10 : 8, Speed = hard ? 4.6f : 3.8f },
-				// A ring of tears forms around you and fires in one at a time
-				() => new RingVolley(EyeTear, hard ? 100 : 120) { Count = hard ? 12 : 10, Gap = hard ? 5 : 6, Speed = hard ? 4f : 3.6f },
+				// A ring of tears forms around you and fires in one at a time: few enough to track, harmless until thrown
+				() => new RingVolley(EyeTear, 150) { Count = hard ? 7 : 6, Gap = hard ? 11 : 13, Speed = hard ? 3.8f : 3.4f, SafeWhileCircling = true },
 				// Rings of blood close in, each with one way out: three of them, one at a time
 				() => new EyeRing { Duration = EyeRing.Ticks },
 				// Servants line up over the SOUL and dive at it, trailing blood
