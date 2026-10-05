@@ -1246,7 +1246,8 @@ namespace MercyMode.Battle
 				heal = Player.GetHealLife(item, true);
 				// Terraria's potion sickness, counted in turns (about 10 seconds each) instead of time
 				if (item.potion)
-					potionSickFull = potionSickTurns = Math.Max(1, (int)Math.Ceiling((item.type == ItemID.RestorationPotion ? Player.restorationDelayTime : Player.potionDelayTime) / 600f));
+					// (two turns shorter than a straight conversion: six turns of a twelve-to-sixteen-turn fight was too long)
+					potionSickFull = potionSickTurns = Math.Max(1, (int)Math.Ceiling((item.type == ItemID.RestorationPotion ? Player.restorationDelayTime : Player.potionDelayTime) / 600f) - 2);
 				item.stack--;
 				if (item.stack <= 0)
 					item.TurnToAir();

@@ -222,6 +222,8 @@ namespace MercyMode.Battle
 		public float Speed = 3f;
 		/// <summary>-1 from the left, 1 from the right, 0 either.</summary>
 		public int Side = 1;
+		/// <summary>With <see cref="Side"/> 0: from each side in turn instead of at random.</summary>
+		public bool Alternate;
 		/// <summary>Aim at the SOUL's height half the time.</summary>
 		public bool AimHalf = true;
 
@@ -234,7 +236,7 @@ namespace MercyMode.Battle
 		protected override void Spawn(BattleSystem battle, int index)
 		{
 			Rectangle box = battle.Box;
-			int side = Side != 0 ? Side : (Main.rand.NextBool() ? 1 : -1);
+			int side = Side != 0 ? Side : Alternate ? (index % 2 == 0 ? -1 : 1) : (Main.rand.NextBool() ? 1 : -1);
 			float y = AimHalf && index % 2 == 0 ? battle.SoulCenter.Y : Main.rand.NextFloat(box.Top + 8, box.Bottom - 8);
 			var pos = new Vector2(side > 0 ? box.Right + 30 : box.Left - 30, y);
 			battle.Spawn(Make(pos, new Vector2(-side * Speed, 0)));

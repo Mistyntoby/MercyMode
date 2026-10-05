@@ -190,11 +190,12 @@ namespace MercyMode.Battle.Encounters
 				() => new Walkers((p, v) => Shots.Npc(NPCID.BlueSlime, p, v, 0.8f, 0.8f, new Vector2(16, 12), rotate: false), hard ? 22 : 30)
 					{ Speed = 1.5f, HopSpeed = 3.6f }.WithSoul(SoulMode.Blue),
 				// The ninja inside throws stars; later it surrounds you with them first
+				// (Fewer, slower stars from each side in turn; a small ring of them once it's hurt)
 				() => hard
 					? new Combo(BattleConstants.DefaultEnemyTurnTicks,
-						new SideShots(shuriken, 16) { Side = 0, Speed = 3.6f },
-						new Converge(shuriken, 70) { Count = 6, Speed = 4f })
-					: new SideShots(shuriken, 18) { Side = 0, Speed = 3f },
+						new SideShots(shuriken, 30) { Side = 0, Alternate = true, Speed = 2.8f },
+						new Converge(shuriken, 120) { Count = 4, Speed = 3.4f, FirstAt = 50 })
+					: new SideShots(shuriken, 26) { Side = 0, Alternate = true, Speed = 2.6f },
 				// Gel rains down in rows; find the gap as it drifts
 				() => new GapRows(gelDrop, hard ? 30 : 38) { Speed = hard ? 1.9f : 1.6f, GapSize = hard ? 40f : 48f },
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
