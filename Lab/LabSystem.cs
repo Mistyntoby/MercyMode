@@ -190,6 +190,9 @@ namespace MercyMode.Lab
 				("attacks-evil", AttacksEvil),
 				("eater-splits", EaterSplits),
 				("cozy-heal", CozyHeal),
+				("talker", TalkerQuestion),
+				("vote", VoteTally),
+				("boulder", BoulderBattle),
 				("boss-kill", () => BossKill(NPCID.EyeofCthulhu)),
 				("boss-kill-king-slime", () => BossKill(NPCID.KingSlime)),
 				("boss-spare", BossSpare),
@@ -371,7 +374,8 @@ namespace MercyMode.Lab
 				// their own loops)
 				if (BattleSystem.Active && B.LabPhase == Phase.EnemyTurn)
 					Heal();
-				if (skipText && B.LabPhase == Phase.Message)
+				// (A talker's lines and questions too: Z through them, taking the first answer)
+				if (skipText && B.LabPhase is Phase.Message or Phase.Talk or Phase.Choice)
 				{
 					down.Add(t % 4 < 2 ? Keys.X : Keys.Z);
 					yield return null;
@@ -1620,6 +1624,137 @@ namespace MercyMode.Lab
 			foreach (NPC m in B.LabTarget.Members().ToList())
 				m.active = false;
 			yield return WaitForEnd();
+		}
+
+		/// <summary>A talker speaks in the text box, asks, and the answer takes effect (here: it forgets to attack).</summary>
+		private IEnumerable TalkerQuestion()
+		{
+			yield return StartWith(NPCID.Tim);
+			yield return Menu();
+			Encounter tim = B.LabTarget;
+			tim.Turn = 1;
+			float before = tim.Mercy;
+			yield return Choose(4);
+			// Through his lines to the question
+			for (int i = 0; i < 60 * 20 && B.LabPhase != Phase.Choice; i++)
+			{
+				Check(B.LabPhase is not Phase.EnemyTurn, "the enemy turn started without the question");
+				if (B.LabPhase == Phase.Talk)
+					foreach (object o in Press(Keys.Z))
+						yield return o;
+				yield return null;
+			}
+			Check(B.LabPhase == Phase.Choice, $"never got to the question (phase {B.LabPhase})");
+			Log($"  question: {B.LabRawText} [{string.Join(" / ", B.LabQuestion.Answers.Select(a => a.Option))}]");
+			// The third answer ("What hat?"): MERCY, and he forgets to attack
+			for (int i = 0; i < 60; i++)
+				yield return null;
+			foreach (object o in Press(Keys.Down))
+				yield return o;
+			foreach (object o in Press(Keys.Z))
+				yield return o;
+			yield return Until(() => B.LabPhase is Phase.EnemyTurn or Phase.EnemyIntro, "the enemy turn");
+			Log($"  MERCY {before} -> {tim.Mercy}, attack {B.LabAttack?.GetType().Name}");
+			Check(tim.Mercy > before, "the answer gave no MERCY");
+			Check(B.LabAttack is QuietAttack, "he attacked anyway");
+			yield return Menu();
+			foreach (NPC m in tim.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
+		}
+
+		/// <summary>The server counts a party's votes: most votes win, a tie goes to one of the tied answers.</summary>
+		private IEnumerable VoteTally()
+		{
+			BattleNet.Reset();
+			BattleNet.LabCapture = true;
+			var fakes = new[] { 1, 2 };
+			try
+			{
+				foreach (int i in fakes)
+				{
+					var f = new Player { name = "Ally" + i, whoAmI = i };
+					Main.player[i] = f;
+					f.active = true;
+					f.statLifeMax = f.statLifeMax2 = f.statLife = 100;
+					f.position = P.position + new Vector2(40f * i, 0f);
+				}
+				NPC z = Main.npc[NPC.NewNPC(P.GetSource_FromThis(), (int)P.Center.X + 200, (int)P.Center.Y - 40, NPCID.Zombie)];
+				int id = BattleNet.ServerStartBattle(0, new List<NPC> { z });
+				Check(id > 0 && BattleNet.LabPlayers(id).Count == 3, "no party of three");
+				// Two of three for answer 1
+				BattleNet.ServerVote(0, id, 5, 1, 3);
+				Check(BattleNet.LabSettled(id) == -1, "settled before everyone voted");
+				BattleNet.ServerVote(1, id, 5, 1, 3);
+				BattleNet.ServerVote(2, id, 5, 0, 3);
+				Log($"  2-1 vote: {BattleNet.LabSettled(id)}; sent {string.Join(" ", BattleNet.LabSent.Where(x => x.StartsWith("VoteResult")))}");
+				Check(BattleNet.LabSettled(id) == 1, "the majority didn't win");
+				Check(BattleNet.LabSent.Count(x => x.StartsWith("VoteResult>")) == 3, "not everyone heard the result");
+				// A three-way tie: one of the three, at random (and it varies)
+				var seen = new HashSet<int>();
+				for (int round = 10; round < 40; round++)
+				{
+					BattleNet.ServerVote(0, id, round, 0, 3);
+					BattleNet.ServerVote(1, id, round, 1, 3);
+					BattleNet.ServerVote(2, id, round, 2, 3);
+					seen.Add(BattleNet.LabSettled(id));
+				}
+				Log($"  tie results: {string.Join(",", seen.OrderBy(x => x))}");
+				Check(seen.All(x => x is >= 0 and <= 2) && seen.Count > 1, "a tie wasn't decided at random between the tied answers");
+				// Someone who doesn't vote: settled after the timeout with the votes there are
+				BattleNet.ServerVote(0, id, 50, 2, 3);
+				for (int t = 0; t <= BattleNet.VoteTimeoutTicks + 1; t++)
+					BattleNet.ServerUpdate();
+				Check(BattleNet.LabSettled(id) == 2, "the vote never timed out");
+				z.active = false;
+			}
+			finally
+			{
+				BattleNet.LabCapture = false;
+				BattleNet.Reset();
+				foreach (int i in fakes)
+					Main.player[i] = new Player();
+			}
+			yield return null;
+		}
+
+		/// <summary>A rolling boulder that hits you starts a battle with it; break it and it's gone.</summary>
+		private IEnumerable BoulderBattle()
+		{
+			yield return Until(() => !BattleSystem.Active, "no battle", 60 * 10);
+			for (int i = 0; i < 200; i++)
+				yield return null;
+			int idx = Projectile.NewProjectile(P.GetSource_FromThis(), P.Center, new Vector2(-4f, 0f), ProjectileID.Boulder, 70, 0f, Main.myPlayer);
+			Projectile rock = Main.projectile[idx];
+			rock.hostile = true;
+			Check(BattleSystem.TryStartBoulder(rock, P), "the boulder didn't start a battle");
+			Check(!rock.active, "the boulder kept rolling in the world");
+			yield return Menu();
+			Check(B.LabTarget is BoulderEncounter, $"the battle is against {B.LabTarget?.GetType().Name}");
+			Log($"  {B.LabTarget.Name}: HP {B.LabTarget.Life}");
+			// Its attacks, one each
+			for (int i = 0; i < 5; i++)
+			{
+				B.LabTarget.Turn = i;
+				Heal();
+				yield return Choose(4);
+				yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the enemy turn");
+				string name = B.LabAttack is Combo ? "Combo" : B.LabAttack?.GetType().Name;
+				int most = 0;
+				while (B.LabPhase == Phase.EnemyTurn)
+				{
+					Heal();
+					most = Math.Max(most, B.Bullets.Count);
+					yield return null;
+				}
+				Log($"  turn {i}: {name} ({most})");
+				yield return Menu();
+			}
+			NPC proxy = B.LabTarget.Npc;
+			proxy.life = 1;
+			yield return FightAndKill(0);
+			yield return WaitForEnd();
+			Check(!Main.npc[Main.maxNPCs].active, "the boulder's stand-in stayed");
 		}
 
 		/// <summary>A campfire or Heart Lantern heals a little each turn and says so under the turn's line.</summary>

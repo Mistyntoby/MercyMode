@@ -25,7 +25,7 @@ namespace MercyMode.Battle
 	/// </summary>
 	public partial class BattleSystem : ModSystem
 	{
-		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting, PartySelect, SummonSelect, DuelWait, Build, MercyWait, MercyPrompt, EnemyTalk }
+		public enum Phase { None, Intro, Menu, WeaponSelect, EnemySelect, ActSelect, ItemSelect, FightBar, FightResult, Message, EnemyIntro, EnemyTurn, EnemyOutro, Outro, Death, Waiting, PartySelect, SummonSelect, DuelWait, Build, MercyWait, MercyPrompt, EnemyTalk, Talk, Choice, ChoiceWait }
 		private enum Choice { Fight, Act, Item, Spare, Defend }
 
 		public static BattleSystem Instance => ModContent.GetInstance<BattleSystem>();
@@ -368,6 +368,8 @@ namespace MercyMode.Battle
 		{
 			Mod.Logger.Info($"Battle ended (enemy alive: {encounter?.Alive}, player dead: {Player.dead}, killed by the battle: {killPlayer})");
 			ReportTestRun(killPlayer);
+			EndBoulder(killPlayer);
+			cutscene = null;
 			lastEndTick = (uint)Main.GameUpdateCount;
 			// Lost (the SOUL broke): the enemies leave instead of carrying on, like a boss leaving when its target dies;
 			// nothing is killed, so no loot, no kill credit, no achievement. In multiplayer the server does this once the
@@ -751,7 +753,11 @@ namespace MercyMode.Battle
 				case Phase.EnemyTalk: UpdateEnemyTalk(); break;
 				case Phase.MercyWait: UpdateMercyWait(); break;
 				case Phase.MercyPrompt: UpdateMercyPrompt(); break;
+				case Phase.Talk: UpdateTalk(); break;
+				case Phase.Choice: UpdateChoice(); break;
+				case Phase.ChoiceWait: messageTicks++; break;
 			}
+			UpdateCutscene();
 			SendSoul();
 			UpdateDuel();
 			UpdateBuffDrawer();
@@ -1462,6 +1468,9 @@ namespace MercyMode.Battle
 			turnTimer = attack.Duration;
 			boxTimer = 0;
 			text = "";
+			// A talker holds forth in the text box first (and may ask something)
+			if (BeginTalkers())
+				return;
 			// Deltarune: the enemies say their piece first, then their bubbles go and the box opens
 			if (enemies.Any(e => e.Living && !string.IsNullOrEmpty(e.Bubble)))
 			{
@@ -1545,7 +1554,7 @@ namespace MercyMode.Battle
 		public void Spawn(Bullet b)
 		{
 			b.Owner ??= spawnOwner;
-			b.DamageMult *= spawnDamageScale;
+			b.DamageMult *= spawnDamageScale * talkDamageMult;
 			// Bullets can spawn others from their OnUpdate (a slam's shockwave, a firework's burst) while the
 			// bullet list is being walked; those join after the walk
 			if (updatingBullets)
@@ -2022,16 +2031,19 @@ namespace MercyMode.Battle
 			NPC npc = encounter?.DrawNpc;
 			if (npc == null || !npc.active)
 				return;
-			Main.instance.LoadNPC(npc.type);
-			Texture2D tex = TextureAssets.Npc[npc.type].Value;
-			int frameCount = Math.Max(1, Main.npcFrameCount[npc.type]);
-			int frameHeight = tex.Height / frameCount;
-			Rectangle frame = npc.frame.Width > 0 && npc.frame.Height > 0
-				? npc.frame
+			// Its own sprite (a boulder has no NPC to draw)
+			bool custom = encounter.CustomSprite(out Texture2D customTex, out Rectangle customFrame);
+			if (!custom)
+				Main.instance.LoadNPC(npc.type);
+			Texture2D tex = custom ? customTex : TextureAssets.Npc[npc.type].Value;
+			int frameCount = custom ? 1 : Math.Max(1, Main.npcFrameCount[npc.type]);
+			int frameHeight = custom ? customFrame.Height : tex.Height / frameCount;
+			Rectangle frame = custom ? customFrame
+				: npc.frame.Width > 0 && npc.frame.Height > 0 ? npc.frame
 				: new Rectangle(0, 0, tex.Width, frameHeight);
 			// Terraria keeps picking frames for a frozen NPC every tick, and one frozen mid-move (a slime caught in the
 			// air) can flip between frames every tick: follow its frame only at a steady animation pace
-			if (focus != null)
+			if (focus != null && !custom)
 			{
 				if (focus.ShownFrame.Height == 0 || frame.Height != focus.ShownFrame.Height || frame.Width != focus.ShownFrame.Width)
 				{
@@ -2098,7 +2110,7 @@ namespace MercyMode.Battle
 			float glide = FlyProgress();
 			float attackMotion = phase == Phase.EnemyTurn ? MathHelper.Clamp(enemyAttackEnergy, 0f, 1f) : 0f;
 			float rotation = MathHelper.Lerp(enemyWorldRotation, encounter.DrawRotation(time), glide)
-				- enemyAttackDirection.X * attackMotion * 0.055f;
+				- enemyAttackDirection.X * attackMotion * 0.055f + cutSpin;
 			// Lit like the world while gliding in or out, so it turns into the real NPC without a jump in brightness
 			Color worldLight = WorldLightTint(npc.Center);
 			Color baseColor = Tint(encounter.DrawColor(npc), worldLight);
@@ -2322,6 +2334,13 @@ namespace MercyMode.Battle
 					break;
 				case Phase.MercyPrompt:
 					DrawMercyPrompt(textY);
+					break;
+				case Phase.Talk:
+				case Phase.ChoiceWait:
+					DrawTalk(textY);
+					break;
+				case Phase.Choice:
+					DrawChoice(textY);
 					break;
 				case Phase.WeaponSelect:
 					DrawWeaponSelect(textY);

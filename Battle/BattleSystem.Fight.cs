@@ -248,9 +248,23 @@ namespace MercyMode.Battle
 
 		// ================================================================== weapon menu
 
+		/// <summary>The enemy a FIGHT would hit now (the part picked, or the encounter's target).</summary>
+		private NPC FightFoe() => encounter?.TargetableParts == true && Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : encounter?.StrikeTarget();
+
+		/// <summary>What one perfect hit of this weapon does to <paramref name="foe"/> after its defense.</summary>
+		private int VsDefHit(WeaponOption w, NPC foe) => foe == null ? w.ShotDamage
+			: AfterDefense(Math.Max(1, (int)Math.Round(w.ShotDamage * w.HitShare * HitScale(encounter))), foe);
+
+		/// <summary>A perfect turn against this enemy, after its defense: what the weapon menu is sorted by.</summary>
+		private int VsDefTurn(WeaponOption w, NPC foe) => VsDefHit(w, foe) * Math.Max(1, w.Bolts);
+
 		private void OpenWeaponSelect()
 		{
-			weaponOptions = Weapons();
+			// Best against this enemy first (after its defense), the usable ones before the rest, tools last
+			NPC foe = FightFoe();
+			weaponOptions = Weapons().OrderBy(w => w.Usable ? 0 : 1)
+				.ThenBy(w => w.Item != null && (w.Item.pick > 0 || w.Item.axe > 0 || w.Item.hammer > 0) ? 1 : 0)
+				.ThenByDescending(w => VsDefTurn(w, foe)).ToList();
 			WeaponOption current = CurrentWeapon();
 			listIndex = Math.Max(0, weaponOptions.FindIndex(w => w.Slot == current.Slot && w.Item?.type == current.Item?.type));
 			SetPhase(Phase.WeaponSelect);
@@ -316,10 +330,8 @@ namespace MercyMode.Battle
 				bool isEquipped = w.Slot == equipped.Slot && w.Item?.type == equipped.Item?.type;
 				if (isEquipped)
 					DrDraw.Text("E", 360, ey + 6, new Color(128, 128, 128), DrDraw.SmallFont);
-				else if (w.PerfectTurn > equipped.PerfectTurn)
-					StatArrow(362, ey + 8, true);
-				else if (w.PerfectTurn < equipped.PerfectTurn)
-					StatArrow(362, ey + 8, false);
+				else if (VsDefTurn(w, FightFoe()) != VsDefTurn(equipped, FightFoe()))
+					StatArrow(362, ey + 8, VsDefTurn(w, FightFoe()) > VsDefTurn(equipped, FightFoe()));
 			}
 			if (first > 0)
 				DrDraw.Text("^", 380, y - 4, Color.White, DrDraw.SmallFont);
@@ -330,24 +342,24 @@ namespace MercyMode.Battle
 			WeaponOption sel = weaponOptions[Math.Clamp(listIndex, 0, weaponOptions.Count - 1)];
 			Color gray = new(160, 160, 160);
 			float sx = 410, sy = y - 6;
-			DrDraw.Text($"ATK {sel.PerfectTurn}", sx, sy, Color.White, DrDraw.SmallFont);
-			if (sel.PerfectTurn != equipped.PerfectTurn)
-				StatArrow(sx + DrDraw.Measure($"ATK {sel.PerfectTurn}", DrDraw.SmallFont) + 8, sy + 3, sel.PerfectTurn > equipped.PerfectTurn);
-			DrDraw.Text($"{sel.Bolts} HIT{(sel.Bolts > 1 ? "S" : "")}  CRIT {sel.Crit}%", sx, sy + 20, gray, DrDraw.SmallFont);
+			// First: what a perfect hit actually does to the current target, after its defense (what the list is sorted by)
+			NPC foe = FightFoe();
+			if (foe != null)
+			{
+				string vs = $"VS DEF {foe.defense}: {VsDefHit(sel, foe)}/HIT";
+				DrDraw.Text(vs, sx, sy, new Color(255, 200, 80), DrDraw.SmallFont);
+				if (VsDefTurn(sel, foe) != VsDefTurn(equipped, foe))
+					StatArrow(sx + DrDraw.Measure(vs, DrDraw.SmallFont) + 8, sy + 3, VsDefTurn(sel, foe) > VsDefTurn(equipped, foe));
+			}
+			DrDraw.Text($"ATK {sel.PerfectTurn}", sx, sy + 20, Color.White, DrDraw.SmallFont);
+			DrDraw.Text($"{sel.Bolts} HIT{(sel.Bolts > 1 ? "S" : "")}  CRIT {sel.Crit}%", sx, sy + 40, gray, DrDraw.SmallFont);
 			string cost = sel.Problem != null ? sel.Problem.ToUpperInvariant()
 				: sel.ManaCost > 0 ? $"MANA {sel.ManaCost}/HIT ({Player.statMana})"
 				: sel.Ammo >= 0 ? $"{(sel.Throwable ? "LEFT" : "AMMO")} {sel.Ammo}"
 				: "";
-			if (cost.Length > 0)
-				DrDraw.Text(cost, sx, sy + 40, sel.Problem != null ? new Color(255, 80, 80) : gray, DrDraw.SmallFont);
 			DrDraw.Text($"DMG {sel.ShotDamage}", sx, sy + 60, gray, DrDraw.SmallFont);
-			// What a perfect hit actually does to the current target, after its defense
-			NPC foe = encounter?.TargetableParts == true && Encounter.CanHit(encounter.ChosenPart) ? encounter.ChosenPart : encounter?.StrikeTarget();
-			if (foe != null)
-			{
-				int perHit = AfterDefense(Math.Max(1, (int)Math.Round(sel.ShotDamage * sel.HitShare * HitScale(encounter))), foe);
-				DrDraw.Text($"VS DEF {foe.defense}: {perHit}/HIT", sx, sy + 80, new Color(255, 200, 80), DrDraw.SmallFont);
-			}
+			if (cost.Length > 0)
+				DrDraw.Text(cost, sx, sy + 80, sel.Problem != null ? new Color(255, 80, 80) : gray, DrDraw.SmallFont);
 		}
 
 		/// <summary>A hit after the enemy's defense: a quarter of the defense comes off (at least 1 gets through).</summary>
@@ -870,11 +882,11 @@ namespace MercyMode.Battle
 			if (IsDuelProxy(target))
 				strike.Damage = Math.Max(1, (int)(strike.Damage * DuelFightScale));
 			// (The stand-in is never struck: its number is the hit itself, and it makes no sound in the world)
-			int dealt = IsDuelProxy(target) ? strike.Damage : target.StrikeNPC(strike);
+			int dealt = IsDuelProxy(target) ? strike.Damage : IsStandIn(target) ? StandInHit(target, strike.Damage) : target.StrikeNPC(strike);
 			// A duel: the stand-in for the other player isn't on the server; the hit goes to them instead
 			if (IsDuelProxy(target))
 				DuelSendHit(dealt, hit.Crit);
-			else if (Main.netMode != NetmodeID.SinglePlayer)
+			else if (!IsStandIn(target) && Main.netMode != NetmodeID.SinglePlayer)
 				NetMessage.SendStrikeNPC(target, in strike);
 
 			Sfx("damage");
@@ -1625,10 +1637,10 @@ namespace MercyMode.Battle
 				};
 				if (IsDuelProxy(target))
 					strike.Damage = Math.Max(1, (int)(strike.Damage * DuelFightScale));
-				int dealt = IsDuelProxy(target) ? strike.Damage : target.StrikeNPC(strike);
+				int dealt = IsDuelProxy(target) ? strike.Damage : IsStandIn(target) ? StandInHit(target, strike.Damage) : target.StrikeNPC(strike);
 				if (IsDuelProxy(target))
 					DuelSendHit(dealt, false);
-				else if (Main.netMode != NetmodeID.SinglePlayer)
+				else if (!IsStandIn(target) && Main.netMode != NetmodeID.SinglePlayer)
 					NetMessage.SendStrikeNPC(target, in strike);
 				hitStack.TryGetValue(targetEnemy, out int stack);
 				hitStack[targetEnemy] = stack + 1;

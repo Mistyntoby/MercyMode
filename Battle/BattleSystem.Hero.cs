@@ -264,9 +264,9 @@ namespace MercyMode.Battle
 			return 1f;
 		}
 
-		private Vector2 HeroFeetNow => Vector2.Lerp(heroWorldScreen, HeroFeet, FlyProgress());
+		private Vector2 HeroFeetNow => Vector2.Lerp(heroWorldScreen, HeroFeet, FlyProgress()) + cutHero;
 		private float HeroScaleNow => MathHelper.Lerp(heroWorldScale, HeroScale, FlyProgress());
-		private Vector2 EnemyPosNow => encounter == null ? Vector2.Zero : Vector2.Lerp(enemyWorldScreen, encounter.ScreenCenter, FlyProgress());
+		private Vector2 EnemyPosNow => encounter == null ? Vector2.Zero : Vector2.Lerp(enemyWorldScreen, encounter.ScreenCenter, FlyProgress()) + cutEnemy;
 
 		/// <summary>The enemy's sprite frame and its size right now (world size at the start of the glide).</summary>
 		private float EnemyScaleNow(out Texture2D tex, out Rectangle frame)

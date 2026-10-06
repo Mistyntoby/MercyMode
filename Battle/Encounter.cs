@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Terraria;
 using Terraria.ID;
 using Terraria.ModLoader;
@@ -359,6 +360,42 @@ namespace MercyMode.Battle
 
 		/// <summary>What it says in its speech bubble as its turn starts (null: nothing).</summary>
 		public virtual string Bubble(int turn) => IsBoss ? Encounters.BossBubbles.Get(Npc.type, turn) : null;
+
+		/// <summary>
+		/// A talker (Talk.cs) speaks in the text box at the bottom as its turn starts instead of a bubble, and may
+		/// ask a question. Null: it doesn't.
+		/// </summary>
+		public virtual TalkTurn Talk(int turn) => Npc == null ? null : Talkers.For(Npc.type, turn);
+
+		/// <summary>Its face beside the text box while it talks: its sprite's first frame, fitted into a square.</summary>
+		public virtual void DrawPortrait(Vector2 center, float size, float time)
+		{
+			if (CustomSprite(out Texture2D custom, out Rectangle customFrame))
+			{
+				float cs = size / System.Math.Max(customFrame.Width, customFrame.Height);
+				DrDraw.Sb.Draw(custom, center, customFrame, Color.White, 0f, customFrame.Size() / 2f, cs, SpriteEffects.None, 0f);
+				return;
+			}
+			if (Npc == null)
+				return;
+			Main.instance.LoadNPC(Npc.type);
+			Texture2D tex = Terraria.GameContent.TextureAssets.Npc[Npc.type].Value;
+			int frames = System.Math.Max(1, Main.npcFrameCount[Npc.type]);
+			// Gently animated: its frames, slowly
+			int f = (int)(time / 10f) % frames;
+			var frame = new Rectangle(0, f * (tex.Height / frames), tex.Width, tex.Height / frames);
+			float s = System.Math.Min(2f, size / System.Math.Max(frame.Width, frame.Height));
+			Color c = DrawColor(Npc);
+			DrDraw.Sb.Draw(tex, center, frame, c, 0f, frame.Size() / 2f, s, SpriteEffects.None, 0f);
+		}
+
+		/// <summary>A sprite of its own instead of its NPC's (a boulder has no NPC). False: the NPC's.</summary>
+		public virtual bool CustomSprite(out Texture2D texture, out Rectangle frame)
+		{
+			texture = null;
+			frame = default;
+			return false;
+		}
 	}
 
 	/// <summary>Decides who gets a battle and which encounter they use.</summary>

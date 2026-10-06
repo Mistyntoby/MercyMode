@@ -160,7 +160,9 @@ namespace MercyMode.Battle
 			for (int i = 0; i < npcs.Count; i++)
 			{
 				// A duel: the other player, through the proxy NPC
-				Encounter e = duelWith >= 0 && duelEnc != null ? duelEnc : EncounterRegistry.Create(npcs[i]);
+				Encounter e = duelWith >= 0 && duelEnc != null ? duelEnc
+					: IsStandIn(npcs[i]) && boulderEnc != null ? boulderEnc
+					: EncounterRegistry.Create(npcs[i]);
 				if (npcs.Count > 1)
 				{
 					e.Slot = spots[i].center;

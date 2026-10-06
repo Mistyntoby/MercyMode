@@ -58,6 +58,8 @@ namespace MercyMode.Battle.Net
 			DuelRelay, // c→s→opponent: anything in the duel (HP, hits, SOUL, attack pieces, turns, text)
 			DuelEnd, // c→s: I'm out of the duel; s→c: your opponent is
 			Battling, // c→s→all: I'm in a battle (or not): nobody outside can hurt me
+			Vote, // c→s: my answer to the talker's question (battle, round, choice, how many answers)
+			VoteResult, // s→party: the party's answer (round, choice, tie, the count for each answer)
 		}
 
 		/// <summary>Over: every enemy is gone (won); nobody can join and it isn't shown as a battle any more.</summary>
@@ -173,6 +175,11 @@ namespace MercyMode.Battle.Net
 			public int StageTicks;
 			public int EmptyTicks;
 			public int Round;
+			/// <summary>The question being voted on (its round; -1 none), the votes so far and how long it's been open.</summary>
+			public int VoteRound = -1, VoteOptions, VoteTicks;
+			public readonly Dictionary<int, int> Votes = new();
+			/// <summary>The last question settled, and what was chosen (a late voter is told again).</summary>
+			public int SettledRound = -1, SettledChoice;
 			public List<int> Step => StepIndex < Steps.Count ? Steps[StepIndex].Where(Players.Contains).ToList() : new List<int>();
 			public int Current => Step.FirstOrDefault(p => !Done.Contains(p), -1);
 		}
@@ -694,6 +701,17 @@ namespace MercyMode.Battle.Net
 						battling[player] = on;
 					break;
 				}
+				case Msg.VoteResult:
+				{
+					int round = r.ReadInt32(), choice = r.ReadByte();
+					bool tie = r.ReadBoolean();
+					int n = r.ReadByte();
+					var counts = new int[n];
+					for (int i = 0; i < n; i++)
+						counts[i] = r.ReadByte();
+					battle?.OnVoteResult(round, choice, tie, counts);
+					break;
+				}
 				case Msg.PlayerColor:
 				{
 					int player = r.ReadByte();
@@ -856,6 +874,12 @@ namespace MercyMode.Battle.Net
 				case Msg.Left:
 					ServerLeave(from, r.ReadInt32());
 					break;
+				case Msg.Vote:
+				{
+					int id = r.ReadInt32(), round = r.ReadInt32(), choice = r.ReadByte(), options = r.ReadByte();
+					ServerVote(from, id, round, choice, options);
+					break;
+				}
 				case Msg.Battling:
 				{
 					int player = r.ReadByte();
@@ -1183,6 +1207,9 @@ namespace MercyMode.Battle.Net
 					continue;
 
 				b.StageTicks++;
+				// A question nobody else is answering: settled with the votes there are
+				if (b.VoteRound >= 0 && ++b.VoteTicks > VoteTimeoutTicks)
+					SettleVote(b);
 				// Only a real choice starts the wait for the slow ones (a downed player's automatic skip doesn't)
 				if (b.Stage != Stage.Acting && b.Ready.Values.Any(f => f != 0) && b.StageTicks > ChooseTimeoutTicks)
 					CheckReady(b, force: true);

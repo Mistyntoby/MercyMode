@@ -117,7 +117,17 @@ namespace MercyMode.Battle
 		/// <summary>The proxy NPC slot: index 200 exists in Terraria's array but is never updated, drawn or synced.</summary>
 		private static NPC DuelProxy => Main.npc[Main.maxNPCs];
 
-		public static bool IsDuelProxy(NPC npc) => npc != null && npc.whoAmI >= Main.maxNPCs;
+		public static bool IsDuelProxy(NPC npc) => IsStandIn(npc) && Instance.duelWith >= 0;
+
+		/// <summary>The stand-in slot (index 200): the other player in a duel, or a boulder. Never in the world.</summary>
+		public static bool IsStandIn(NPC npc) => npc != null && npc.whoAmI >= Main.maxNPCs;
+
+		/// <summary>A hit on a stand-in that isn't a duel (a boulder): just its HP, nothing sent or killed in the world.</summary>
+		private static int StandInHit(NPC npc, int damage)
+		{
+			npc.life = Math.Max(0, npc.life - damage);
+			return damage;
+		}
 
 		/// <summary>The server paired us with this player. False if a battle can't start here.</summary>
 		internal bool StartDuel(int opponent, bool meFirst)

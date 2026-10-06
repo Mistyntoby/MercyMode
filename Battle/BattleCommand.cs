@@ -38,6 +38,7 @@ namespace MercyMode.Battle
 			caller.Reply("Battles (singleplayer):", h);
 			caller.Reply("  /mmbattle eye  - fight the Eye of Cthulhu", t);
 			caller.Reply("  /mmbattle npc <id|name>  - spawn an enemy or boss and fight it", t);
+			caller.Reply("  /mmbattle boulder [bouncy|crystal|moon|cactus]  - roll a boulder into yourself", t);
 			caller.Reply("  /mmbattle group <n> <name>  or  group <a>, <b>, <c>  - fight a squad", t);
 			caller.Reply("  /mmbattle spawn [dx dy]  - spawn the Eye without starting  |  spawnnpc <id|name>", t);
 			caller.Reply("  add -test (e.g. /mmbattle npc eye -test)  - fight with a typical player's gear for that boss", t);
@@ -194,6 +195,27 @@ namespace MercyMode.Battle
 			if (!MercyMode.IsSingleplayer)
 			{
 				caller.Reply("* Singleplayer only.", MercyMode.Gray);
+				return;
+			}
+
+			if (cmd == "boulder")
+			{
+				string kind = args.Length > 1 ? args[1].ToLowerInvariant() : "";
+				int type = kind switch
+				{
+					"bouncy" => ProjectileID.BouncyBoulder,
+					"crystal" or "life" => ProjectileID.LifeCrystalBoulder,
+					"moon" => ProjectileID.MoonBoulder,
+					"cactus" => ProjectileID.RollingCactus,
+					_ => ProjectileID.Boulder,
+				};
+				int idx = Projectile.NewProjectile(player.GetSource_FromThis(), player.Center + new Vector2(160f, -10f), new Vector2(-4f, 0f), type, 70, 0f, Main.myPlayer);
+				if (idx >= 0 && idx < Main.maxProjectiles)
+				{
+					Main.projectile[idx].hostile = true;
+					Main.projectile[idx].friendly = false;
+				}
+				caller.Reply("* Here it comes.", MercyMode.Gray);
 				return;
 			}
 
