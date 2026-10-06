@@ -993,7 +993,7 @@ namespace MercyMode.Battle
 	/// </summary>
 	public class Underground : EnemyAttack
 	{
-		public float LightRadius = 40f, Darkness = 0.94f;
+		public float LightRadius = 40f, Darkness = 0.97f;
 		public int FadeIn = 30;
 		private Bullet shade;
 
@@ -1033,6 +1033,8 @@ namespace MercyMode.Battle
 		}
 
 		private static Texture2D spot;
+		/// <summary>The box's green border, which the dark leaves alone.</summary>
+		private const int BorderInset = 5;
 
 		/// <summary>A round soft-edged hole in the dark: clear in the middle, black at the edges and corners.</summary>
 		private static Texture2D Spot()
@@ -1062,9 +1064,13 @@ namespace MercyMode.Battle
 		{
 			if (alpha <= 0.01f)
 				return;
+			// Inside the box's border, which stays visible
 			Rectangle box = battle.Box;
+			box.Inflate(-BorderInset, -BorderInset);
 			Vector2 c = battle.SoulCenter;
-			int r = (int)(radius * 1.7f);
+			// The light: clear for about two thirds of the radius, fading to black at its edge (it was so wide most of
+			// the box only ever got a half shadow)
+			int r = (int)(radius * 1.25f);
 			var sq = new Rectangle((int)c.X - r, (int)c.Y - r, r * 2, r * 2);
 			Rectangle vis = Rectangle.Intersect(sq, box);
 			Color dark = Color.Black * alpha;

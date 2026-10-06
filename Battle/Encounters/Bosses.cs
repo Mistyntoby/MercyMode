@@ -210,6 +210,8 @@ namespace MercyMode.Battle.Encounters
 	public class EaterOfWorlds : Encounter
 	{
 		public override string Name => "EATER OF WORLDS";
+		// Lots of segments and spit on screen at once: each hit a little softer than other bosses'
+		public override float DamageFactor => 0.75f;
 		public override string EncounterText => "* EATER OF WORLDS bursts out of the ground!";
 		public override float DrawRotation(int time) => -BossKit.WormRotation;
 		// The whole worm (shortened), slithering, instead of just its head
@@ -304,7 +306,13 @@ namespace MercyMode.Battle.Encounters
 				return b;
 			}
 			Bullet tooth(Vector2 p, Vector2 v) => Shots.Item(ItemID.WormTooth, p, v, 0.9f, 0.7f, new Vector2(8, 8), rotate: true);
-			Bullet soul(Vector2 p, Vector2 v) => Shots.Npc(NPCID.EaterofSouls, p, v, 0.7f, 0.8f, new Vector2(16, 16), rotate: false).FaceTravel();
+			// Its sprite faces down: turned to face the SOUL (it hangs back and spits at you)
+			Bullet soul(Vector2 p, Vector2 v)
+			{
+				Bullet b = Shots.Npc(NPCID.EaterofSouls, p, v, 0.7f, 0.8f, new Vector2(16, 16), rotate: false);
+				b.OnUpdate += x => x.Rotation = (battle.SoulCenter - x.Position).ToRotation() - MathHelper.PiOver2;
+				return b;
+			}
 			return Cycle(
 				// Yellow SOUL: worms swim in; shoot a segment out and the worm splits, the back half coming for you
 				() => new SplittingWorms(hard ? 90 : 110) { Segments = hard ? 10 : 9, Speed = hard ? 2f : 1.7f, SplitSpeed = hard ? 2.6f : 2.2f },

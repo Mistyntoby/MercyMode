@@ -52,6 +52,8 @@ namespace MercyMode.Battle
 		public NPC Npc;
 		/// <summary>How hard its attack is going right now (0-1), on the battle screen: for poses and frames.</summary>
 		public float AttackEnergy;
+		/// <summary>A boss whose bullets come thick and fast hits a bit softer per bullet (1 = the usual).</summary>
+		public virtual float DamageFactor => 1f;
 		public int Turn;
 		/// <summary>A boss's one-time all-out turn at low HP: announced, then used.</summary>
 		public bool DesperationAnnounced, DesperationUsed;

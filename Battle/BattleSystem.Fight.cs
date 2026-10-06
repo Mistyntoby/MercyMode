@@ -108,7 +108,7 @@ namespace MercyMode.Battle
 			float defenseTaken = Main.masterMode ? 1f : Main.expertMode ? 0.75f : 0.5f;
 			float k = defense + 10f;
 			float armour = (defense + k) / (Math.Max(0, playerDefense) + k);
-			float hit = hp * BossHitShare * (mult / 0.8f) * mode * armour;
+			float hit = hp * BossHitShare * (mult / 0.8f) * mode * armour * e.DamageFactor;
 			return Math.Max(1, (int)Math.Round(hit + Math.Max(0, playerDefense) * defenseTaken));
 		}
 
