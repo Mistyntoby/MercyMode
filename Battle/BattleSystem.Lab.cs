@@ -12,6 +12,7 @@ namespace MercyMode.Battle
 		internal int LabMenuChoice => (int)menuChoice;
 		internal int LabListIndex => listIndex;
 		internal string LabText => text;
+		internal string LabRawText => rawText;
 		internal bool LabFirstStrike => firstStrike;
 		internal int LabPotionSick => potionSickTurns;
 		internal Encounter LabTarget => targetEnemy?.E;

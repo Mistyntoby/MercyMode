@@ -26,9 +26,10 @@ namespace MercyMode.Battle.Encounters
 		{
 			if (Mercy >= 100f)
 				return SpareLine;
-			if (LifeRatio < 0.3f)
+			// Badly hurt: it shows, every other turn
+			if (LifeRatio < 0.3f && Turn % 2 == 0)
 				return HurtLine;
-			return Lines[Turn % Lines.Length];
+			return Dialogue.Flavor(this, Lines, Turn);
 		}
 
 		public override List<ActOption> Acts(BattleSystem battle)

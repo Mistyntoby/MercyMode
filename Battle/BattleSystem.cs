@@ -936,8 +936,12 @@ namespace MercyMode.Battle
 				SetHeroPose(HeroPose.Idle);
 			tpPreview = 0;
 			RetargetIfNeeded();
-			if (!keepText)
-				SetText(encounter.FlavorText());
+			string line = keepText ? rawText : encounter.FlavorText();
+			// A campfire or Heart Lantern nearby heals a little each turn, said under the turn's line
+			if (phase != Phase.Intro && !downed && CozyHeal() is string cozy)
+				line += "\n" + cozy;
+			if (!keepText || line != rawText)
+				SetText(line);
 			// Downed (multiplayer): back up once the HP is above zero; until then the turn is skipped
 			if (downed && !RecoverDowned())
 				return;
@@ -948,6 +952,25 @@ namespace MercyMode.Battle
 				return;
 			}
 			SetPhase(Phase.Menu);
+		}
+
+		/// <summary>
+		/// Terraria's Cozy Fire (+1 life regen) and Heart Lamp (+2): a small heal at the start of each of our turns, 2%
+		/// and 3% of max HP. Returns the line to show, or null.
+		/// </summary>
+		private string CozyHeal()
+		{
+			bool fire = Player.HasBuff(BuffID.Campfire), lamp = Player.HasBuff(BuffID.HeartLamp);
+			if (!fire && !lamp || Player.statLife <= 0 || Player.statLife >= Player.statLifeMax2)
+				return null;
+			int amount = (fire ? Math.Max(2, Player.statLifeMax2 * 2 / 100) : 0) + (lamp ? Math.Max(3, Player.statLifeMax2 * 3 / 100) : 0);
+			amount = Math.Min(amount, Player.statLifeMax2 - Player.statLife);
+			Player.statLife += amount;
+			if (Main.netMode == NetmodeID.MultiplayerClient)
+				NetMessage.SendData(MessageID.PlayerLifeMana, -1, -1, null, Player.whoAmI);
+			PlayHealFx(amount);
+			string from = fire && lamp ? "The campfire and the Heart Lantern" : fire ? "The campfire's warmth" : "The Heart Lantern";
+			return $"* {from} restored {amount} HP.";
 		}
 
 		private void UpdateMenu()
@@ -2151,7 +2174,7 @@ namespace MercyMode.Battle
 			// SOUL (spr_dodgeheart flips frames while invincible) and the graze flash
 			int frame = inv > 0 ? (inv / SoulBlinkTicks) % 2 : 0;
 			// Once the SOUL is back with the hero it isn't drawn in the box any more
-			bool soulHome = phase == Phase.EnemyOutro && phaseTicks >= 8 * TicksPerFrame;
+			bool soulHome = phase == Phase.EnemyOutro && phaseTicks >= 8 * TicksPerFrame || phase == Phase.Build && DuelSoulHome;
 			DrawAllySouls();
 			if (soulHome)
 			{

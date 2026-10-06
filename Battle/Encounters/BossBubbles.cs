@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Terraria.ID;
 
 namespace MercyMode.Battle.Encounters
@@ -36,7 +37,10 @@ namespace MercyMode.Battle.Encounters
 
 		public static string Get(int type, int turn)
 		{
-			string[] lines = Lines.TryGetValue(type, out string[] l) ? l : Generic;
+			// Their own lines first, then the extras (Dialogue.cs)
+			string[] own = Lines.TryGetValue(type, out string[] l) ? l : Generic;
+			string[] extra = Dialogue.BossBubbles(type) ?? Dialogue.GenericBossBubbles;
+			string[] lines = own.Concat(extra.Where(x => !own.Contains(x))).ToArray();
 			return lines[((turn % lines.Length) + lines.Length) % lines.Length];
 		}
 	}

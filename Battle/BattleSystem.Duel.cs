@@ -225,8 +225,10 @@ namespace MercyMode.Battle
 				{
 					w.Write((short)soul.X);
 					w.Write((short)soul.Y);
-					// 0x80 grazing, 0x40 the dark frame of the hit-invincibility blink, low bits the SOUL's mode
-					w.Write((byte)((grazeTimer > 0 ? 0x80 : 0) | (inv > 0 && inv / SoulBlinkTicks % 2 == 1 ? 0x40 : 0) | (int)soulMode & 0x07));
+					// 0x80 grazing, 0x40 the dark frame of the hit-invincibility blink, 0x20 flying home (the turn's
+					// over), 0x18 the green shield's side, low bits the SOUL's mode
+					w.Write((byte)((grazeTimer > 0 ? 0x80 : 0) | (inv > 0 && inv / SoulBlinkTicks % 2 == 1 ? 0x40 : 0)
+						| (phase == Phase.EnemyOutro ? 0x20 : 0) | (shieldDir & 3) << 3 | (int)soulMode & 0x07));
 				});
 		}
 
@@ -558,10 +560,26 @@ namespace MercyMode.Battle
 				case BattleNet.DuelKind.Soul:
 				{
 					Vector2 was = duelRemoteSoul;
-					duelRemoteSoul = new Vector2(r.ReadInt16(), r.ReadInt16());
+					var at = new Vector2(r.ReadInt16(), r.ReadInt16());
 					byte flags = r.ReadByte();
+					// Their turn's over and the SOUL flies home: home is their hero (drawn on our right), not the spot
+					// it goes to on their screen, which on ours is our own hero
+					if ((flags & 0x20) != 0)
+					{
+						if (phase == Phase.Build && duelSoulHomeTicks < 0)
+						{
+							duelSoulHomeFrom = soul;
+							duelSoulHomeTicks = 0;
+						}
+						break;
+					}
+					duelRemoteSoul = at;
 					if (phase == Phase.Build)
+					{
 						MirrorRemoteSoulMode((SoulMode)(flags & 0x07), was);
+						// Which way their green shield faces
+						shieldDir = flags >> 3 & 3;
+					}
 					if (!duelRemoteSoulSet)
 						soul = duelRemoteSoul;
 					duelRemoteSoulSet = true;
@@ -891,7 +909,7 @@ namespace MercyMode.Battle
 		};
 
 		/// <summary>Ticks a piece shows as a warning before its bullets come.</summary>
-		private const int PieceWarnTicks = 36;
+		private const int PieceWarnTicks = 52;
 
 		private static (Texture2D tex, Rectangle src) ItemTexture(int type)
 		{
@@ -952,7 +970,7 @@ namespace MercyMode.Battle
 			{
 				case PieceKind.Slash:
 				{
-					Bullet b = TexBullet(item, pc.At, dir * 4.5f, 32f, 18f);
+					Bullet b = TexBullet(item, pc.At, dir * 3.2f, 32f, 18f);
 					b.OnUpdate = x => x.Rotation += 0.35f;
 					b.Trail = 4;
 					bullets.Add(b);
@@ -960,7 +978,7 @@ namespace MercyMode.Battle
 				}
 				case PieceKind.Thrust:
 				{
-					Bullet b = TexBullet(item, pc.At, dir * 8.5f, 32f, 12f);
+					Bullet b = TexBullet(item, pc.At, dir * 5.6f, 32f, 12f);
 					b.RotateWithVelocity = true;
 					b.RotationOffset = MathHelper.PiOver4;
 					b.Trail = 5;
@@ -970,7 +988,7 @@ namespace MercyMode.Battle
 				case PieceKind.Arrow:
 					foreach (float spread in new[] { -0.22f, 0f, 0.22f })
 					{
-						Bullet b = TexBullet(proj, pc.At, dir.RotatedBy(spread) * 6f, 22f, 8f);
+						Bullet b = TexBullet(proj, pc.At, dir.RotatedBy(spread) * 4.2f, 22f, 8f);
 						b.RotateWithVelocity = true;
 						b.RotationOffset = MathHelper.PiOver2;
 						bullets.Add(b);
@@ -978,18 +996,18 @@ namespace MercyMode.Battle
 					break;
 				case PieceKind.Spray:
 					foreach (float spread in new[] { -0.36f, -0.18f, 0f, 0.18f, 0.36f })
-						bullets.Add(new Bullet { Position = pc.At, Velocity = dir.RotatedBy(spread) * 7f, HitSize = new Vector2(6), Color = new Color(255, 230, 120) });
+						bullets.Add(new Bullet { Position = pc.At, Velocity = dir.RotatedBy(spread) * 4.4f, HitSize = new Vector2(6), Color = new Color(255, 230, 120) });
 					break;
 				case PieceKind.Orb:
 				{
-					Bullet b = TexBullet(proj, pc.At, dir * 2.6f, 24f, 12f);
+					Bullet b = TexBullet(proj, pc.At, dir * 2.1f, 24f, 12f);
 					b.Lifetime = 320;
 					b.Trail = 4;
 					b.OnUpdate = x =>
 					{
 						x.Rotation += 0.1f;
 						if (x.Age < 200)
-							x.Velocity = Vector2.Lerp(x.Velocity, (SoulCenter - x.Position).SafeNormalize(Vector2.UnitX) * 2.6f, 0.03f);
+							x.Velocity = Vector2.Lerp(x.Velocity, (SoulCenter - x.Position).SafeNormalize(Vector2.UnitX) * 2.1f, 0.025f);
 					};
 					bullets.Add(b);
 					break;
@@ -1016,7 +1034,7 @@ namespace MercyMode.Battle
 				case PieceKind.Explosive:
 				{
 					// Flies a little way, then bursts: a ring of shrapnel and a shockwave
-					Bullet b = TexBullet(proj, pc.At, dir * 3.4f, 22f, 10f);
+					Bullet b = TexBullet(proj, pc.At, dir * 2.6f, 22f, 10f);
 					b.RotateWithVelocity = true;
 					b.RotationOffset = MathHelper.PiOver2;
 					b.Trail = 3;
@@ -1032,7 +1050,7 @@ namespace MercyMode.Battle
 						Terraria.Audio.SoundEngine.PlaySound(SoundID.Item14 with { Volume = 0.6f });
 						for (int i = 0; i < 8; i++)
 						{
-							Vector2 v = (MathHelper.TwoPi * i / 8f).ToRotationVector2() * 3.6f;
+							Vector2 v = (MathHelper.TwoPi * i / 8f).ToRotationVector2() * 2.6f;
 							Spawn(new Bullet { Position = x.Position, Velocity = v, HitSize = new Vector2(6), Color = new Color(255, 170, 70), DamageMult = dmg, Lifetime = 90 });
 						}
 					};
@@ -1044,12 +1062,12 @@ namespace MercyMode.Battle
 					break;
 				case PieceKind.Minion:
 				{
-					Bullet b = TexBullet(proj, pc.At, dir * 1.9f, 28f, 14f);
+					Bullet b = TexBullet(proj, pc.At, dir * 1.6f, 28f, 14f);
 					b.Trail = 4;
 					b.Lifetime = 260;
 					b.OnUpdate = x =>
 					{
-						x.Velocity = Vector2.Lerp(x.Velocity, (SoulCenter - x.Position).SafeNormalize(Vector2.UnitX) * 1.9f, 0.06f);
+						x.Velocity = Vector2.Lerp(x.Velocity, (SoulCenter - x.Position).SafeNormalize(Vector2.UnitX) * 1.6f, 0.04f);
 						x.FlipX = x.Velocity.X < 0f;
 					};
 					bullets.Add(b);
@@ -1057,7 +1075,7 @@ namespace MercyMode.Battle
 				}
 				case PieceKind.Bounce:
 				{
-					Bullet b = TexBullet(item, pc.At, dir * 4.2f, 26f, 14f);
+					Bullet b = TexBullet(item, pc.At, dir * 3f, 26f, 14f);
 					b.Lifetime = 280;
 					b.OnUpdate = x =>
 					{
@@ -1073,7 +1091,7 @@ namespace MercyMode.Battle
 				}
 				default:
 				{
-					Bullet b = TexBullet(item, pc.At, dir * 6f, 24f, 10f);
+					Bullet b = TexBullet(item, pc.At, dir * 4.2f, 24f, 10f);
 					b.RotateWithVelocity = true;
 					b.RotationOffset = MathHelper.PiOver4;
 					bullets.Add(b);
@@ -1200,7 +1218,8 @@ namespace MercyMode.Battle
 		private DuelAttack buildPreview;
 
 		private const int DuelBuildTicks = 15 * 60;
-		private const float InkMax = 100f, InkStart = 45f, InkPerTick = 0.3f;
+		// Enough to keep placing: you start with most of a bar and it refills quickly (running dry stalled whole turns)
+		private const float InkMax = 120f, InkStart = 80f, InkPerTick = 0.5f;
 
 		private static readonly Dictionary<PieceKind, (string label, int cost)> PieceInfo = new()
 		{
@@ -1285,6 +1304,8 @@ namespace MercyMode.Battle
 			boxAfterimages.Clear();
 			RefreshPieces();
 			buildInk = InkStart;
+			pendingPlace = null;
+			duelSoulHomeTicks = -1;
 			buildTicks = DuelBuildTicks;
 			buildDone = false;
 			dragFrom = null;
@@ -1459,11 +1480,29 @@ namespace MercyMode.Battle
 			return list;
 		}
 
+		/// <summary>Their SOUL flying back to them at the end of their turn (ticks since it set off; -1 = it hasn't).</summary>
+		private int duelSoulHomeTicks = -1;
+		private Vector2 duelSoulHomeFrom;
+		internal bool DuelSoulHome => duelSoulHomeTicks >= 8 * TicksPerFrame;
+
+		/// <summary>Where their SOUL goes home to on our screen: their hero's chest.</summary>
+		private Vector2 DuelOpponentHeart => EnemyPosNow + new Vector2(-SoulSize / 2f, -SoulSize / 2f);
+
 		private void UpdateBuild()
 		{
 			boxTimer = Math.Min(BoxGrowTicks, boxTimer + 1);
-			if (duelRemoteSoulSet)
+			if (duelSoulHomeTicks >= 0)
+			{
+				// Back to them in 8 frames, then a burst, like ours does
+				duelSoulHomeTicks++;
+				soul = Vector2.Lerp(duelSoulHomeFrom, DuelOpponentHeart, Math.Min(1f, duelSoulHomeTicks / (8f * TicksPerFrame)));
+				if (duelSoulHomeTicks == 8 * TicksPerFrame)
+					AddEffect(new HeartBurst(DuelOpponentHeart));
+			}
+			else if (duelRemoteSoulSet)
 				soul = Vector2.Lerp(soul, duelRemoteSoul, 0.5f);
+			if (soulMode == SoulMode.Green)
+				shieldAngle += MathHelper.WrapAngle(-MathHelper.PiOver2 + shieldDir * MathHelper.PiOver2 - shieldAngle) * 0.5f;
 			buildPreview?.Update(this, phaseTicks);
 			// The preview's bullets move like the real ones, but nothing hits
 			updatingBullets = true;
@@ -1480,6 +1519,9 @@ namespace MercyMode.Battle
 			if (buildDone)
 				return;
 			buildInk = Math.Min(InkMax, buildInk + InkPerTick);
+			if (pendingPlace is (Vector2 waitAt, Vector2 waitTo) && pieceOptions.Count > 0
+				&& buildInk >= ShapeCost(pieceOptions[Math.Clamp(piecePick, 0, pieceOptions.Count - 1)]))
+				PlacePiece(waitAt, waitTo);
 			if (soulForceCooldown > 0)
 				soulForceCooldown--;
 			if (--buildTicks <= 0)
@@ -1544,6 +1586,9 @@ namespace MercyMode.Battle
 			mouseWasDown = down;
 		}
 
+		/// <summary>A placement waiting on ink (the last one clicked).</summary>
+		private (Vector2 At, Vector2 To)? pendingPlace;
+
 		private void PlacePiece(Vector2 at, Vector2 to)
 		{
 			if (pieceOptions.Count == 0)
@@ -1552,9 +1597,13 @@ namespace MercyMode.Battle
 			int cost = ShapeCost(o);
 			if (buildInk < cost)
 			{
-				Sfx("cantselect");
+				// Not enough yet: it goes in as soon as the ink is there, instead of the click being lost
+				if (pendingPlace == null)
+					Sfx("cantselect");
+				pendingPlace = (at, to);
 				return;
 			}
+			pendingPlace = null;
 			buildInk -= cost;
 			// Every piece of the shape, to them and into our preview
 			foreach (var (pat, pdir, delay) in ShapePieces(at, to))

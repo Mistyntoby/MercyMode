@@ -60,7 +60,7 @@ namespace MercyMode.Battle.Encounters
 				return $"* {Name} looks TIRED.";
 			if (LifeRatio < 0.35f)
 				return $"* {Name} looks hurt.";
-			return string.Format(Lines[Turn % Lines.Length], Name);
+			return string.Format(Dialogue.Flavor(this, Lines, Turn), Name);
 		}
 
 		/// <summary>Worn out: badly hurt, or an ACT wore it out. PACIFY puts it to sleep.</summary>
@@ -78,7 +78,7 @@ namespace MercyMode.Battle.Encounters
 			// Hurt or tired: it says so instead now and then
 			if (Tired && turn % 2 == 1)
 				return "[wave]...so... tired...[/wave]";
-			return lines[turn % lines.Length];
+			return string.Format(Dialogue.Bubble(this, lines, turn) ?? "", Name);
 		}
 
 		public override List<ActOption> Acts(BattleSystem battle)

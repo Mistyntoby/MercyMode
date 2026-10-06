@@ -150,7 +150,7 @@ namespace MercyMode.Battle.Encounters
 		{
 			if (Mercy >= 100f)
 				return "* KING SLIME seems content to just wobble.";
-			if (LifeRatio < 0.5f)
+			if (LifeRatio < 0.5f && Turn % 3 == 0)
 				return "* KING SLIME is getting noticeably smaller.";
 			string[] lines = {
 				"* KING SLIME wobbles regally.",
@@ -158,7 +158,7 @@ namespace MercyMode.Battle.Encounters
 				"* KING SLIME adjusts its crown.",
 				"* The ninja inside waves at you.",
 			};
-			return lines[Turn % lines.Length];
+			return Dialogue.Flavor(this, lines, Turn);
 		}
 
 		public override List<ActOption> Acts(BattleSystem battle) => new()
@@ -273,7 +273,7 @@ namespace MercyMode.Battle.Encounters
 				"* Smells like the Corruption.",
 				"* EATER OF WORLDS chews thoughtfully on the scenery.",
 			};
-			return lines[Turn % lines.Length];
+			return Dialogue.Flavor(this, lines, Turn);
 		}
 
 		public override List<ActOption> Acts(BattleSystem battle) => new()
@@ -380,7 +380,7 @@ namespace MercyMode.Battle.Encounters
 				"* You feel like you're being read like a book.",
 				"* Smells like the Crimson.",
 			};
-			return lines[Turn % lines.Length];
+			return Dialogue.Flavor(this, lines, Turn);
 		}
 
 		public override List<ActOption> Acts(BattleSystem battle) => new()
@@ -460,7 +460,7 @@ namespace MercyMode.Battle.Encounters
 				"* The buzzing is deafening.",
 				"* Smells like honey and anger.",
 			};
-			return LifeRatio < 0.5f ? "* QUEEN BEE's wings are getting tired." : lines[Turn % lines.Length];
+			return LifeRatio < 0.5f && Turn % 3 == 0 ? "* QUEEN BEE's wings are getting tired." : Dialogue.Flavor(this, lines, Turn);
 		}
 
 		public override List<ActOption> Acts(BattleSystem battle) => new()
@@ -555,7 +555,7 @@ namespace MercyMode.Battle.Encounters
 				"* Smells like old bones and older curses.",
 				"* SKELETRON spins its head. Showing off.",
 			};
-			return LifeRatio < 0.5f ? "* SKELETRON's curse is weakening." : lines[Turn % lines.Length];
+			return LifeRatio < 0.5f && Turn % 3 == 0 ? "* SKELETRON's curse is weakening." : Dialogue.Flavor(this, lines, Turn);
 		}
 
 		public override List<ActOption> Acts(BattleSystem battle) => new()
@@ -633,7 +633,7 @@ namespace MercyMode.Battle.Encounters
 				"* The air gets colder.",
 				"* Shadows gather around DEERCLOPS's antlers.",
 			};
-			return LifeRatio < 0.5f ? "* DEERCLOPS is breathing hard. Frost covers its fur." : lines[Turn % lines.Length];
+			return LifeRatio < 0.5f && Turn % 3 == 0 ? "* DEERCLOPS is breathing hard. Frost covers its fur." : Dialogue.Flavor(this, lines, Turn);
 		}
 
 		public override List<ActOption> Acts(BattleSystem battle) => new()
@@ -737,7 +737,7 @@ namespace MercyMode.Battle.Encounters
 				"* Smells like the Underworld.",
 				"* The Hungry gnash their teeth.",
 			};
-			return LifeRatio < 0.5f ? "* The WALL OF FLESH is tearing apart." : lines[Turn % lines.Length];
+			return LifeRatio < 0.5f && Turn % 3 == 0 ? "* The WALL OF FLESH is tearing apart." : Dialogue.Flavor(this, lines, Turn);
 		}
 
 		public override List<ActOption> Acts(BattleSystem battle) => new()
@@ -802,7 +802,7 @@ namespace MercyMode.Battle.Encounters
 		{
 			if (Mercy >= 100f)
 				return $"* {Name} doesn't seem to want to fight anymore.";
-			if (LifeRatio < 0.3f)
+			if (LifeRatio < 0.3f && Turn % 2 == 0)
 				return $"* {Name} is badly hurt.";
 			string[] lines = {
 				$"* {Name} towers over you.",
@@ -810,7 +810,7 @@ namespace MercyMode.Battle.Encounters
 				"* The air feels heavy.",
 				$"* {Name} prepares its next attack.",
 			};
-			return lines[Turn % lines.Length];
+			return string.Format(Dialogue.Flavor(this, lines, Turn), Name);
 		}
 
 		public override List<ActOption> Acts(BattleSystem battle) => new()

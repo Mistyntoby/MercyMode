@@ -189,6 +189,7 @@ namespace MercyMode.Lab
 				("eater-whole", EaterWhole),
 				("attacks-evil", AttacksEvil),
 				("eater-splits", EaterSplits),
+				("cozy-heal", CozyHeal),
 				("boss-kill", () => BossKill(NPCID.EyeofCthulhu)),
 				("boss-kill-king-slime", () => BossKill(NPCID.KingSlime)),
 				("boss-spare", BossSpare),
@@ -1588,6 +1589,28 @@ namespace MercyMode.Lab
 			yield return Choose(4);
 			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the next enemy turn");
 			Check(B.LabAttack?.GetType().Name != "RipOpen", "the Eye tore open twice");
+			foreach (NPC m in B.LabTarget.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
+		}
+
+		/// <summary>A campfire or Heart Lantern heals a little each turn and says so under the turn's line.</summary>
+		private IEnumerable CozyHeal()
+		{
+			yield return StartWith(NPCID.EyeofCthulhu);
+			yield return Menu();
+			Player p = Main.LocalPlayer;
+			yield return Choose(4);
+			yield return Until(() => B.LabPhase is Phase.EnemyOutro or Phase.Menu, "the end of the enemy turn");
+			p.AddBuff(BuffID.Campfire, 600);
+			p.AddBuff(BuffID.HeartLamp, 600);
+			p.statLife = 100;
+			yield return Menu();
+			string line = B.LabRawText ?? "";
+			Log($"  HP {p.statLife}/{p.statLifeMax2}, text: {line.Replace("\n", " / ")}");
+			Check(p.statLife > 100, "the campfire and Heart Lantern didn't heal");
+			Check(line.Contains("campfire") && line.Contains("Heart Lantern"), "the heal wasn't mentioned");
+			Check(line.StartsWith("* "), "the turn's own line is gone");
 			foreach (NPC m in B.LabTarget.Members().ToList())
 				m.active = false;
 			yield return WaitForEnd();

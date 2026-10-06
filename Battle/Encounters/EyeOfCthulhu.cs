@@ -93,9 +93,9 @@ namespace MercyMode.Battle.Encounters
 		{
 			if (Mercy >= 100f)
 				return "* EYE OF CTHULHU looks tired of fighting.";
-			if (LifeRatio < 0.25f)
+			if (LifeRatio < 0.25f && Turn % 2 == 0)
 				return "* EYE OF CTHULHU is crying blood.";
-			if (LifeRatio < 0.5f)
+			if (LifeRatio < 0.5f && Turn % 3 == 0)
 				return "* EYE OF CTHULHU bares its teeth.";
 			string[] lines = {
 				"* EYE OF CTHULHU stares into your soul.",
@@ -103,7 +103,7 @@ namespace MercyMode.Battle.Encounters
 				"* Smells like the night sky.",
 				"* EYE OF CTHULHU tries to blink. It can't.",
 			};
-			return lines[Turn % lines.Length];
+			return Dialogue.Flavor(this, lines, Turn);
 		}
 
 		public override List<ActOption> Acts(BattleSystem battle) => new()
