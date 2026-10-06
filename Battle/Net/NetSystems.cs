@@ -51,27 +51,46 @@ namespace MercyMode.Battle.Net
 	{
 		/// <summary>The config's <see cref="PartyColorChoice"/> (0 = automatic). Synced to everyone.</summary>
 		public byte ColorChoice;
+		/// <summary>This player has a battle screen open. Synced to everyone, so nobody outside can hurt them.</summary>
+		public bool Battling;
 
 		public override void PreUpdate()
 		{
 			if (Player.whoAmI == Main.myPlayer && !Main.dedServ)
+			{
 				ColorChoice = (byte)(ModContent.GetInstance<MercyConfig>()?.PartyColor ?? PartyColorChoice.Automatic);
+				Battling = BattleSystem.Active;
+			}
 		}
+
+		// Another player in a battle is frozen in the world: no PvP hits on them, from weapons or projectiles
+		public override bool CanHitPvp(Item item, Player target) => !BattleNet.IsBattling(target.whoAmI);
+
+		public override bool CanHitPvpWithProj(Projectile proj, Player target) => !BattleNet.IsBattling(target.whoAmI);
 
 		public override void SyncPlayer(int toWho, int fromWho, bool newPlayer)
 		{
 			BattleNet.SendColor(Player.whoAmI, ColorChoice, toWho, fromWho);
+			BattleNet.SendBattling(Player.whoAmI, Battling, toWho, fromWho);
 			// The server welcomes a new player with the battles already going on
 			if (newPlayer && Main.netMode == NetmodeID.Server && toWho >= 0 && Player.whoAmI == toWho)
 				BattleNet.SendWorldStateTo(toWho);
 		}
 
-		public override void CopyClientState(ModPlayer targetCopy) => ((BattleNetPlayer)targetCopy).ColorChoice = ColorChoice;
+		public override void CopyClientState(ModPlayer targetCopy)
+		{
+			var copy = (BattleNetPlayer)targetCopy;
+			copy.ColorChoice = ColorChoice;
+			copy.Battling = Battling;
+		}
 
 		public override void SendClientChanges(ModPlayer clientPlayer)
 		{
-			if (((BattleNetPlayer)clientPlayer).ColorChoice != ColorChoice)
-				SyncPlayer(-1, Main.myPlayer, false);
+			var was = (BattleNetPlayer)clientPlayer;
+			if (was.ColorChoice != ColorChoice)
+				BattleNet.SendColor(Player.whoAmI, ColorChoice, -1, Main.myPlayer);
+			if (was.Battling != Battling)
+				BattleNet.SendBattling(Player.whoAmI, Battling, -1, Main.myPlayer);
 		}
 
 		public override void OnEnterWorld()

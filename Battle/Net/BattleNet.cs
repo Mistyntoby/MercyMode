@@ -57,6 +57,7 @@ namespace MercyMode.Battle.Net
 			DuelStart, // s→c: the duel begins (opponent, who goes first)
 			DuelRelay, // c→s→opponent: anything in the duel (HP, hits, SOUL, attack pieces, turns, text)
 			DuelEnd, // c→s: I'm out of the duel; s→c: your opponent is
+			Battling, // c→s→all: I'm in a battle (or not): nobody outside can hurt me
 		}
 
 		/// <summary>Over: every enemy is gone (won); nobody can join and it isn't shown as a battle any more.</summary>
@@ -388,6 +389,32 @@ namespace MercyMode.Battle.Net
 		}
 
 		/// <summary>A player's party colour choice: from a client to the server, or from the server on to others.</summary>
+		/// <summary>Who has a battle screen open, by player (each client says so for itself).</summary>
+		private static readonly bool[] battling = new bool[256];
+
+		/// <summary>
+		/// In a battle (their own, a party's or a duel): out in the world they're frozen in place, so other players
+		/// can't hurt them.
+		/// </summary>
+		public static bool IsBattling(int player)
+		{
+			if (player < 0 || player >= Main.maxPlayers)
+				return false;
+			if (player == Main.myPlayer && !Main.dedServ)
+				return BattleSystem.Active;
+			return battling[player] || Main.netMode == NetmodeID.Server && (InBattle(player) || InDuelServer(player));
+		}
+
+		public static void SendBattling(int player, bool on, int toClient = -1, int ignoreClient = -1)
+		{
+			if (Main.netMode == NetmodeID.SinglePlayer || LabCapture)
+				return;
+			ModPacket p = Packet(Msg.Battling);
+			p.Write((byte)player);
+			p.Write(on);
+			p.Send(toClient, ignoreClient);
+		}
+
 		public static void SendColor(int player, byte choice, int toClient = -1, int ignoreClient = -1)
 		{
 			if (Main.netMode == NetmodeID.SinglePlayer || LabCapture)
@@ -659,6 +686,14 @@ namespace MercyMode.Battle.Net
 					}
 					break;
 				}
+				case Msg.Battling:
+				{
+					int player = r.ReadByte();
+					bool on = r.ReadBoolean();
+					if (player != Main.myPlayer && player < Main.maxPlayers)
+						battling[player] = on;
+					break;
+				}
 				case Msg.PlayerColor:
 				{
 					int player = r.ReadByte();
@@ -821,6 +856,17 @@ namespace MercyMode.Battle.Net
 				case Msg.Left:
 					ServerLeave(from, r.ReadInt32());
 					break;
+				case Msg.Battling:
+				{
+					int player = r.ReadByte();
+					bool on = r.ReadBoolean();
+					// Only for themselves
+					if (player != from)
+						return;
+					battling[player] = on;
+					SendBattling(player, on, -1, from);
+					break;
+				}
 				case Msg.PlayerColor:
 				{
 					int player = r.ReadByte();
@@ -1110,6 +1156,11 @@ namespace MercyMode.Battle.Net
 
 		public static void ServerDisconnect(int player)
 		{
+			if (battling[player])
+			{
+				battling[player] = false;
+				SendBattling(player, false);
+			}
 			ServerDuelDisconnect(player);
 			foreach (NetBattle b in battles.Where(x => x.Players.Contains(player) || x.Pending.Contains(player)).ToList())
 				ServerLeave(player, b.Id);

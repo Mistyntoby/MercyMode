@@ -691,6 +691,12 @@ namespace MercyMode.Lab
 				Check(new[] { 0, 1, 2 }.All(i => BattleNet.LabSent.Contains($"JoinBattle>{i}")), "not every party member was told to join");
 				Check(BattleNet.LabSent.Contains("Frozen>all") && BattleNet.LabSent.Contains("BattleState>all"), "everyone wasn't told about the battle");
 				Check(BattleNet.InBattle(1) && !BattleNet.InBattle(3), "InBattle is wrong");
+				// Out in the world, nobody can hurt a player who's in a battle
+				Check(BattleNet.IsBattling(1) && !BattleNet.IsBattling(3), "IsBattling is wrong");
+				Check(!Main.player[3].GetModPlayer<BattleNetPlayer>().CanHitPvp(new Item(ItemID.CopperShortsword), Main.player[1]),
+					"a player outside the battle could hit one inside it");
+				Check(Main.player[1].GetModPlayer<BattleNetPlayer>().CanHitPvp(new Item(ItemID.CopperShortsword), Main.player[3]),
+					"a player outside any battle couldn't be hit");
 				Check(BattleNet.ServerStartBattle(4, new List<NPC> { z1 }) == -1, "a second battle took a frozen enemy");
 				BattleNet.ServerJoin(4, z1);
 				Check(!BattleNet.InBattle(4), "a fourth player joined a full party");
