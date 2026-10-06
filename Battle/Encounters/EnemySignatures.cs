@@ -29,7 +29,7 @@ namespace MercyMode.Battle.Encounters
 		{
 			None, Zombie, DemonEye, Bat, Hellbat, Skeleton, AngryBones, Harpy, Hornet, Eater, Crimson, Antlion, Snow,
 			FireImp, LavaSlime, Sorcerer, DarkCaster, Piranha, Jellyfish, Shark, Armor, Wraith, Pixie, Unicorn, Mummy,
-			Werewolf, CursedSkull, Meteor, Granite, BoneSerpent, Tim, Ghost, Demon, Crab, Vulture,
+			Werewolf, CursedSkull, Meteor, Granite, BoneSerpent, Tim, Ghost, Demon, Crab, Vulture, Umbrella,
 		}
 
 		private Sig Signature()
@@ -70,6 +70,7 @@ namespace MercyMode.Battle.Encounters
 			if (Is("Demon") && !Is("DemonEye")) return Sig.Demon;
 			if (Is("Crab")) return Sig.Crab;
 			if (Is("Vulture")) return Sig.Vulture;
+			if (IdIs("UmbrellaSlime")) return Sig.Umbrella;
 			return Sig.None;
 		}
 
@@ -117,6 +118,7 @@ namespace MercyMode.Battle.Encounters
 			Sig.Demon => new[] { "Kneel.", "[shake]Your soul is mine.[/shake]", "Pathetic." },
 			Sig.Crab => new[] { "Snip snip.", "*sideways*", "Pinch!" },
 			Sig.Vulture => new[] { "*circles*", "Waiting...", "Not dead yet?" },
+			Sig.Umbrella => new[] { "[wave]Pitter patter~[/wave]", "Forecast: you, soaked.", "Stay under me!", "[wave]Drip drip drip.[/wave]" },
 			_ => null,
 		};
 
@@ -206,6 +208,9 @@ namespace MercyMode.Battle.Encounters
 				Sig.Crab => new Walkers((p, v) => Self(p, v, 22f, 0.9f), h ? 28 : 38) { Speed = h ? 2f : 1.6f }.WithSoul(SoulMode.Blue),
 				// Circles high, then dives
 				Sig.Vulture => new Diver((p, v) => Self(p, v, 26f, 1f), h ? 30 : 42) { DiveSpeed = h ? 9f : 7.5f },
+				// A downpour over the whole box: the only dry spot is under its umbrella as it drifts along the top
+				Sig.Umbrella => new UmbrellaRain((p, v) => Self(p, v, 30f, 0.9f), (p, v) => Proj(ProjectileID.RainNimbus, p, v, 1f, 0.6f, 6f))
+					{ Drift = h ? 0.026f : 0.02f, Shelter = h ? 22f : 26f, FallSpeed = h ? 3.8f : 3.2f },
 				_ => null,
 			};
 			return a?.Lasting(t);

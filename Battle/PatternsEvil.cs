@@ -1062,4 +1062,67 @@ namespace MercyMode.Battle
 				DrDraw.Rect(x, y, right - x, h, color);
 		}
 	}
+
+	/// <summary>
+	/// The Umbrella Slime's downpour: rain over the whole box, except right under the slime as it drifts back and forth
+	/// along the top with its umbrella. Stay under it.
+	/// </summary>
+	public class UmbrellaRain : EnemyAttack
+	{
+		public Func<Vector2, Vector2, Bullet> MakeSlime, MakeDrop;
+		/// <summary>How fast it drifts (radians a tick of its swing), half the dry spot's width, the rain's speed.</summary>
+		public float Drift = 0.02f, Shelter = 26f, FallSpeed = 3.2f;
+		/// <summary>A drop every this many ticks; it starts as a drizzle, the downpour comes after.</summary>
+		public int Every = 2, Drizzle = 50;
+		private Bullet slime;
+		private float phase;
+
+		public UmbrellaRain(Func<Vector2, Vector2, Bullet> slime, Func<Vector2, Vector2, Bullet> drop)
+		{
+			MakeSlime = slime;
+			MakeDrop = drop;
+		}
+
+		private float UmbrellaX(Rectangle box, int tick) =>
+			box.Center.X + (float)Math.Sin(phase + tick * Drift) * (box.Width / 2f - Shelter - 6f);
+
+		public override void Update(BattleSystem battle, int tick)
+		{
+			Rectangle box = battle.Box;
+			if (slime == null)
+			{
+				// It starts over the SOUL's side, so the first dry spot is reachable
+				phase = battle.SoulCenter.X < box.Center.X ? -MathHelper.PiOver2 : MathHelper.PiOver2;
+				slime = MakeSlime(new Vector2(UmbrellaX(box, tick), box.Top - 22f), Vector2.Zero);
+				slime.Harmful = false;
+				slime.Lifetime = Duration + 10;
+				slime.OffscreenMargin = 9999f;
+				battle.Spawn(slime);
+				AttackSfx.Vanilla(SoundID.Item34 with { Pitch = -0.6f }, 0.3f);
+			}
+			float ux = UmbrellaX(box, tick);
+			slime.Position = new Vector2(ux, box.Top - 22f);
+			slime.Velocity = Vector2.Zero;
+			if (tick > Duration - 70)
+				return;
+			// A drizzle first, then the downpour
+			int every = tick < Drizzle ? Every * 4 : Every;
+			if (tick % every != 0)
+				return;
+			float x;
+			int tries = 0;
+			do
+				x = Main.rand.NextFloat(box.Left + 4, box.Right - 4);
+			while (Math.Abs(x - ux) < Shelter && ++tries < 10);
+			if (Math.Abs(x - ux) < Shelter)
+				return;
+			Bullet d = MakeDrop(new Vector2(x, box.Top - 8f), new Vector2(0f, FallSpeed));
+			d.RotateWithVelocity = true;
+			d.Alpha = 0.85f;
+			d.GrazePoints *= 0.5f;
+			battle.Spawn(d);
+			if (tick % 20 == 0)
+				AttackSfx.Vanilla(SoundID.Drip, 0.25f);
+		}
+	}
 }

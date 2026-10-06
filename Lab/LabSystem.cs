@@ -968,7 +968,7 @@ namespace MercyMode.Lab
 				("possessed armor", NPCID.PossessedArmor), ("wraith", NPCID.Wraith), ("pixie", NPCID.Pixie), ("mummy", NPCID.Mummy),
 				("werewolf", NPCID.Werewolf), ("meteor head", NPCID.MeteorHead), ("granite", NPCID.GraniteFlyer), ("bone serpent", NPCID.BoneSerpentHead),
 				("tim", NPCID.Tim), ("ghost", NPCID.Ghost), ("demon", NPCID.Demon), ("crab", NPCID.Crab), ("vulture", NPCID.Vulture),
-				("bee", NPCID.Bee),
+				("bee", NPCID.Bee), ("umbrella slime", NPCID.UmbrellaSlime),
 			};
 			foreach (var (label, type) in types)
 				yield return SweepAttacks(label, 1, type);
