@@ -347,7 +347,7 @@ namespace MercyMode.Battle
 			if (foe != null)
 			{
 				// The number the list is sorted by: a perfect turn against this enemy, after its defense
-				string vs = $"VS DEF {foe.defense}: {VsDefTurn(sel, foe)}";
+				string vs = $"VS DEF {Defense(foe)}: {VsDefTurn(sel, foe)}";
 				DrDraw.Text(vs, sx, sy, new Color(255, 200, 80), DrDraw.SmallFont);
 				if (VsDefTurn(sel, foe) != VsDefTurn(equipped, foe))
 					StatArrow(sx + DrDraw.Measure(vs, DrDraw.SmallFont) + 8, sy + 3, VsDefTurn(sel, foe) > VsDefTurn(equipped, foe));
@@ -367,7 +367,13 @@ namespace MercyMode.Battle
 
 		/// <summary>A hit after the enemy's defense: a quarter of the defense comes off (at least 1 gets through).</summary>
 		private static int AfterDefense(int damage, NPC target) =>
-			Math.Max(1, damage - (int)Math.Ceiling(target.defense / 4f));
+			Math.Max(1, damage - (int)Math.Ceiling(Defense(target) / 4f));
+
+		/// <summary>
+		/// The defense FIGHT counts: the NPC's, except Terraria's daytime enrage (Skeletron in daylight sets 9999,
+		/// which left every hit at 1), where its normal defense counts.
+		/// </summary>
+		public static int Defense(NPC target) => target.defense >= 999 && target.defDefense < 999 ? target.defDefense : target.defense;
 
 		/// <summary>A small pixel arrow: green pointing up for an upgrade, red pointing down for a downgrade.</summary>
 		private static void StatArrow(float x, float y, bool up)
@@ -1468,7 +1474,7 @@ namespace MercyMode.Battle
 			if (foe != null)
 			{
 				int perHit = AfterDefense(Math.Max(1, (int)Math.Round(selDamage * DamageScale)), foe);
-				DrDraw.Text($"VS DEF {foe.defense}: {perHit}", sx, sy + 60, new Color(255, 200, 80), DrDraw.SmallFont);
+				DrDraw.Text($"VS DEF {Defense(foe)}: {perHit}", sx, sy + 60, new Color(255, 200, 80), DrDraw.SmallFont);
 			}
 		}
 

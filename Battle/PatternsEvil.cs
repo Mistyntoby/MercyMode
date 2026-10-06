@@ -281,10 +281,12 @@ namespace MercyMode.Battle
 	public class Eruption : RepeatingAttack
 	{
 		public WormLook Look = WormLook.Eater;
-		public int Segments = 8, Warn = 40;
+		public int Segments = 8, Warn = 52;
 		public float Gravity = 0.1f, Launch = 6.1f;
 		/// <summary>Once past the top of its leap it turns toward the SOUL this much a tick as it dives.</summary>
-		public float Hunt = 0.07f;
+		public float Hunt = 0.045f;
+		/// <summary>How fast it can dive at the SOUL.</summary>
+		public float MaxDive = 4.2f;
 		/// <summary>The worms' damage scaled (lower in the dark, where they're harder to see).</summary>
 		public float DamageMult = 1f;
 		private readonly List<WormRig> rigs = new();
@@ -351,7 +353,7 @@ namespace MercyMode.Battle
 							return;
 						}
 						// Over the top: it turns and dives at the SOUL, picking up speed
-						float speed = Math.Min(5.5f, r.Vel.Length() + gravity);
+						float speed = Math.Min(MaxDive, r.Vel.Length() + gravity * 0.7f);
 						float want = (battle.SoulCenter - r.HeadPos).ToRotation(), now = r.Vel.ToRotation();
 						if (r.HeadPos.Y < battle.SoulCenter.Y + 10f)
 							now += MathHelper.Clamp(MathHelper.WrapAngle(want - now), -hunt, hunt);
@@ -993,7 +995,7 @@ namespace MercyMode.Battle
 	/// </summary>
 	public class Underground : EnemyAttack
 	{
-		public float LightRadius = 40f, Darkness = 0.97f;
+		public float LightRadius = 40f, Darkness = 1f;
 		public int FadeIn = 30;
 		private Bullet shade;
 
@@ -1015,13 +1017,23 @@ namespace MercyMode.Battle
 					{
 						float k = Math.Min(1f, x.Age / (float)fadeIn) * Math.Min(1f, (duration - x.Age) / 20f);
 						DrawDark(battle, radius, darkness * k);
-						// What glows shows through: worm heads and the cracks they burst from, drawn again over the dark
+						// In the dark you only see their eyes: two small glints on each worm head, and a thin glowing seam
+						// where a crack is about to burst (the worms themselves stay hidden)
 						foreach (Bullet b in battle.Bullets)
-							if (b != x && b.Light > 0f && !b.Dead && !b.Waiting)
+						{
+							if (b == x || b.Light <= 0f || b.Dead || b.Waiting || !battle.Box.Contains(b.Position.ToPoint()))
+								continue;
+							if (b.Texture == null)
 							{
-								DrDraw.Glow(b.Position, b.Light, new Color(190, 120, 255) * (0.35f * k));
-								b.Draw();
+								// A crack: a seam along the floor of the box
+								DrDraw.Line(b.Position + new Vector2(-12f, 0f), b.Position + new Vector2(12f, 0f), 2f, new Color(200, 120, 255) * (0.8f * k));
+								continue;
 							}
+							Vector2 side = (b.Rotation).ToRotationVector2() * 4f;
+							Vector2 fwd = (b.Rotation - MathHelper.PiOver2).ToRotationVector2() * 3f;
+							DrDraw.Ball(b.Position + fwd + side, 1.6f, new Color(255, 80, 120) * k);
+							DrDraw.Ball(b.Position + fwd - side, 1.6f, new Color(255, 80, 120) * k);
+						}
 					},
 				};
 				battle.Spawn(shade);

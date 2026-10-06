@@ -317,7 +317,7 @@ namespace MercyMode.Battle.Encounters
 				// Yellow SOUL: worms swim in; shoot a segment out and the worm splits, the back half coming for you
 				() => new SplittingWorms(hard ? 90 : 110) { Segments = hard ? 10 : 9, Speed = hard ? 2f : 1.7f, SplitSpeed = hard ? 2.6f : 2.2f },
 				// It bursts up out of the ground under the box and dives back in
-				() => new Eruption(hard ? 64 : 80) { Segments = hard ? 10 : 9, Hunt = hard ? 0.085f : 0.07f },
+				() => new Eruption(hard ? 70 : 86) { Segments = hard ? 10 : 9, Hunt = hard ? 0.05f : 0.04f, MaxDive = hard ? 4.4f : 4f },
 				// Yellow SOUL: Vile Spit drifts in at you; Eaters of Souls hang back and spit more once it's hurt
 				() => hard
 					? new Combo(BattleConstants.DefaultEnemyTurnTicks,
@@ -330,7 +330,7 @@ namespace MercyMode.Battle.Encounters
 				// cracks they burst out of
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new Underground { LightRadius = hard ? 34f : 40f },
-					new Eruption(hard ? 66 : 82) { Segments = 9, Hunt = hard ? 0.07f : 0.055f, FirstAt = 40, DamageMult = 0.6f }),
+					new Eruption(hard ? 72 : 88) { Segments = 9, Hunt = hard ? 0.045f : 0.035f, MaxDive = 3.6f, Warn = 60, FirstAt = 40, DamageMult = 0.6f }),
 				// It burrows under the box toward you, then bursts out in a spray of teeth
 				() => new BurrowTrail(tooth, hard ? 64 : 80) { Speed = hard ? 1.8f : 1.5f, Shards = hard ? 9 : 7 },
 				// It coils round the box, closing in, spitting from its head

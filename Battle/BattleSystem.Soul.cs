@@ -68,7 +68,7 @@ namespace MercyMode.Battle
 		// right at 8 px/tick, at most 3 at once; Z held 40+ ticks charges a big shot (4 px/tick, speeding up, 4 damage)
 		private const float YellowShotSpeed = 8f;
 		/// <summary>How many bullets a charged shot breaks through before it's spent.</summary>
-		private const int BigShotPierce = 3;
+		private const int BigShotPierce = 1;
 		private const int YellowMaxShots = 3;
 		private const int YellowChargeTicks = 40;
 		private const float BigShotSpeed = 4f, BigShotAccel = 0.1f;
@@ -355,7 +355,8 @@ namespace MercyMode.Battle
 					AddEffect(new SpriteAnim("spr_yheart_shot_hit", s.Pos, 0.25f, s.Big ? 3f : 1f));
 					if (!toughness.TryGetValue(b, out int left))
 						left = b.Toughness > 0 ? b.Toughness : Math.Max(b.HitSize.X, b.HitSize.Y) >= 18f ? 3 : 1;
-					left -= b.MaxShotDamage > 0 ? Math.Min(s.Damage, b.MaxShotDamage) : s.Damage;
+					// A charged shot breaks whatever it hits (armour only slows the small shots), but stops there
+					left = s.Big ? 0 : left - (b.MaxShotDamage > 0 ? Math.Min(s.Damage, b.MaxShotDamage) : s.Damage);
 					b.Flash = 6;
 					if (left <= 0)
 					{
