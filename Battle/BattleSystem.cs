@@ -162,6 +162,9 @@ namespace MercyMode.Battle
 			if (IsFirstStrikeReason(reason))
 				firstStrikeAskedAt = Main.GameUpdateCount;
 			NPC root = EncounterRegistry.ResolveRoot(npc);
+			// A hit on an ordinary enemy that the opening strike would finish anyway: it just dies, no battle screen
+			if (IsFirstStrikeReason(reason) && Instance.FinishWithoutBattle(root, player))
+				return;
 			// Multiplayer: the server sets the battle up (and pulls nearby players in), then tells us to start
 			if (Net.BattleNet.Online)
 			{
@@ -964,8 +967,10 @@ namespace MercyMode.Battle
 			if (!fire && !lamp || Player.statLife <= 0 || Player.statLife >= Player.statLifeMax2)
 				return null;
 			int amount = (fire ? Math.Max(2, Player.statLifeMax2 * 2 / 100) : 0) + (lamp ? Math.Max(3, Player.statLifeMax2 * 3 / 100) : 0);
-			amount = Math.Min(amount, Player.statLifeMax2 - Player.statLife);
-			Player.statLife += amount;
+			// Through the battle's own HP (it's copied back onto the character every tick)
+			amount = HealPlayer(amount);
+			if (amount <= 0)
+				return null;
 			if (Main.netMode == NetmodeID.MultiplayerClient)
 				NetMessage.SendData(MessageID.PlayerLifeMana, -1, -1, null, Player.whoAmI);
 			PlayHealFx(amount);

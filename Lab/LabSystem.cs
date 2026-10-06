@@ -646,7 +646,8 @@ namespace MercyMode.Lab
 			Check(B.LabTarget.Mercy == 0f, $"a boss got MERCY ({B.LabTarget.Mercy})");
 			yield return Spare(0);
 			yield return Until(() => B.LabPhase == Phase.Message, "the spare message", skipText: false);
-			Check(B.LabText.Contains("won't back down"), $"expected the boss to refuse, got \"{B.LabText}\"");
+			// (The raw line: the text box wraps it across lines)
+			Check(B.LabRawText.Contains("won't back down"), $"expected the boss to refuse, got \"{B.LabRawText}\"");
 			Check(Main.npc.Any(n => n.active && n.type == NPCID.EyeofCthulhu), "the Eye was spared anyway");
 			yield return Menu();
 			yield return FightAndKill(0);
@@ -1565,6 +1566,27 @@ namespace MercyMode.Lab
 				m.active = false;
 			yield return WaitForEnd();
 
+			// A hit that the first strike would finish: it just dies out in the world, no battle screen
+			int weakIdx = NPC.NewNPC(P.GetSource_FromThis(), (int)P.Center.X + 160, (int)P.Center.Y - 40, NPCID.Zombie);
+			NPC weak = Main.npc[weakIdx];
+			weak.lifeMax = 100;
+			weak.life = 1;
+			weak.defense = 0;
+			// (The last battle's outro may still be finishing: the queued start waits for it)
+			BattleSystem.QueueStart(weak, 20, "hit by lab");
+			for (int i = 0; i < 400 && weak.active && weak.life > 0; i++)
+			{
+				Check(!BattleSystem.Active || B.LabTarget?.Npc != weak, "a one-hit enemy opened a battle");
+				yield return null;
+			}
+			for (int i = 0; i < 30; i++)
+			{
+				Check(!BattleSystem.Active, "a one-hit enemy opened a battle");
+				yield return null;
+			}
+			Log($"  one-hit zombie: active {weak.active}, life {weak.life}");
+			Check(!weak.active || weak.life <= 0, "the one-hit enemy wasn't killed");
+
 			// A battle started any other way opens as usual
 			yield return StartWith(NPCID.Zombie);
 			Check(!B.LabFirstStrike, "a battle not started by a hit opened with a strike");
@@ -1607,10 +1629,13 @@ namespace MercyMode.Lab
 			yield return Menu();
 			Player p = Main.LocalPlayer;
 			yield return Choose(4);
-			yield return Until(() => B.LabPhase is Phase.EnemyOutro or Phase.Menu, "the end of the enemy turn");
+			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the enemy turn");
+			// (Until tops the HP up during the enemy turn: the low HP is set once it's over)
+			yield return Until(() => B.LabPhase is Phase.EnemyOutro, "the end of the enemy turn");
 			p.AddBuff(BuffID.Campfire, 600);
 			p.AddBuff(BuffID.HeartLamp, 600);
 			p.statLife = 100;
+			B.SetBattleLife(100);
 			yield return Menu();
 			string line = B.LabRawText ?? "";
 			Log($"  HP {p.statLife}/{p.statLifeMax2}, text: {line.Replace("\n", " / ")}");

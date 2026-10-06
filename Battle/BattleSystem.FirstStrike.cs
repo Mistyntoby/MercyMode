@@ -1,6 +1,8 @@
 using System;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.ID;
+using Terraria.ModLoader;
 using static MercyMode.Battle.BattleConstants;
 
 namespace MercyMode.Battle
@@ -36,6 +38,29 @@ namespace MercyMode.Battle
 				return true;
 			// Multiplayer: the server started it for us shortly after our hit
 			return reason == "multiplayer" && firstStrikeAskedAt != 0 && Main.GameUpdateCount - firstStrikeAskedAt < 2 * 60;
+		}
+
+		/// <summary>
+		/// The first strike would kill this regular enemy outright (one perfect bolt of the weapon in hand, the same hit
+		/// the battle would open with): strike it in the world instead and skip the battle. Bosses, worms and other
+		/// many-part enemies always get their battle.
+		/// </summary>
+		private bool FinishWithoutBattle(NPC root, Player player)
+		{
+			if (root == null || !root.active || root.life <= 0 || EncounterRegistry.IsBossFight(root) || root.realLife >= 0
+				|| NPCID.Sets.ProjectileNPC[root.type])
+				return false;
+			WeaponOption w = CurrentWeapon();
+			if (w == null)
+				return false;
+			int damage = AfterDefense(Math.Max(1, (int)Math.Round(w.ShotDamage * w.HitShare * DamageScale)), root);
+			if (damage < root.life)
+				return false;
+			var strike = new NPC.HitInfo { Damage = damage, HitDirection = player.Center.X < root.Center.X ? 1 : -1, DamageType = w.Item?.DamageType ?? DamageClass.Melee };
+			root.StrikeNPC(strike);
+			if (Main.netMode == NetmodeID.MultiplayerClient)
+				NetMessage.SendStrikeNPC(root, in strike);
+			return true;
 		}
 
 		/// <summary>The intro swing is a real hit: the weapon's effect now, the damage when it lands.</summary>
