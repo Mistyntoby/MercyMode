@@ -47,7 +47,7 @@ namespace MercyMode.Battle.Encounters
 			if (Is("EaterofSouls", "Corruptor", "DevourerHead")) return Sig.Eater;
 			if (Is("Crimera", "FaceMonster", "BloodCrawler", "Herpling")) return Sig.Crimson;
 			if (Is("Antlion")) return Sig.Antlion;
-			if (Is("Flinx", "IceSlime", "SnowFlinx", "IceBat")) return Sig.Snow;
+			if (Is("Flinx", "IceSlime", "IceBat", "IceElemental", "IceTortoise", "IcyMerman", "IceMimic", "IceGolem", "ArmoredViking")) return Sig.Snow;
 			if (Is("FireImp")) return Sig.FireImp;
 			if (Is("LavaSlime")) return Sig.LavaSlime;
 			if (Is("GoblinSorcerer")) return Sig.Sorcerer;
@@ -142,7 +142,10 @@ namespace MercyMode.Battle.Encounters
 					new Beam(h ? 60 : 80) { Width = 8f, Color = new Color(255, 70, 70), Warn = 40, Active = 16 }),
 				// A colony: lots of small, fast bats in waves
 				Sig.Bat => new Swoopers((p, v) => Self(p, v, 16f, 0.7f), h ? 9 : 13) { Speed = h ? 3.4f : 2.9f, Amplitude = 18f },
-				Sig.Hellbat => new Swoopers((p, v) => Self(p, v, 18f, 0.8f).Fiery(), h ? 11 : 15) { Speed = 3.1f, Amplitude = 24f },
+				// Swooping over rising lava
+				Sig.Hellbat => new Combo(t,
+					new LavaRise { Peak = h ? 0.35f : 0.28f, EmberEvery = h ? 24 : 32 },
+					new Swoopers((p, v) => Self(p, v, 18f, 0.8f).Fiery(), h ? 15 : 20) { Speed = 3.1f, Amplitude = 24f }),
 				// Bones: jump the short ones, stay under the long ones (blue SOUL)
 				Sig.Skeleton => new BoneWalls(h ? 30 : 38) { Speed = h ? 3f : 2.6f },
 				Sig.AngryBones => new BoneWalls(h ? 26 : 32) { Speed = 3.2f, Color = new Color(255, 200, 200) },
@@ -160,12 +163,18 @@ namespace MercyMode.Battle.Encounters
 					new Rain((p, v) => Ball(p, v, new Color(220, 190, 120), 0.6f), h ? 12 : 16) { FromBelow = true, Wobble = 0.3f },
 					new FloorSpikes((p, d) => Self(p, d, 24f, 1f), h ? 50 : 70) { Width = 26f, Speed = 7f }),
 				// Snowballs bouncing around the box
-				Sig.Snow => new Bouncers((p, v) => Proj(ProjectileID.SnowBallHostile, p, v, 1f, 0.7f, 10f, rotate: false, spin: 0.15f), h ? 20 : 28),
+				// Frozen floor: the SOUL slides about while icicles drop and snowballs roll in
+				Sig.Snow => new IceFloor { MakeSide = (p, v) => Proj(ProjectileID.SnowBallHostile, p, v, 1f, 0.7f, 10f, rotate: false, spin: 0.15f), IcicleEvery = h ? 16 : 22, FallSpeed = h ? 5.6f : 5f },
 				// Fireballs that home in, trailing flame
-				Sig.FireImp => new Homing((p, v) => Ball(p, v, fire, 0.9f, 1.2f).Fiery(), h ? 22 : 30) { Speed = 1.9f },
+				// Lava rises from the floor while it throws fireballs
+				Sig.FireImp => new Combo(t,
+					new LavaRise { Peak = h ? 0.5f : 0.42f, EmberEvery = h ? 14 : 20 },
+					new Homing((p, v) => Ball(p, v, fire, 0.9f, 1.2f).Fiery(), h ? 40 : 54) { Speed = 1.7f }),
 				// Molten blobs lobbed in, splashing on landing
-				Sig.LavaSlime => new Lobs((p, v) => Ball(p, v, fire, 0.8f, 1.4f).Fiery(), h ? 24 : 32)
-					{ MakeSplash = (p, v) => Ball(p, v, new Color(255, 190, 60), 0.6f, 0.8f), Splash = 2 },
+				Sig.LavaSlime => new Combo(t,
+					new LavaRise { Peak = h ? 0.45f : 0.36f, EmberEvery = 999 },
+					new Lobs((p, v) => Ball(p, v, fire, 0.8f, 1.4f).Fiery(), h ? 34 : 44)
+						{ MakeSplash = (p, v) => Ball(p, v, new Color(255, 190, 60), 0.6f, 0.8f), Splash = 2 }),
 				// Teleports around casting chaos balls
 				Sig.Sorcerer => new Blinker((p, v) => Self(p, v, 26f, 1f), (p, v) => Ball(p, v, new Color(230, 80, 255), 0.9f, 1.3f).Sparkly(new Color(255, 160, 255)), h ? 34 : 46) { Shots = h ? 4 : 3 },
 				// Water spheres bouncing off the walls

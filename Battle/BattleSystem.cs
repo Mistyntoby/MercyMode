@@ -1551,6 +1551,10 @@ namespace MercyMode.Battle
 		private int confusedTicks;
 		/// <summary>Reverses the arrow keys for the (red) SOUL this tick (the Brain of Cthulhu's confusion).</summary>
 		public void Confuse() => confusedTicks = 2;
+		private int slipTicks;
+		private Vector2 slipVelocity;
+		/// <summary>The (red) SOUL slides on ice this tick: it speeds up and slows down gradually instead of stopping dead.</summary>
+		public void MakeSlippery() => slipTicks = 2;
 		public void Spawn(Bullet b)
 		{
 			b.Owner ??= spawnOwner;
@@ -1692,7 +1696,18 @@ namespace MercyMode.Battle
 				py = -py;
 				confusedTicks--;
 			}
-			soul += new Vector2(px, py);
+			if (slipTicks > 0)
+			{
+				// On ice: the arrow keys push, the SOUL keeps sliding
+				slipVelocity = Vector2.Lerp(slipVelocity, new Vector2(px, py), 0.06f);
+				slipTicks--;
+				soul += slipVelocity;
+			}
+			else
+			{
+				slipVelocity = new Vector2(px, py);
+				soul += slipVelocity;
+			}
 			// An attack pulling at it (the Moon Lord's black hole); never faster than the SOUL can walk away
 			if (soulPull != Vector2.Zero)
 			{

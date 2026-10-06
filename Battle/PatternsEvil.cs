@@ -1073,7 +1073,7 @@ namespace MercyMode.Battle
 		/// <summary>How fast it drifts (radians a tick of its swing), half the dry spot's width, the rain's speed.</summary>
 		public float Drift = 0.02f, Shelter = 26f, FallSpeed = 3.2f;
 		/// <summary>A drop every this many ticks; it starts as a drizzle, the downpour comes after.</summary>
-		public int Every = 2, Drizzle = 50;
+		public int Every = 3, Drizzle = 50;
 		private Bullet slime;
 		private float phase;
 
@@ -1123,6 +1123,174 @@ namespace MercyMode.Battle
 			battle.Spawn(d);
 			if (tick % 20 == 0)
 				AttackSfx.Vanilla(SoundID.Drip, 0.25f);
+		}
+	}
+
+	/// <summary>
+	/// Ice enemies: the floor of the box freezes over, so the SOUL slides instead of stopping, while icicles drop from the
+	/// top (each one's spot glints first) and the enemy's own snowballs roll in.
+	/// </summary>
+	public class IceFloor : EnemyAttack
+	{
+		public Func<Vector2, Vector2, Bullet> MakeSide;
+		public int IcicleEvery = 22, SideEvery = 70, Warn = 30;
+		public float FallSpeed = 5f, SideSpeed = 2f;
+		public Color Ice = new(170, 225, 255);
+
+		public override void Update(BattleSystem battle, int tick)
+		{
+			Rectangle box = battle.Box;
+			battle.MakeSlippery();
+			if (tick == 1)
+				AttackSfx.Vanilla(SoundID.Item30, 0.5f, 0.2f);
+			// The ice itself, glinting
+			if (tick == 1)
+			{
+				int duration = Duration;
+				Color ice = Ice;
+				battle.Spawn(new Bullet
+				{
+					Harmful = false,
+					Lifetime = duration,
+					OffscreenMargin = 9999f,
+					Position = box.Center.ToVector2(),
+					OnDraw = x =>
+					{
+						float a = Math.Min(1f, x.Age / 20f) * Math.Min(1f, (duration - x.Age) / 20f);
+						Rectangle b = battle.Box;
+						DrDraw.Rect(b.Left, b.Top, b.Width, b.Height, ice * (0.1f * a));
+						for (int i = 0; i < 6; i++)
+						{
+							float gx = b.Left + (i * 37 + x.Age * 0.6f) % b.Width, gy = b.Top + (i * 53) % b.Height;
+							DrDraw.Line(new Vector2(gx, gy), new Vector2(gx + 6, gy - 6), 1f, Color.White * (0.35f * a));
+						}
+					},
+				});
+			}
+			if (tick > Duration - 60)
+				return;
+			if (tick % IcicleEvery == 0)
+				DropIcicle(battle, box);
+			if (MakeSide != null && tick % SideEvery == SideEvery / 2)
+			{
+				bool fromLeft = tick / SideEvery % 2 == 0;
+				float y = MathHelper.Clamp(battle.SoulCenter.Y + Main.rand.NextFloat(-30f, 30f), box.Top + 12, box.Bottom - 12);
+				battle.Spawn(MakeSide(new Vector2(fromLeft ? box.Left - 20 : box.Right + 20, y), new Vector2(fromLeft ? SideSpeed : -SideSpeed, 0f)));
+			}
+		}
+
+		private void DropIcicle(BattleSystem battle, Rectangle box)
+		{
+			// Near where the SOUL will slide to, not on it
+			float x = MathHelper.Clamp(battle.SoulCenter.X + Main.rand.NextFloat(-60f, 60f), box.Left + 8, box.Right - 8);
+			int warn = Warn;
+			float speed = FallSpeed;
+			Color ice = Ice;
+			battle.Spawn(new Bullet
+			{
+				Position = new Vector2(x, box.Top + 8f),
+				HitSize = new Vector2(8, 16),
+				Harmful = false,
+				Lifetime = 200,
+				OnUpdate = b =>
+				{
+					if (b.Age < warn)
+					{
+						b.Velocity = Vector2.Zero;
+						return;
+					}
+					if (b.Age == warn)
+					{
+						b.Harmful = true;
+						AttackSfx.Vanilla(SoundID.Item27, 0.35f, 0.4f);
+					}
+					b.Velocity = new Vector2(0f, speed);
+				},
+				OnDraw = b =>
+				{
+					float shake = b.Age < warn ? (float)Math.Sin(b.Age * 1.5f) * 1.2f : 0f;
+					Vector2 top = b.Position + new Vector2(shake, -9f), tip = b.Position + new Vector2(shake, 9f);
+					if (b.Age < warn && b.Age / 4 % 2 == 0)
+						DrDraw.Glow(b.Position, 10f, Color.White * 0.5f);
+					DrDraw.Line(top, Vector2.Lerp(top, tip, 0.6f), 6f, ice * b.Alpha);
+					DrDraw.Line(Vector2.Lerp(top, tip, 0.5f), tip, 3f, ice * b.Alpha);
+					DrDraw.Line(top + new Vector2(-1, 0), tip, 1f, Color.White * (0.7f * b.Alpha));
+				},
+			});
+		}
+	}
+
+	/// <summary>
+	/// Heat enemies: lava rises from the floor of the box, crowding the SOUL toward the top, throws embers up as it
+	/// churns, then sinks back down. The enemy's own fire comes in from the sides.
+	/// </summary>
+	public class LavaRise : EnemyAttack
+	{
+		public Func<Vector2, Vector2, Bullet> MakeSide;
+		/// <summary>How high the lava gets (share of the box) and how long it takes to get there (share of the turn).</summary>
+		public float Peak = 0.5f, RiseShare = 0.4f;
+		public int EmberEvery = 16, SideEvery = 60;
+		private float level;
+
+		/// <summary>The lava's surface (y) at this x, waves and all.</summary>
+		private float Surface(Rectangle box, float x, int tick) =>
+			box.Bottom - level + (float)Math.Sin(x * 0.08f + tick * 0.12f) * 3f;
+
+		public override void Update(BattleSystem battle, int tick)
+		{
+			Rectangle box = battle.Box;
+			// Up to its peak, a hold, then back down before the turn ends
+			float rise = Duration * RiseShare, fallAt = Duration - 80;
+			float k = tick < rise ? tick / rise : tick < fallAt ? 1f : Math.Max(0f, 1f - (tick - fallAt) / 60f);
+			level = box.Height * Peak * (k * k * (3f - 2f * k));
+			if (tick == 1)
+			{
+				AttackSfx.Vanilla(SoundID.Item34 with { Pitch = -0.8f }, 0.4f);
+				int duration = Duration;
+				battle.Spawn(new Bullet
+				{
+					Position = box.Center.ToVector2(),
+					Harmful = true,
+					DestroyOnHit = false,
+					Lifetime = duration,
+					OffscreenMargin = 9999f,
+					DamageMult = 0.8f,
+					GrazePoints = 1f,
+					HitTest = (x, soul) => level > 4f && soul.Bottom - 3 > Surface(battle.Box, soul.Center.X, x.Age),
+					OnDraw = x =>
+					{
+						Rectangle b = battle.Box;
+						if (level <= 0.5f)
+							return;
+						for (float cx = b.Left; cx < b.Right; cx += 3f)
+						{
+							float sy = Surface(b, cx, x.Age);
+							DrDraw.Rect(cx, sy, 3f, b.Bottom - sy, new Color(200, 50, 10) * 0.9f);
+							DrDraw.Rect(cx, sy, 3f, 3f, new Color(255, 200, 60));
+						}
+						DrDraw.Rect(b.Left, b.Bottom - level * 0.6f, b.Width, level * 0.6f, new Color(120, 20, 0) * 0.35f);
+					},
+				});
+			}
+			if (tick > fallAt)
+				return;
+			// Embers flung up off the surface, falling back in
+			if (level > 6f && tick % EmberEvery == 0)
+			{
+				float x = Main.rand.NextFloat(box.Left + 8, box.Right - 8);
+				var ember = Shots.Ball(new Vector2(x, Surface(box, x, tick)), new Vector2(Main.rand.NextFloat(-0.6f, 0.6f), -Main.rand.NextFloat(3f, 4.2f)),
+					new Color(255, 150, 40), 0.6f, 0.8f).Fiery();
+				ember.Acceleration = new Vector2(0f, 0.09f);
+				ember.Lifetime = 140;
+				battle.Spawn(ember);
+			}
+			if (MakeSide != null && tick % SideEvery == SideEvery / 2)
+			{
+				bool fromLeft = tick / SideEvery % 2 == 0;
+				float top = box.Top + 12, bottom = Math.Max(top, box.Bottom - level - 14);
+				float y = MathHelper.Clamp(battle.SoulCenter.Y, top, bottom);
+				battle.Spawn(MakeSide(new Vector2(fromLeft ? box.Left - 20 : box.Right + 20, y), new Vector2(fromLeft ? 2.4f : -2.4f, 0f)));
+			}
 		}
 	}
 }

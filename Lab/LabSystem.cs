@@ -314,7 +314,7 @@ namespace MercyMode.Lab
 				Check(++t < 60 * 30, $"never reached {string.Join("/", stop)} (phase {B.LabPhase})");
 				if (B.LabPhase == Phase.Message && (seen.Count == 0 || seen[^1] != B.LabText))
 					seen.Add(B.LabText);
-				if (B.LabPhase == Phase.Message)
+				if (B.LabPhase is Phase.Message or Phase.Talk or Phase.Choice)
 				{
 					down.Add(t % 4 < 2 ? Keys.X : Keys.Z);
 					yield return null;
@@ -375,7 +375,7 @@ namespace MercyMode.Lab
 				if (BattleSystem.Active && B.LabPhase == Phase.EnemyTurn)
 					Heal();
 				// (A talker's lines and questions too: Z through them, taking the first answer)
-				if (skipText && B.LabPhase is Phase.Message or Phase.Talk or Phase.Choice)
+				if (skipText && B.LabPhase == Phase.Message || B.LabPhase is Phase.Talk or Phase.Choice)
 				{
 					down.Add(t % 4 < 2 ? Keys.X : Keys.Z);
 					yield return null;
@@ -968,7 +968,7 @@ namespace MercyMode.Lab
 				("possessed armor", NPCID.PossessedArmor), ("wraith", NPCID.Wraith), ("pixie", NPCID.Pixie), ("mummy", NPCID.Mummy),
 				("werewolf", NPCID.Werewolf), ("meteor head", NPCID.MeteorHead), ("granite", NPCID.GraniteFlyer), ("bone serpent", NPCID.BoneSerpentHead),
 				("tim", NPCID.Tim), ("ghost", NPCID.Ghost), ("demon", NPCID.Demon), ("crab", NPCID.Crab), ("vulture", NPCID.Vulture),
-				("bee", NPCID.Bee), ("umbrella slime", NPCID.UmbrellaSlime),
+				("bee", NPCID.Bee), ("umbrella slime", NPCID.UmbrellaSlime), ("ice elemental", NPCID.IceElemental), ("ice tortoise", NPCID.IceTortoise),
 			};
 			foreach (var (label, type) in types)
 				yield return SweepAttacks(label, 1, type);
