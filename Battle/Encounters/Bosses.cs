@@ -446,13 +446,13 @@ namespace MercyMode.Battle.Encounters
 					new Orbiters(creeper, hard ? 110 : 130) { Count = hard ? 7 : 6 },
 					new BoneLob(bone, hard ? 22 : 30)),
 				// It reads your mind: Ichor lands where you're about to be
-				() => new MindRead(hard ? 16 : 20) { Lead = hard ? 42 : 36 },
+				() => new MindRead(hard ? 18 : 22) { Lead = hard ? 42 : 36, Double = true },
 				// Your reflection mirrors you through the middle of the box while Ichor drips
 				() => new Combo(ComboTicks,
-					new MirrorSoul(),
+					new MirrorSoul { Second = hard },
 					new Rain(ichor, hard ? 16 : 22) { SpeedMin = 1.5f, SpeedMax = 2.1f }),
 				// A memory test: spots flash in order, then burst in the same order
-				() => new MemoryFlash(150) { Spots = hard ? 6 : 5, Step = hard ? 11 : 13 },
+				() => new MemoryFlash(150) { Spots = hard ? 6 : 5, Step = hard ? 11 : 13, Radius = hard ? 26f : 24f },
 				// Creepers bounce round the walls of its mind
 				() => new Ricochet(creeper, hard ? 20 : 26) { Speed = hard ? 3f : 2.6f, Bounces = 3 });
 		}

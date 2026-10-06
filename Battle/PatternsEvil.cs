@@ -794,10 +794,19 @@ namespace MercyMode.Battle
 			base.Update(battle, tick);
 		}
 
+		/// <summary>Two marks: where you're heading, and further along (so changing course is the only way out).</summary>
+		public bool Double;
+
 		protected override void Spawn(BattleSystem battle, int index)
 		{
+			Mark(battle, battle.SoulCenter + vel * Lead);
+			if (Double)
+				Mark(battle, battle.SoulCenter + vel * Lead * 2f);
+		}
+
+		private void Mark(BattleSystem battle, Vector2 at)
+		{
 			Rectangle box = battle.Box;
-			Vector2 at = battle.SoulCenter + vel * Lead;
 			at.X = MathHelper.Clamp(at.X, box.Left + 10, box.Right - 10);
 			at.Y = MathHelper.Clamp(at.Y, box.Top + 10, box.Bottom - 10);
 			int warn = Warn, active = Active;
@@ -852,17 +861,26 @@ namespace MercyMode.Battle
 	public class MirrorSoul : EnemyAttack
 	{
 		public int Fade = 40;
+		/// <summary>A second reflection, mirrored left-right only (the first goes through the centre).</summary>
+		public bool Second;
 
 		public override void Update(BattleSystem battle, int tick)
 		{
 			if (tick != 1)
 				return;
 			Vector2 c = battle.Box.Center.ToVector2();
-			int fade = Fade, duration = Duration;
 			AttackSfx.Vanilla(SoundID.Item8, 0.6f, -0.6f);
+			Reflection(battle, s => c * 2f - s);
+			if (Second)
+				Reflection(battle, s => new Vector2(c.X * 2f - s.X, s.Y));
+		}
+
+		private void Reflection(BattleSystem battle, Func<Vector2, Vector2> map)
+		{
+			int fade = Fade, duration = Duration;
 			battle.Spawn(new Bullet
 			{
-				Position = c * 2f - battle.SoulCenter,
+				Position = map(battle.SoulCenter),
 				Harmful = false,
 				DestroyOnHit = false,
 				HitSize = new Vector2(12, 12),
@@ -870,7 +888,7 @@ namespace MercyMode.Battle
 				GrazePoints = 2f,
 				OnUpdate = x =>
 				{
-					x.Position = c * 2f - battle.SoulCenter;
+					x.Position = map(battle.SoulCenter);
 					x.Alpha = Math.Min(1f, x.Age / (float)fade) * (x.Age > duration - 20 ? (duration - 4 - x.Age) / 16f : 1f);
 					x.Harmful = x.Age > fade;
 				},
