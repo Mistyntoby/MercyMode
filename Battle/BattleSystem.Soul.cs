@@ -67,6 +67,8 @@ namespace MercyMode.Battle
 		// Yellow, from Deltarune's obj_heart yellow mode / obj_yheart_shot (30 fps numbers halved per tick): shots fly
 		// right at 8 px/tick, at most 3 at once; Z held 40+ ticks charges a big shot (4 px/tick, speeding up, 4 damage)
 		private const float YellowShotSpeed = 8f;
+		/// <summary>How many bullets a charged shot breaks through before it's spent.</summary>
+		private const int BigShotPierce = 3;
 		private const int YellowMaxShots = 3;
 		private const int YellowChargeTicks = 40;
 		private const float BigShotSpeed = 4f, BigShotAccel = 0.1f;
@@ -370,8 +372,8 @@ namespace MercyMode.Battle
 						toughness[b] = left;
 						AttackSfx.Vanilla(SoundID.Tink, 0.4f, 0.6f);
 					}
-					// Small shots stop at the first thing they hit; the big one goes through
-					if (!s.Big)
+					// Small shots stop at the first thing they hit; the big one goes through a few, then it's spent
+					if (!s.Big || s.Hit.Count >= BigShotPierce)
 					{
 						yellowShots.RemoveAt(i);
 						break;

@@ -758,6 +758,8 @@ namespace MercyMode.Battle
 				case Phase.ChoiceWait: messageTicks++; break;
 			}
 			UpdateCutscene();
+			foreach (BattleEnemy en in enemies)
+				en.E.AttackEnergy = phase == Phase.EnemyTurn ? enemyAttackEnergy : 0f;
 			SendSoul();
 			UpdateDuel();
 			UpdateBuffDrawer();

@@ -285,6 +285,8 @@ namespace MercyMode.Battle
 		public float Gravity = 0.1f, Launch = 6.1f;
 		/// <summary>Once past the top of its leap it turns toward the SOUL this much a tick as it dives.</summary>
 		public float Hunt = 0.07f;
+		/// <summary>The worms' damage scaled (lower in the dark, where they're harder to see).</summary>
+		public float DamageMult = 1f;
 		private readonly List<WormRig> rigs = new();
 
 		public Eruption(int every = 90)
@@ -321,6 +323,7 @@ namespace MercyMode.Battle
 				},
 			});
 			float launch = Launch, gravity = Gravity;
+			float damageMult = DamageMult;
 			int segments = Segments;
 			battle.Spawn(new Bullet
 			{
@@ -333,6 +336,8 @@ namespace MercyMode.Battle
 					if (b.Age != warn)
 						return;
 					WormRig rig = Look.Build(battle, new Vector2(x, box.Bottom + 30f), new Vector2(drift, -launch), segments, 13f);
+					foreach (Bullet seg in rig.Segs)
+						seg.DamageMult *= damageMult;
 					float hunt = Hunt;
 					bool diving = false;
 					rig.Steer = (r, age) =>
@@ -991,11 +996,14 @@ namespace MercyMode.Battle
 					OnDraw = x =>
 					{
 						float k = Math.Min(1f, x.Age / (float)fadeIn) * Math.Min(1f, (duration - x.Age) / 20f);
-						var lights = new List<(Vector2 At, float R)> { (battle.SoulCenter, radius) };
+						DrawDark(battle, radius, darkness * k);
+						// What glows shows through: worm heads and the cracks they burst from, drawn again over the dark
 						foreach (Bullet b in battle.Bullets)
-							if (b.Light > 0f && !b.Dead && !b.Waiting)
-								lights.Add((b.Position, b.Light));
-						DrawDark(battle.Box, lights, darkness * k);
+							if (b != x && b.Light > 0f && !b.Dead && !b.Waiting)
+							{
+								DrDraw.Glow(b.Position, b.Light, new Color(190, 120, 255) * (0.35f * k));
+								b.Draw();
+							}
 					},
 				};
 				battle.Spawn(shade);
@@ -1006,60 +1014,56 @@ namespace MercyMode.Battle
 				battle.Bullets.Add(shade);
 		}
 
-		/// <summary>Darkness over the box in thin rows, leaving round holes (with a soft rim) where the lights are.</summary>
-		private static void DrawDark(Rectangle box, List<(Vector2 At, float R)> lights, float alpha)
+		private static Texture2D spot;
+
+		/// <summary>A round soft-edged hole in the dark: clear in the middle, black at the edges and corners.</summary>
+		private static Texture2D Spot()
 		{
-			const int row = 2;
-			var dark = new Color(4, 0, 10);
-			for (int y = box.Top; y < box.Bottom; y += row)
-			{
-				float cy = y + row / 2f;
-				// Each light's lit span on this row, inner (clear) and outer (half-dark rim)
-				var spans = new List<(float L, float R, bool Rim)>();
-				foreach (var (at, r) in lights)
+			if (spot != null && !spot.IsDisposed)
+				return spot;
+			const int n = 128;
+			var data = new Color[n * n];
+			for (int y = 0; y < n; y++)
+				for (int x = 0; x < n; x++)
 				{
-					float dy = cy - at.Y;
-					float outer = r * 1.35f;
-					if (Math.Abs(dy) < outer)
-					{
-						float w = (float)Math.Sqrt(outer * outer - dy * dy);
-						spans.Add((at.X - w, at.X + w, true));
-					}
-					if (Math.Abs(dy) < r)
-					{
-						float w = (float)Math.Sqrt(r * r - dy * dy);
-						spans.Add((at.X - w, at.X + w, false));
-					}
+					float dx = (x + 0.5f) / n * 2f - 1f, dy = (y + 0.5f) / n * 2f - 1f;
+					float a = MathHelper.Clamp(((float)Math.Sqrt(dx * dx + dy * dy) - 0.55f) / 0.45f, 0f, 1f);
+					a = a * a * (3f - 2f * a);
+					data[y * n + x] = new Color(0, 0, 0, (byte)(a * 255));
 				}
-				FillRow(box.Left, box.Right, y, row, spans.Where(s => s.Rim).Select(s => (s.L, s.R)).ToList(), dark * alpha);
-				// The rim: half dark between the outer and inner edges
-				foreach (var rim in spans.Where(s => s.Rim))
-					FillRow(rim.L, rim.R, y, row, spans.Where(s => !s.Rim).Select(s => (s.L, s.R)).ToList(), dark * (alpha * 0.55f), box);
-			}
+			spot = new Texture2D(Main.graphics.GraphicsDevice, n, n);
+			spot.SetData(data);
+			return spot;
 		}
 
-		/// <summary>Fills [left, right) on one row except where the holes are.</summary>
-		private static void FillRow(float left, float right, int y, int h, List<(float L, float R)> holes, Color color, Rectangle? clip = null)
+		/// <summary>
+		/// Darkness over the box with a soft round light around the SOUL: the hole is one smooth sprite and the rest of
+		/// the box four whole-pixel rectangles round it, so there are no seams (thin rows of rectangles left stripes).
+		/// </summary>
+		private static void DrawDark(BattleSystem battle, float radius, float alpha)
 		{
-			if (clip is Rectangle c)
+			if (alpha <= 0.01f)
+				return;
+			Rectangle box = battle.Box;
+			Vector2 c = battle.SoulCenter;
+			int r = (int)(radius * 1.7f);
+			var sq = new Rectangle((int)c.X - r, (int)c.Y - r, r * 2, r * 2);
+			Rectangle vis = Rectangle.Intersect(sq, box);
+			Color dark = Color.Black * alpha;
+			if (vis.Width <= 0 || vis.Height <= 0)
 			{
-				left = Math.Max(left, c.Left);
-				right = Math.Min(right, c.Right);
+				DrDraw.Rect(box.X, box.Y, box.Width, box.Height, dark);
+				return;
 			}
-			holes.Sort((a, b) => a.L.CompareTo(b.L));
-			float x = left;
-			foreach (var (l, r) in holes)
-			{
-				if (r <= x)
-					continue;
-				if (l > x)
-					DrDraw.Rect(x, y, Math.Min(l, right) - x, h, color);
-				x = Math.Max(x, r);
-				if (x >= right)
-					return;
-			}
-			if (x < right)
-				DrDraw.Rect(x, y, right - x, h, color);
+			Texture2D tex = Spot();
+			float scale = tex.Width / (float)sq.Width;
+			var src = new Rectangle((int)((vis.X - sq.X) * scale), (int)((vis.Y - sq.Y) * scale), (int)Math.Ceiling(vis.Width * scale), (int)Math.Ceiling(vis.Height * scale));
+			DrDraw.Sb.Draw(tex, vis, src, Color.White * alpha);
+			// Above, below, left and right of the light
+			DrDraw.Rect(box.X, box.Y, box.Width, vis.Y - box.Y, dark);
+			DrDraw.Rect(box.X, vis.Bottom, box.Width, box.Bottom - vis.Bottom, dark);
+			DrDraw.Rect(box.X, vis.Y, vis.X - box.X, vis.Height, dark);
+			DrDraw.Rect(vis.Right, vis.Y, box.Right - vis.Right, vis.Height, dark);
 		}
 	}
 

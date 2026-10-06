@@ -322,7 +322,7 @@ namespace MercyMode.Battle.Encounters
 				// cracks they burst out of
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new Underground { LightRadius = hard ? 34f : 40f },
-					new Eruption(hard ? 62 : 76) { Segments = 9, Hunt = hard ? 0.08f : 0.065f, FirstAt = 40 }),
+					new Eruption(hard ? 66 : 82) { Segments = 9, Hunt = hard ? 0.07f : 0.055f, FirstAt = 40, DamageMult = 0.6f }),
 				// It burrows under the box toward you, then bursts out in a spray of teeth
 				() => new BurrowTrail(tooth, hard ? 64 : 80) { Speed = hard ? 1.8f : 1.5f, Shards = hard ? 9 : 7 },
 				// It coils round the box, closing in, spitting from its head
@@ -358,6 +358,22 @@ namespace MercyMode.Battle.Encounters
 		}
 
 		private bool CreepersLeft => BossKit.OfTypes(NPCID.Creeper).Any();
+
+		/// <summary>Its turns with several attacks at once last longer (grazing them all ended them in a moment).</summary>
+		private const int ComboTicks = BattleConstants.DefaultEnemyTurnTicks * 8 / 5;
+
+		/// <summary>When it attacks it opens up (its eye frames) and stays open a while, instead of a one-second blink.</summary>
+		private int openUntil = -1;
+
+		public override int? FrameOverride(int time, int frameCount)
+		{
+			if (frameCount < 8)
+				return null;
+			if (AttackEnergy > 0.18f)
+				openUntil = time + 80;
+			bool open = time < openUntil || !CreepersLeft;
+			return (open ? 4 : 0) + time / 8 % 4;
+		}
 
 		public override NPC StrikeTarget()
 		{
@@ -401,44 +417,44 @@ namespace MercyMode.Battle.Encounters
 			Bullet bone(Vector2 p, Vector2 v) => Shots.Item(ItemID.Vertebrae, p, v, 0.85f, 0.7f, new Vector2(10, 10));
 			return Cycle(
 				// Purple SOUL: caught in its mind, Creepers crawl the strings while Ichor drips down
-				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
-					new StringRunners(creeper, hard ? 20 : 28) { Speed = hard ? 3f : 2.5f },
-					new Rain(ichor, hard ? 26 : 36) { SpeedMin = 1.2f, SpeedMax = 1.6f }),
+				() => new Combo(ComboTicks,
+					new StringRunners(creeper, hard ? 16 : 22) { Speed = hard ? 3.4f : 2.9f },
+					new Rain(ichor, hard ? 20 : 28) { SpeedMin = 1.4f, SpeedMax = 1.9f }),
 				// Confused: the arrow keys turn around while Creepers drift across
-				() => new MindFlip(creeper, hard ? 30 : 38) { Speed = hard ? 1.5f : 1.3f },
+				() => new MindFlip(creeper, hard ? 24 : 30) { Speed = hard ? 1.8f : 1.5f },
 				// Its Creepers circle the box, then ram you one at a time
-				() => new CreeperCharge { Make = creeper, Count = hard ? 8 : 6, Every = hard ? 28 : 36, Speed = hard ? 4.8f : 4.2f },
+				() => new CreeperCharge { Make = creeper, Count = hard ? 10 : 8, Every = hard ? 22 : 28, Speed = hard ? 5.4f : 4.8f },
 				// Illusions: they flicker between real and false together; the false ones can be passed through
-				() => new PhaseBullets(creeper, hard ? 8 : 11) { Speed = hard ? 1.7f : 1.4f, RealTicks = hard ? 56 : 46 },
+				() => new PhaseBullets(creeper, hard ? 7 : 9) { Speed = hard ? 1.9f : 1.6f, RealTicks = hard ? 60 : 52 },
 				// Copies of the Brain fade in round the box and all charge: only the steady one is real
-				() => new BrainIllusions(hard ? 70 : 84) { Copies = hard ? 4 : 3, Speed = hard ? 5.6f : 5f },
+				() => new BrainIllusions(hard ? 58 : 70) { Copies = hard ? 5 : 4, Speed = hard ? 6.2f : 5.6f },
 				// Neurons fire along the lines between them
-				() => new NeuronWeb(hard ? 54 : 66) { Nodes = hard ? 4 : 3 },
-				() => new Orbiters(creeper, hard ? 90 : 120) { Count = hard ? 8 : 6, AngularSpeed = 0.03f },
+				() => new NeuronWeb(hard ? 44 : 54) { Nodes = hard ? 5 : 4 },
+				() => new Orbiters(creeper, hard ? 75 : 95) { Count = hard ? 9 : 7, AngularSpeed = 0.035f },
 				// It charges across the box itself
 				() => new LaneDash((p, d) => Shots.Npc(NPCID.BrainofCthulhu, p, Vector2.Zero, 0.4f, 1f, new Vector2(30, 26), rotate: false),
-					hard ? 50 : 70) { AllowVertical = true, Speed = hard ? 8f : 6.5f, LaunchSound = SoundID.ForceRoar },
+					hard ? 42 : 56) { AllowVertical = true, Speed = hard ? 8.6f : 7.2f, LaunchSound = SoundID.ForceRoar },
 				// Vertebrae lobbed in arcs that come down on you
-				() => new BoneLob(bone, hard ? 16 : 22),
+				() => new BoneLob(bone, hard ? 13 : 17),
 				// A spiral of Ichor from the middle of the box (it fades in, so it can't hit you where it starts)
 				() => new Sprinkler(ichor)
 				{
 					Origin = new Vector2(BattleConstants.BoxCenterX, BattleConstants.BoxCenterY),
-					Spiral = true, Arms = 3, Every = hard ? 11 : 14, Speed = 1.7f, TurnSpeed = 0.045f, ArmTicks = 20,
+					Spiral = true, Arms = 3, Every = hard ? 11 : 13, Speed = 1.9f, TurnSpeed = 0.045f, ArmTicks = 20,
 				},
-				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
-					new Orbiters(creeper, 140) { Count = 5 },
-					new BoneLob(bone, hard ? 30 : 40)),
+				() => new Combo(ComboTicks,
+					new Orbiters(creeper, hard ? 110 : 130) { Count = hard ? 7 : 6 },
+					new BoneLob(bone, hard ? 22 : 30)),
 				// It reads your mind: Ichor lands where you're about to be
-				() => new MindRead(hard ? 20 : 26) { Lead = hard ? 40 : 34 },
+				() => new MindRead(hard ? 16 : 20) { Lead = hard ? 42 : 36 },
 				// Your reflection mirrors you through the middle of the box while Ichor drips
-				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
+				() => new Combo(ComboTicks,
 					new MirrorSoul(),
-					new Rain(ichor, hard ? 22 : 30) { SpeedMin = 1.3f, SpeedMax = 1.8f }),
+					new Rain(ichor, hard ? 16 : 22) { SpeedMin = 1.5f, SpeedMax = 2.1f }),
 				// A memory test: spots flash in order, then burst in the same order
-				() => new MemoryFlash(150) { Spots = hard ? 5 : 4, Step = hard ? 13 : 16 },
+				() => new MemoryFlash(150) { Spots = hard ? 6 : 5, Step = hard ? 11 : 13 },
 				// Creepers bounce round the walls of its mind
-				() => new Ricochet(creeper, hard ? 26 : 34) { Speed = hard ? 2.6f : 2.2f, Bounces = 2 });
+				() => new Ricochet(creeper, hard ? 20 : 26) { Speed = hard ? 3f : 2.6f, Bounces = 3 });
 		}
 	}
 

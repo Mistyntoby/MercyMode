@@ -50,6 +50,8 @@ namespace MercyMode.Battle
 	public abstract class Encounter
 	{
 		public NPC Npc;
+		/// <summary>How hard its attack is going right now (0-1), on the battle screen: for poses and frames.</summary>
+		public float AttackEnergy;
 		public int Turn;
 		/// <summary>A boss's one-time all-out turn at low HP: announced, then used.</summary>
 		public bool DesperationAnnounced, DesperationUsed;
