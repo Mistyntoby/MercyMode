@@ -1721,6 +1721,9 @@ namespace MercyMode.Battle
 			soul.Y = MathHelper.Clamp(soul.Y, box.Top + BoxClampLow, box.Bottom - BoxClampHigh);
 		}
 
+		/// <summary>The least share of max HP (after defense) a regular enemy's bullet takes off.</summary>
+		private const float RegularMinLifeShare = 0.03f;
+
 		private void HitSoul(Bullet b)
 		{
 			// Downed: out of the box
@@ -1732,6 +1735,12 @@ namespace MercyMode.Battle
 			int damage = by != null && by.IsBoss && duelWith < 0
 				? BossBulletDamage(by, b.DamageMult, Player.statDefense)
 				: Math.Max(1, (int)Math.Round((b.Owner?.Damage ?? turnDamage) * b.DamageMult));
+			// A hazard hurts like one whatever the enemy: enough that after defense (Terraria takes half of it) at least
+			// its share of max HP comes off
+			// (Any regular enemy's bullet: at least 3%, so defense never turns a hit into a scratch)
+			float share = b.MinLifeShare > 0f ? b.MinLifeShare : RegularMinLifeShare;
+			if (by == null || !by.IsBoss && duelWith < 0)
+				damage = Math.Max(damage, (int)Math.Ceiling(Player.statLifeMax2 * share + Player.statDefense / 2f));
 			Player.immune = false;
 			Player.immuneTime = 0;
 			HurtingPlayer = true;

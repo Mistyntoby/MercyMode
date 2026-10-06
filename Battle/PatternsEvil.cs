@@ -1117,6 +1117,8 @@ namespace MercyMode.Battle
 			if (Math.Abs(x - ux) < Shelter)
 				return;
 			Bullet d = MakeDrop(new Vector2(x, box.Top - 8f), new Vector2(0f, FallSpeed));
+			d.DamageMult = Math.Max(d.DamageMult, 1.1f);
+			d.MinLifeShare = 0.05f;
 			d.RotateWithVelocity = true;
 			d.Alpha = 0.85f;
 			d.GrazePoints *= 0.5f;
@@ -1175,7 +1177,10 @@ namespace MercyMode.Battle
 			{
 				bool fromLeft = tick / SideEvery % 2 == 0;
 				float y = MathHelper.Clamp(battle.SoulCenter.Y + Main.rand.NextFloat(-30f, 30f), box.Top + 12, box.Bottom - 12);
-				battle.Spawn(MakeSide(new Vector2(fromLeft ? box.Left - 20 : box.Right + 20, y), new Vector2(fromLeft ? SideSpeed : -SideSpeed, 0f)));
+				Bullet side = MakeSide(new Vector2(fromLeft ? box.Left - 20 : box.Right + 20, y), new Vector2(fromLeft ? SideSpeed : -SideSpeed, 0f));
+				side.DamageMult = Math.Max(side.DamageMult, 1.1f);
+				side.MinLifeShare = 0.06f;
+				battle.Spawn(side);
 			}
 		}
 
@@ -1190,6 +1195,8 @@ namespace MercyMode.Battle
 			{
 				Position = new Vector2(x, box.Top + 8f),
 				HitSize = new Vector2(8, 16),
+				DamageMult = 1.5f,
+				MinLifeShare = 0.08f,
 				Harmful = false,
 				Lifetime = 200,
 				OnUpdate = b =>
@@ -1254,7 +1261,8 @@ namespace MercyMode.Battle
 					DestroyOnHit = false,
 					Lifetime = duration,
 					OffscreenMargin = 9999f,
-					DamageMult = 0.8f,
+					DamageMult = 1.3f,
+					MinLifeShare = 0.08f,
 					GrazePoints = 1f,
 					HitTest = (x, soul) => level > 4f && soul.Bottom - 3 > Surface(battle.Box, soul.Center.X, x.Age),
 					OnDraw = x =>
@@ -1281,6 +1289,8 @@ namespace MercyMode.Battle
 				var ember = Shots.Ball(new Vector2(x, Surface(box, x, tick)), new Vector2(Main.rand.NextFloat(-0.6f, 0.6f), -Main.rand.NextFloat(3f, 4.2f)),
 					new Color(255, 150, 40), 0.6f, 0.8f).Fiery();
 				ember.Acceleration = new Vector2(0f, 0.09f);
+				ember.DamageMult = 1f;
+				ember.MinLifeShare = 0.05f;
 				ember.Lifetime = 140;
 				battle.Spawn(ember);
 			}
@@ -1289,7 +1299,10 @@ namespace MercyMode.Battle
 				bool fromLeft = tick / SideEvery % 2 == 0;
 				float top = box.Top + 12, bottom = Math.Max(top, box.Bottom - level - 14);
 				float y = MathHelper.Clamp(battle.SoulCenter.Y, top, bottom);
-				battle.Spawn(MakeSide(new Vector2(fromLeft ? box.Left - 20 : box.Right + 20, y), new Vector2(fromLeft ? 2.4f : -2.4f, 0f)));
+				Bullet side = MakeSide(new Vector2(fromLeft ? box.Left - 20 : box.Right + 20, y), new Vector2(fromLeft ? 2.4f : -2.4f, 0f));
+				side.DamageMult = Math.Max(side.DamageMult, 1.1f);
+				side.MinLifeShare = 0.06f;
+				battle.Spawn(side);
 			}
 		}
 	}

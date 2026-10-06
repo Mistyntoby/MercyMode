@@ -191,6 +191,7 @@ namespace MercyMode.Lab
 				("eater-splits", EaterSplits),
 				("cozy-heal", CozyHeal),
 				("talker", TalkerQuestion),
+				("hazard-damage", HazardDamage),
 				("vote", VoteTally),
 				("boulder", BoulderBattle),
 				("boss-kill", () => BossKill(NPCID.EyeofCthulhu)),
@@ -1621,6 +1622,42 @@ namespace MercyMode.Lab
 			yield return Choose(4);
 			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the next enemy turn");
 			Check(B.LabAttack?.GetType().Name != "RipOpen", "the Eye tore open twice");
+			foreach (NPC m in B.LabTarget.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
+		}
+
+		/// <summary>Weak enemies still hurt: a hazard takes its share of max HP, any regular bullet at least 3%.</summary>
+		private IEnumerable HazardDamage()
+		{
+			yield return StartWith(NPCID.IceSlime);
+			int Hit(float mult, float share)
+			{
+				B.Bullets.Clear();
+				P.statLife = P.statLifeMax2;
+				B.SetBattleLife(P.statLife);
+				B.Spawn(new Bullet { Position = B.SoulCenter, HitSize = new Vector2(20), DamageMult = mult, MinLifeShare = share, Lifetime = 5 });
+				return 0;
+			}
+			var results = new List<(string, int, int)>();
+			foreach (var (label, mult, share, least) in new[] { ("icicle", 1.5f, 0.08f, 0.08f), ("weak shot", 0.1f, 0f, 0.03f) })
+			{
+				// Each on an enemy turn of its own (not DEFEND: that halves the hits)
+				yield return Menu();
+				yield return Spare(0);
+				yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the enemy turn");
+				for (int i = 0; i < 5; i++)
+					yield return null;
+				Hit(mult, share);
+				int before = P.statLife;
+				for (int i = 0; i < 4; i++)
+					yield return null;
+				int lost = before - P.statLife;
+				int want = (int)(P.statLifeMax2 * least);
+				Log($"  {label}: {lost} HP off {P.statLifeMax2} (at least {want})");
+				Check(lost >= want, $"{label} only did {lost}");
+			}
+			B.Bullets.Clear();
 			foreach (NPC m in B.LabTarget.Members().ToList())
 				m.active = false;
 			yield return WaitForEnd();

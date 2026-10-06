@@ -51,6 +51,11 @@ namespace MercyMode.Battle
 		public int MaxShotDamage;
 		/// <summary>Light it gives off in the dark (radius in pixels, 0 = none): see <see cref="Underground"/>.</summary>
 		public float Light;
+		/// <summary>
+		/// Hazards (rain, icicles, lava, falling rocks): a hit takes at least this share of the player's max HP, after
+		/// defense, however weak the enemy. 0 = no floor (the enemy's contact damage, as usual).
+		/// </summary>
+		public float MinLifeShare;
 		/// <summary>Ticks left of a white flash (it was shot).</summary>
 		public int Flash;
 		/// <summary>Afterimages left behind while it moves (0 = none).</summary>

@@ -311,6 +311,8 @@ namespace MercyMode.Battle.Encounters
 			Texture2D tex = TextureAssets.Projectile[ProjType].Value;
 			b.Scale = size / Math.Max(1, tex.Width);
 			b.OffscreenMargin = 200f;
+			// A rock to the face hurts, however small: a bigger rock, a bigger share
+			b.MinLifeShare = MathHelper.Clamp(size / 300f, 0.04f, 0.12f);
 			return b;
 		}
 

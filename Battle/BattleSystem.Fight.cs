@@ -264,7 +264,7 @@ namespace MercyMode.Battle
 			NPC foe = FightFoe();
 			weaponOptions = Weapons().OrderBy(w => w.Usable ? 0 : 1)
 				.ThenBy(w => w.Item != null && (w.Item.pick > 0 || w.Item.axe > 0 || w.Item.hammer > 0) ? 1 : 0)
-				.ThenByDescending(w => VsDefTurn(w, foe)).ToList();
+				.ThenByDescending(w => VsDefTurn(w, foe)).ThenByDescending(w => w.PerfectTurn).ToList();
 			WeaponOption current = CurrentWeapon();
 			listIndex = Math.Max(0, weaponOptions.FindIndex(w => w.Slot == current.Slot && w.Item?.type == current.Item?.type));
 			SetPhase(Phase.WeaponSelect);
@@ -346,13 +346,16 @@ namespace MercyMode.Battle
 			NPC foe = FightFoe();
 			if (foe != null)
 			{
-				string vs = $"VS DEF {foe.defense}: {VsDefHit(sel, foe)}/HIT";
+				// The number the list is sorted by: a perfect turn against this enemy, after its defense
+				string vs = $"VS DEF {foe.defense}: {VsDefTurn(sel, foe)}";
 				DrDraw.Text(vs, sx, sy, new Color(255, 200, 80), DrDraw.SmallFont);
 				if (VsDefTurn(sel, foe) != VsDefTurn(equipped, foe))
 					StatArrow(sx + DrDraw.Measure(vs, DrDraw.SmallFont) + 8, sy + 3, VsDefTurn(sel, foe) > VsDefTurn(equipped, foe));
+				DrDraw.Text($"{VsDefHit(sel, foe)}/HIT x{sel.Bolts}  CRIT {sel.Crit}%", sx, sy + 20, gray, DrDraw.SmallFont);
 			}
-			DrDraw.Text($"ATK {sel.PerfectTurn}", sx, sy + 20, Color.White, DrDraw.SmallFont);
-			DrDraw.Text($"{sel.Bolts} HIT{(sel.Bolts > 1 ? "S" : "")}  CRIT {sel.Crit}%", sx, sy + 40, gray, DrDraw.SmallFont);
+			else
+				DrDraw.Text($"{sel.Bolts} HIT{(sel.Bolts > 1 ? "S" : "")}  CRIT {sel.Crit}%", sx, sy + 20, gray, DrDraw.SmallFont);
+			DrDraw.Text($"ATK {sel.PerfectTurn}", sx, sy + 40, gray, DrDraw.SmallFont);
 			string cost = sel.Problem != null ? sel.Problem.ToUpperInvariant()
 				: sel.ManaCost > 0 ? $"MANA {sel.ManaCost}/HIT ({Player.statMana})"
 				: sel.Ammo >= 0 ? $"{(sel.Throwable ? "LEFT" : "AMMO")} {sel.Ammo}"
