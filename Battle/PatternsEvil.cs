@@ -997,51 +997,45 @@ namespace MercyMode.Battle
 	{
 		public float LightRadius = 40f, Darkness = 1f;
 		public int FadeIn = 30;
-		private Bullet shade;
+		private int started = -1;
 
 		public override void Update(BattleSystem battle, int tick)
 		{
-			if (shade == null)
+			if (started < 0)
 			{
-				int duration = Duration, fadeIn = FadeIn;
-				float radius = LightRadius, darkness = Darkness;
+				started = tick;
 				AttackSfx.Vanilla(SoundID.WormDig, 0.8f, -0.3f);
 				battle.ShakeScreen(3f);
-				shade = new Bullet
-				{
-					Harmful = false,
-					DestroyOnHit = false,
-					Lifetime = duration,
-					OffscreenMargin = 9999f,
-					OnDraw = x =>
-					{
-						float k = Math.Min(1f, x.Age / (float)fadeIn) * Math.Min(1f, (duration - x.Age) / 20f);
-						DrawDark(battle, radius, darkness * k);
-						// In the dark you only see their eyes: two small glints on each worm head, and a thin glowing seam
-						// where a crack is about to burst (the worms themselves stay hidden)
-						foreach (Bullet b in battle.Bullets)
-						{
-							if (b == x || b.Light <= 0f || b.Dead || b.Waiting || !battle.Box.Contains(b.Position.ToPoint()))
-								continue;
-							if (b.Texture == null)
-							{
-								// A crack: a seam along the floor of the box
-								DrDraw.Line(b.Position + new Vector2(-12f, 0f), b.Position + new Vector2(12f, 0f), 2f, new Color(200, 120, 255) * (0.8f * k));
-								continue;
-							}
-							Vector2 side = (b.Rotation).ToRotationVector2() * 4f;
-							Vector2 fwd = (b.Rotation - MathHelper.PiOver2).ToRotationVector2() * 3f;
-							DrDraw.Ball(b.Position + fwd + side, 1.6f, new Color(255, 80, 120) * k);
-							DrDraw.Ball(b.Position + fwd - side, 1.6f, new Color(255, 80, 120) * k);
-						}
-					},
-				};
-				battle.Spawn(shade);
 			}
-			shade.Position = battle.SoulCenter;
-			// Kept last in the list so it's drawn over everything else
-			if (battle.Bullets.Count > 0 && battle.Bullets[^1] != shade && battle.Bullets.Remove(shade))
-				battle.Bullets.Add(shade);
+			int age = tick - started, duration = Duration, fadeIn = FadeIn;
+			float radius = LightRadius, darkness = Darkness;
+			float k = Math.Min(1f, age / (float)fadeIn) * Math.Min(1f, (duration - tick) / 20f);
+			Rectangle box = battle.Box;
+			// Worms outside the box don't give themselves away either (they burst out of it and back in)
+			foreach (Bullet b in battle.Bullets)
+				if (b.Texture != null && b.Toughness == 0 && b.MaxShotDamage > 0)
+					b.Alpha = box.Contains(b.Position.ToPoint()) ? 1f : 1f - k;
+			// Drawn after every bullet, so nothing spawned later shows through
+			battle.DrawOverBullets(() =>
+			{
+				DrawDark(battle, radius, darkness * k);
+				// In the dark you only see their eyes: two small glints on each worm head, and a thin glowing seam where
+				// a crack is about to burst (the worms themselves stay hidden)
+				foreach (Bullet b in battle.Bullets)
+				{
+					if (b.Light <= 0f || b.Dead || b.Waiting || !battle.Box.Contains(b.Position.ToPoint()))
+						continue;
+					if (b.Texture == null)
+					{
+						DrDraw.Line(b.Position + new Vector2(-12f, 0f), b.Position + new Vector2(12f, 0f), 2f, new Color(200, 120, 255) * (0.8f * k));
+						continue;
+					}
+					Vector2 side = b.Rotation.ToRotationVector2() * 4f;
+					Vector2 fwd = (b.Rotation - MathHelper.PiOver2).ToRotationVector2() * 3f;
+					DrDraw.Ball(b.Position + fwd + side, 1.6f, new Color(255, 80, 120) * k);
+					DrDraw.Ball(b.Position + fwd - side, 1.6f, new Color(255, 80, 120) * k);
+				}
+			});
 		}
 
 		private static Texture2D spot;

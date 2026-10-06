@@ -1553,6 +1553,14 @@ namespace MercyMode.Battle
 		private int confusedTicks;
 		/// <summary>Reverses the arrow keys for the (red) SOUL this tick (the Brain of Cthulhu's confusion).</summary>
 		public void Confuse() => confusedTicks = 2;
+		private Action overBullets;
+		private int overBulletsUntil;
+		/// <summary>Draws this over every bullet in the box this tick (set it again each tick to keep it).</summary>
+		public void DrawOverBullets(Action draw)
+		{
+			overBullets = draw;
+			overBulletsUntil = time + 1;
+		}
 		private int slipTicks;
 		private Vector2 slipVelocity;
 		/// <summary>The (red) SOUL slides on ice this tick: it speeds up and slows down gradually instead of stopping dead.</summary>
@@ -2213,6 +2221,9 @@ namespace MercyMode.Battle
 			foreach (Bullet b in Bullets)
 				b.Draw();
 			DrawBulletEffects();
+			// An attack's layer over every bullet (the Eater's darkness)
+			if (overBullets != null && time <= overBulletsUntil)
+				overBullets();
 
 			// SOUL (spr_dodgeheart flips frames while invincible) and the graze flash
 			int frame = inv > 0 ? (inv / SoulBlinkTicks) % 2 : 0;

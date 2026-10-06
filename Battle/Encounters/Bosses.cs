@@ -328,9 +328,11 @@ namespace MercyMode.Battle.Encounters
 						new Gunships(soul, vile, 130) { Toughness = 3, FireEvery = 64, ShotSpeed = 1.6f }),
 				// Underground: pitch dark but for a little light round the SOUL; the worms' heads glow, and so do the
 				// cracks they burst out of
+				// (The box opens up to the whole screen for it: more room to get out of the way in the dark)
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
-					new Underground { LightRadius = hard ? 34f : 40f },
-					new Eruption(hard ? 72 : 88) { Segments = 9, Hunt = hard ? 0.045f : 0.035f, MaxDive = 3.6f, Warn = 60, FirstAt = 40, DamageMult = 0.6f }),
+					new Underground { LightRadius = hard ? 40f : 46f },
+					new Eruption(hard ? 64 : 78) { Segments = 9, Hunt = hard ? 0.045f : 0.035f, MaxDive = 3.6f, Warn = 60, FirstAt = 50, DamageMult = 0.6f })
+					{ FullScreen = true },
 				// It burrows under the box toward you, then bursts out in a spray of teeth
 				() => new BurrowTrail(tooth, hard ? 64 : 80) { Speed = hard ? 1.8f : 1.5f, Shards = hard ? 9 : 7 },
 				// It coils round the box, closing in, spitting from its head
