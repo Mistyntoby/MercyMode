@@ -37,6 +37,8 @@ namespace MercyMode.Battle
 		/// Roaring Knight's attacks. Patterns built on <see cref="BattleSystem.Box"/> fill the arena.
 		/// </summary>
 		public bool FullScreen;
+		/// <summary>The box grows to this size (1.4 = 40% bigger each way) for the turn, border and all; 0 = normal.</summary>
+		public float Grow;
 		/// <summary>How the SOUL moves during this attack (red: freely).</summary>
 		public SoulMode Soul;
 		public abstract void Update(BattleSystem battle, int tick);
@@ -54,6 +56,8 @@ namespace MercyMode.Battle
 		public float AttackEnergy;
 		/// <summary>A boss whose bullets come thick and fast hits a bit softer per bullet (1 = the usual).</summary>
 		public virtual float DamageFactor => 1f;
+		/// <summary>FIGHT's damage to this part, scaled (a boss's guarded head, its tougher hands). 1 = as usual.</summary>
+		public virtual float PartDamageScale(NPC part) => 1f;
 		public int Turn;
 		/// <summary>A boss's one-time all-out turn at low HP: announced, then used.</summary>
 		public bool DesperationAnnounced, DesperationUsed;

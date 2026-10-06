@@ -68,7 +68,7 @@ namespace MercyMode.Battle
 		// right at 8 px/tick, at most 3 at once; Z held 40+ ticks charges a big shot (4 px/tick, speeding up, 4 damage)
 		private const float YellowShotSpeed = 8f;
 		/// <summary>How many bullets a charged shot breaks through before it's spent.</summary>
-		private const int BigShotPierce = 3;
+		private const int BigShotPierce = 6;
 		private const int YellowMaxShots = 3;
 		private const int YellowChargeTicks = 40;
 		private const float BigShotSpeed = 4f, BigShotAccel = 0.1f;

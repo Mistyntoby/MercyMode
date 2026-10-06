@@ -304,6 +304,7 @@ namespace MercyMode.Battle
 				this.inner = inner;
 				Duration = inner.Duration;
 				FullScreen = inner.FullScreen;
+				Grow = inner.Grow;
 				Soul = inner.Soul;
 			}
 
@@ -380,7 +381,7 @@ namespace MercyMode.Battle
 					ra.Every = (int)Math.Round(ra.Every * (1f + 0.6f * (parts.Count - 1)));
 					ra.FirstAt += k * ra.Every / parts.Count;
 				}
-			return new Combo(parts.Max(p => p.Duration), parts.ToArray()) { FullScreen = parts.Any(p => p.FullScreen) };
+			return new Combo(parts.Max(p => p.Duration), parts.ToArray()) { FullScreen = parts.Any(p => p.FullScreen), Grow = parts.Max(p => p.Grow) };
 		}
 	}
 }

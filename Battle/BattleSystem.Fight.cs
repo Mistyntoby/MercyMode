@@ -877,6 +877,7 @@ namespace MercyMode.Battle
 			NPC chosen = encounter.ChosenPart;
 			NPC core = encounter.TargetableParts ? encounter.CorePart : null;
 			NPC target = encounter.TargetableParts && Encounter.CanHit(chosen) ? chosen : encounter.StrikeTarget();
+			raw = Math.Max(1, (int)Math.Round(raw * encounter.PartDamageScale(target)));
 			Vector2 spot = PartSpot(target);
 			slashPart = encounter.TargetableParts ? target.whoAmI : -1;
 			// Enemy defense takes a quarter of itself off (Terraria takes half, which cut a 5-damage shortsword to 1-2)

@@ -1527,7 +1527,7 @@ namespace MercyMode.Battle
 				var small = new Rectangle((int)(BoxCenterX - BoxSize / 2f), (int)(BoxCenterY - BoxSize / 2f), BoxSize, BoxSize);
 				if (arenaBlend <= 0f)
 					return small;
-				Rectangle big = FullScreenArena;
+				Rectangle big = arenaRect;
 				float t = arenaBlend;
 				int left = (int)MathHelper.Lerp(small.Left, big.Left, t), top = (int)MathHelper.Lerp(small.Top, big.Top, t);
 				int right = (int)MathHelper.Lerp(small.Right, big.Right, t), bottom = (int)MathHelper.Lerp(small.Bottom, big.Bottom, t);
@@ -1538,9 +1538,21 @@ namespace MercyMode.Battle
 		/// <summary>0 = the normal box, 1 = a full-screen arena (eased while it opens and closes).</summary>
 		private float arenaBlend;
 
+		/// <summary>What the box opens to: the full-screen arena, or a bigger box (kept until the next one opens).</summary>
+		private Rectangle arenaRect = FullScreenArena;
+		private bool arenaIsFull = true;
+
 		private void UpdateArena()
 		{
-			bool open = phase == Phase.EnemyTurn && attack != null && attack.FullScreen;
+			bool open = phase == Phase.EnemyTurn && attack != null && (attack.FullScreen || attack.Grow > 1f);
+			if (open)
+			{
+				arenaIsFull = attack.FullScreen;
+				int size = (int)(BoxSize * Math.Max(1f, attack.Grow));
+				// A bigger box grows from the normal one's centre, but no lower than the screen allows
+				arenaRect = arenaIsFull ? FullScreenArena
+					: new Rectangle((int)(BoxCenterX - size / 2f), (int)Math.Max(FullScreenArena.Top, BoxCenterY - size / 2f), size, size);
+			}
 			float target = open ? 1f : 0f;
 			arenaBlend = MathHelper.Lerp(arenaBlend, target, EasePerTick(ArenaEase));
 			if (Math.Abs(arenaBlend - target) < 0.002f)
@@ -1970,7 +1982,7 @@ namespace MercyMode.Battle
 				DrawEffects();
 				DrawFirstStrikeLine();
 				DrawTestRun();
-				if (arenaBlend > 0f)
+				if (arenaBlend > 0f && arenaIsFull)
 				{
 					// A full-screen attack: everything, the HUD included, goes black; only the arena's border,
 					// the SOUL and the attacks are left
@@ -2255,7 +2267,8 @@ namespace MercyMode.Battle
 			{
 				Rectangle box = Box;
 				DrDraw.Rect(box.X, box.Y, box.Width, box.Height, Color.Black * alpha);
-				DrDraw.Outline(box.X, box.Y, box.Width, box.Height, BoxGreen * (alpha * (1f - arenaBlend)), 3);
+				// (A full-screen arena's border fades as it opens; a bigger box keeps its border)
+				DrDraw.Outline(box.X, box.Y, box.Width, box.Height, BoxGreen * (alpha * (arenaIsFull ? 1f - arenaBlend : 1f)), 3);
 				return;
 			}
 			float centerX = BoxCenterX, centerY = BoxCenterY;

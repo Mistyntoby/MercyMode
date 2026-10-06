@@ -188,6 +188,7 @@ namespace MercyMode.Lab
 				("attacks-eye", AttacksEye),
 				("eater-whole", EaterWhole),
 				("attacks-evil", AttacksEvil),
+				("attacks-skeletron", AttacksSkeletron),
 				("eater-splits", EaterSplits),
 				("cozy-heal", CozyHeal),
 				("talker", TalkerQuestion),
@@ -1817,6 +1818,13 @@ namespace MercyMode.Lab
 			foreach (NPC m in B.LabTarget.Members().ToList())
 				m.active = false;
 			yield return WaitForEnd();
+		}
+
+		/// <summary>Skeletron's moves, healthy and below half HP (the bouncing skull is its phase-2 full-screen turn).</summary>
+		private IEnumerable AttacksSkeletron()
+		{
+			yield return SweepAttacks("skeletron", 8, NPCID.SkeletronHead);
+			yield return SweepAttacks("skeletron (hurt)", 8, 0.4f, NPCID.SkeletronHead);
 		}
 
 		/// <summary>The Eater of Worlds' and Brain of Cthulhu's moves, healthy and below half HP.</summary>

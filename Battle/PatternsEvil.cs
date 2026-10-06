@@ -324,7 +324,9 @@ namespace MercyMode.Battle
 					}
 				},
 			});
-			float launch = Launch, gravity = Gravity;
+			float gravity = Gravity;
+			// High enough to reach the top of the box, whatever its size (a bigger box left the SOUL out of reach)
+			float launch = Math.Max(Launch, (float)Math.Sqrt(2f * gravity * (box.Height * 0.9f + 30f)));
 			float damageMult = DamageMult;
 			int segments = Segments;
 			battle.Spawn(new Bullet
@@ -1337,6 +1339,83 @@ namespace MercyMode.Battle
 				side.DamageMult = Math.Max(side.DamageMult, 1.1f);
 				side.MinLifeShare = 0.06f;
 				battle.Spawn(side);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Skeletron's curse, full screen: its huge spinning head fades in, then ricochets round the whole room, and every
+	/// wall it hits bursts into a ring of bones.
+	/// </summary>
+	public class BouncingSkull : EnemyAttack
+	{
+		public Func<Vector2, Vector2, Bullet> MakeHead, MakeBone;
+		public float Speed = 3.2f, BoneSpeed = 2.2f;
+		public int Bones = 6, Warn = 50;
+		private Bullet head;
+
+		public BouncingSkull(Func<Vector2, Vector2, Bullet> head, Func<Vector2, Vector2, Bullet> bone)
+		{
+			MakeHead = head;
+			MakeBone = bone;
+		}
+
+		public override void Update(BattleSystem battle, int tick)
+		{
+			Rectangle box = battle.Box;
+			if (head == null)
+			{
+				// It starts in the corner away from the SOUL
+				var at = new Vector2(battle.SoulCenter.X < box.Center.X ? box.Right - 60 : box.Left + 60, box.Top + 60);
+				Vector2 dir = Vector2.Normalize(new Vector2(at.X < box.Center.X ? 1f : -1f, 0.75f));
+				head = MakeHead(at, Vector2.Zero);
+				head.Harmful = false;
+				head.Alpha = 0f;
+				head.Lifetime = Duration + 10;
+				head.OffscreenMargin = 9999f;
+				head.DestroyOnHit = false;
+				head.Trail = 4;
+				int warn = Warn, bones = Bones;
+				float speed = Speed, boneSpeed = BoneSpeed;
+				head.OnUpdate += x =>
+				{
+					if (x.Age < warn)
+					{
+						x.Alpha = x.Age / (float)warn;
+						if (x.Age == warn - 1)
+						{
+							x.Harmful = true;
+							x.Velocity = dir * speed;
+							AttackSfx.Vanilla(SoundID.Roar, 0.6f);
+						}
+						return;
+					}
+					Rectangle b = battle.Box;
+					float r = x.HitSize.X / 2f;
+					bool hit = false;
+					if (x.Position.X < b.Left + r && x.Velocity.X < 0 || x.Position.X > b.Right - r && x.Velocity.X > 0)
+					{
+						x.Velocity.X = -x.Velocity.X;
+						hit = true;
+					}
+					if (x.Position.Y < b.Top + r && x.Velocity.Y < 0 || x.Position.Y > b.Bottom - r && x.Velocity.Y > 0)
+					{
+						x.Velocity.Y = -x.Velocity.Y;
+						hit = true;
+					}
+					if (!hit || MakeBone == null)
+						return;
+					battle.ShakeScreen(3f);
+					AttackSfx.Vanilla(SoundID.NPCHit2, 0.7f);
+					float start = Main.rand.NextFloat(MathHelper.TwoPi);
+					for (int i = 0; i < bones; i++)
+					{
+						Bullet bone = MakeBone(x.Position, (start + MathHelper.TwoPi * i / bones).ToRotationVector2() * boneSpeed);
+						bone.Lifetime = 220;
+						battle.Spawn(bone);
+					}
+				};
+				battle.Spawn(head);
 			}
 		}
 	}
