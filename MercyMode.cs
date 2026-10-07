@@ -170,7 +170,22 @@ namespace MercyMode
 				Main.NewText(text, color);
 		}
 
-		public override void HandlePacket(BinaryReader reader, int whoAmI) => Battle.Net.BattleNet.Handle(reader, whoAmI);
+		/// <summary>
+		/// A malformed packet (a bad index from a modified client or server) is logged and dropped, so another player
+		/// can't crash this game by sending one.
+		/// </summary>
+		public override void HandlePacket(BinaryReader reader, int whoAmI)
+		{
+			try
+			{
+				Battle.Net.BattleNet.Handle(reader, whoAmI);
+			}
+			catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException or EndOfStreamException
+				or InvalidDataException or KeyNotFoundException or NullReferenceException)
+			{
+				Logger.Warn($"Dropped a malformed packet from {(Main.netMode == NetmodeID.Server ? "player " + whoAmI : "the server")}: {e.GetType().Name}");
+			}
+		}
 
 		/// <summary>Worm segments and similar point at a "head" through realLife. Mercy lives on the head.</summary>
 		public static NPC Root(NPC npc)
