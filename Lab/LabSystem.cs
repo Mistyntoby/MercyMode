@@ -1854,8 +1854,8 @@ namespace MercyMode.Lab
 		/// <summary>Skeletron's moves, healthy and below half HP (the bouncing skull is its phase-2 full-screen turn).</summary>
 		private IEnumerable AttacksSkeletron()
 		{
-			yield return SweepAttacks("skeletron", 9, NPCID.SkeletronHead);
-			yield return SweepAttacks("skeletron (hurt)", 9, 0.4f, NPCID.SkeletronHead);
+			yield return SweepAttacks("skeletron", 19, NPCID.SkeletronHead);
+			yield return SweepAttacks("skeletron (hurt)", 19, 0.4f, NPCID.SkeletronHead);
 		}
 
 		/// <summary>The Eater of Worlds' and Brain of Cthulhu's moves, healthy and below half HP.</summary>

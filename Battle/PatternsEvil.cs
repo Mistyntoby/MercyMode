@@ -125,10 +125,10 @@ namespace MercyMode.Battle
 
 		internal WormRig Build(BattleSystem battle, Vector2 head, Vector2 vel, int segments, float spacing, int toughness = 0)
 		{
-			// Segments as far apart as a body segment is long, so one doesn't cover the next one's eye
-			Bullet probe = Make(Body, head, BodyHit, 0);
-			if (probe.Source is Rectangle frame && frame.Height > 4)
-				spacing = Math.Max(spacing, frame.Height * Scale * 0.82f);
+			// Segments as far apart as the game keeps them: the body's hitbox width (the worm AI follows at that distance).
+			// The sprite's height spread them out so far the gaps showed.
+			if (ContentSamples.NpcsByNetId.TryGetValue(Body, out NPC sample) && sample.width > 4)
+				spacing = sample.width * Scale;
 			var rig = new WormRig(head, vel, spacing);
 			rig.Seed(segments);
 			for (int i = 0; i < segments; i++)
@@ -1039,6 +1039,14 @@ namespace MercyMode.Battle
 						continue;
 					if (b.Texture == null)
 					{
+						// The crack lights up over the dark for a moment as it opens, then fades to a thin seam
+						float flash = MathHelper.Clamp(1f - b.Age / 24f, 0f, 1f);
+						if (flash > 0f)
+						{
+							Rectangle bx = battle.Box;
+							DrDraw.Rect((int)b.Position.X - 14, bx.Top + BorderInset, 28, bx.Height - BorderInset * 2, new Color(170, 90, 255) * (0.45f * flash * k));
+							DrDraw.Glow(b.Position, 22f, new Color(200, 120, 255) * (0.7f * flash * k));
+						}
 						DrDraw.Line(b.Position + new Vector2(-12f, 0f), b.Position + new Vector2(12f, 0f), 2f, new Color(200, 120, 255) * (0.8f * k));
 						continue;
 					}

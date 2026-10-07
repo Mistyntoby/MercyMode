@@ -129,9 +129,23 @@ namespace MercyMode.Battle
 			AttackSfx.Impact();
 		}
 
+		/// <summary>The blue SOUL falls up (to the top of the box) instead of down; Down jumps.</summary>
+		public bool GravityUp;
+
+		/// <summary>Flips the blue SOUL's gravity and slams it into its new floor.</summary>
+		public void FlipGravity(bool up)
+		{
+			if (GravityUp == up)
+				return;
+			GravityUp = up;
+			if (soulMode == SoulMode.Blue)
+				SlamSoul();
+		}
+
 		private void BeginSoulMode(SoulMode mode)
 		{
 			soulMode = mode;
+			GravityUp = false;
 			soulVy = 0f;
 			shieldDir = 0;
 			shieldAngle = -MathHelper.PiOver2;
@@ -175,24 +189,28 @@ namespace MercyMode.Battle
 				case SoulMode.Blue:
 				{
 					soul.X = MathHelper.Clamp(soul.X + px, minX, maxX);
-					bool grounded = soul.Y >= maxY - 0.01f;
-					if (grounded && Held(Keys.Up))
+					// soulVy runs toward the floor; with gravity flipped the floor is the top of the box and Down jumps
+					float g = GravityUp ? -1f : 1f;
+					float floor = GravityUp ? minY : maxY, ceiling = GravityUp ? maxY : minY;
+					Keys jump = GravityUp ? Keys.Down : Keys.Up;
+					bool grounded = Math.Abs(soul.Y - floor) < 0.01f;
+					if (grounded && Held(jump))
 						soulVy = -BlueJumpSpeed;
-					// Let go of Up to stop rising early
-					if (!Held(Keys.Up) && soulVy < -BlueJumpCut)
+					// Let go of the jump to stop rising early
+					if (!Held(jump) && soulVy < -BlueJumpCut)
 						soulVy = -BlueJumpCut;
 					soulVy = Math.Min(soulVy + BlueGravity, soulVy > BlueMaxFall ? soulVy : BlueMaxFall);
-					soul.Y += soulVy;
-					if (soul.Y >= maxY)
+					soul.Y += soulVy * g;
+					if ((soul.Y - floor) * g >= 0f)
 					{
 						if (soulVy > BlueMaxFall)
 							ShakeScreen(2); // landing from a slam
-						soul.Y = maxY;
+						soul.Y = floor;
 						soulVy = 0f;
 					}
-					if (soul.Y <= minY)
+					if ((soul.Y - ceiling) * g <= 0f)
 					{
-						soul.Y = minY;
+						soul.Y = ceiling;
 						soulVy = Math.Max(0f, soulVy);
 					}
 					return true;

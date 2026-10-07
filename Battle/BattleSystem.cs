@@ -1544,11 +1544,11 @@ namespace MercyMode.Battle
 
 		private void UpdateArena()
 		{
-			bool open = phase == Phase.EnemyTurn && attack != null && (attack.FullScreen || attack.Grow > 1f);
+			bool open = phase == Phase.EnemyTurn && attack != null && (attack.FullScreen || attack.Grow > 0f && attack.Grow != 1f);
 			if (open)
 			{
 				arenaIsFull = attack.FullScreen;
-				int size = (int)(BoxSize * Math.Max(1f, attack.Grow));
+				int size = (int)(BoxSize * attack.Grow);
 				// A bigger box grows from the normal one's centre, but no lower than the screen allows
 				arenaRect = arenaIsFull ? FullScreenArena
 					: new Rectangle((int)(BoxCenterX - size / 2f), (int)Math.Max(FullScreenArena.Top, BoxCenterY - size / 2f), size, size);

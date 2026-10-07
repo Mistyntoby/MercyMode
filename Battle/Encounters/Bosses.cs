@@ -329,10 +329,10 @@ namespace MercyMode.Battle.Encounters
 				// Underground: pitch dark but for a little light round the SOUL; the worms' heads glow, and so do the
 				// cracks they burst out of
 				// (The box grows for it: more room to get out of the way in the dark)
-				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
+				() => new Combo(BattleConstants.DefaultEnemyTurnTicks * 3 / 2,
 					new Underground { LightRadius = hard ? 40f : 46f },
 					new Eruption(hard ? 64 : 78) { Segments = 9, Hunt = hard ? 0.045f : 0.035f, MaxDive = 3.6f, Warn = 60, FirstAt = 50, DamageMult = 0.6f })
-					{ Grow = 1.2f },
+					{ Grow = 1.45f },
 				// It burrows under the box toward you, then bursts out in a spray of teeth
 				() => new BurrowTrail(tooth, hard ? 64 : 80) { Speed = hard ? 1.8f : 1.5f, Shards = hard ? 9 : 7 },
 				// It coils round the box, closing in, spitting from its head
@@ -645,7 +645,29 @@ namespace MercyMode.Battle.Encounters
 					? new Combo(BattleConstants.FullScreenTurnTicks,
 						new SkullBlasters(skull, 22) { Charge = 30, Width = 26f },
 						new ColoredBones(56) { Speed = 3f, FirstAt = 60 }) { FullScreen = true }
-					: new SkullBlasters(skull, 40) { Charge = 32 });
+					: new SkullBlasters(skull, 40) { Charge = 32 },
+				// Blue SOUL: gravity keeps flipping between the floor and the ceiling, bones along whichever is down
+				() => new GravityFlip { FlipEvery = hard ? 84 : 100, Speed = hard ? 3f : 2.6f },
+				// The box squeezes in around the SOUL while rows of bones drift through with a gap to thread
+				() => new GapRows(bone, hard ? 30 : 36) { Speed = 1.5f, GapSize = hard ? 30f : 34f, Drift = 16f, Grow = 0.65f },
+				// The hands clap together on the SOUL's row: get off the line before they meet
+				() => new HandClap(hand, hard ? 48 : 60),
+				// Water bolts from the dungeon's casters, bouncing round the box
+				() => new Ricochet((p, v) => Shots.Proj(ProjectileID.WaterBolt, p, v, 1f, 0.7f, new Vector2(12, 12)), hard ? 40 : 52) { Bounces = hard ? 5 : 4, Speed = 2.6f },
+				// The Dungeon Guardian drifts after you while bones fall: keep moving, don't get cornered
+				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
+					new GuardianChase { MakeGuardian = (p, v) => Shots.Npc(NPCID.DungeonGuardian, p, v, 0.6f, 1.5f, new Vector2(30, 30), rotate: false), Speed = hard ? 1.25f : 1.1f },
+					new Rain(bone, hard ? 22 : 28)),
+				// Two long bones turn round the middle like propeller blades
+				() => new BoneWheel { Arms = hard ? 3 : 2, Turn = hard ? 0.017f : 0.014f },
+				// Cursed skulls circle the box like its guards, then dive at the SOUL one by one
+				() => new CreeperCharge { Make = (p, v) => Shots.Npc(NPCID.CursedSkull, p, v, 0.8f, 1f, new Vector2(22, 22), rotate: false), Count = hard ? 7 : 6, Every = hard ? 32 : 38 },
+				// Four walls of bones close in, one side left open: find it and get out
+				() => new BoneCage(hard ? 100 : 120),
+				// Spikes shoot out of the walls after a warning flash
+				() => new SpikeWalls(hard ? 22 : 26),
+				// A ring of skulls round the whole box, firing in turn like a clock hand
+				() => new SkullBlasters(skull, hard ? 26 : 32) { Charge = hard ? 26 : 30, Sweep = MathHelper.TwoPi / 6f });
 		}
 	}
 

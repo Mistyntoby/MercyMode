@@ -436,3 +436,4 @@ Resolution 640x480. All sizes below in those pixels.
 - RECRUITS: removed for now (0.90).
 - Several enemies attacking together: each RepeatingAttack fires 1.6x/2.2x less often and their volleys are staggered (two zombie walls with separate gaps at once left no way through).
 - FIGHT numbers stack per enemy (hits carried over to the next enemy start at its spot).
+- 0.142: Skeletron has 19 moves. New: gravity flip (blue SOUL, floor and ceiling swap after an arrow), shrinking box (Grow below 1) with bone rows, hand clap on the SOUL's row, bouncing water bolts, Dungeon Guardian chase plus bone rain, bone wheel, cursed skull ring dive, closing bone cage, wall spikes, and a clockwise skull-blaster ring (SkullBlasters.Sweep). Eater: segments spaced by the body's hitbox width (as the worm AI does), the Underground turn lasts 1.5x with a 1.45x box, and each crack flashes purple over the dark for ~24 ticks before fading to its seam.

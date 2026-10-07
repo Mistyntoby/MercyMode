@@ -117,6 +117,9 @@ namespace MercyMode.Battle
 		public Func<Vector2, Vector2, Bullet> Make;
 		public int Charge = 34, Fire = 22;
 		public float Width = 22f;
+		/// <summary>Round the box in turn instead of at random: each one this many radians on from the last (0 = random).</summary>
+		public float Sweep;
+		private float sweepStart = float.NaN;
 
 		public SkullBlasters(Func<Vector2, Vector2, Bullet> make, int every = 50)
 		{
@@ -129,7 +132,9 @@ namespace MercyMode.Battle
 		{
 			Rectangle box = battle.Box;
 			Vector2 c = box.Center.ToVector2();
-			float ang = Main.rand.NextFloat(MathHelper.TwoPi);
+			if (float.IsNaN(sweepStart))
+				sweepStart = Main.rand.NextFloat(MathHelper.TwoPi);
+			float ang = Sweep != 0f ? sweepStart + index * Sweep : Main.rand.NextFloat(MathHelper.TwoPi);
 			float reach = Math.Max(box.Width, box.Height) / 2f + 34f;
 			Vector2 spot = c + ang.ToRotationVector2() * reach;
 			Vector2 from = c + ang.ToRotationVector2() * (reach + 90f);
@@ -208,5 +213,301 @@ namespace MercyMode.Battle
 			};
 			battle.Spawn(skull);
 		}
+	}
+
+	/// <summary>
+	/// Blue SOUL: gravity flips between the floor and the ceiling (an arrow flashes first), slamming the SOUL into its
+	/// new floor, and bones sweep along whichever side is down.
+	/// </summary>
+	public class GravityFlip : EnemyAttack
+	{
+		public int FlipEvery = 100, Warn = 30, BoneEvery = 30;
+		public float Speed = 2.6f;
+
+		public GravityFlip() => Soul = SoulMode.Blue;
+
+		public override void Update(BattleSystem battle, int tick)
+		{
+			Rectangle box = battle.Box;
+			if (tick == 1)
+				battle.SlamSoul();
+			int t = tick % FlipEvery;
+			bool nextUp = !battle.GravityUp;
+			if (tick > 20 && t == FlipEvery - Warn && tick < Duration - 60)
+			{
+				// An arrow the way gravity's about to go
+				int warn = Warn;
+				battle.Spawn(new Bullet
+				{
+					Harmful = false,
+					Lifetime = warn,
+					Position = box.Center.ToVector2(),
+					OnDraw = x =>
+					{
+						float a = x.Age / 4 % 2 == 0 ? 0.8f : 0.35f;
+						float dir = nextUp ? -1f : 1f;
+						Vector2 c = battle.Box.Center.ToVector2();
+						DrDraw.Line(c - new Vector2(0, 18 * dir), c + new Vector2(0, 18 * dir), 3f, SansBones.Blue * a);
+						DrDraw.Line(c + new Vector2(0, 18 * dir), c + new Vector2(-9, 8 * dir), 3f, SansBones.Blue * a);
+						DrDraw.Line(c + new Vector2(0, 18 * dir), c + new Vector2(9, 8 * dir), 3f, SansBones.Blue * a);
+					},
+				});
+			}
+			if (tick > 20 && t == 0 && tick < Duration - 60)
+			{
+				battle.FlipGravity(nextUp);
+				AttackSfx.Impact();
+			}
+			// Low bones along the side that's down, to hop
+			if (tick > 30 && tick % BoneEvery == 0 && tick < Duration - 50)
+			{
+				bool fromLeft = tick / BoneEvery % 2 == 0;
+				float h = Main.rand.NextFloat(16f, 28f);
+				float y = battle.GravityUp ? box.Top + h / 2f : box.Bottom - h / 2f;
+				battle.Spawn(SansBones.Make(new Vector2(fromLeft ? box.Left - 10 : box.Right + 10, y), new Vector2(fromLeft ? Speed : -Speed, 0f), h, 0));
+			}
+		}
+	}
+
+	/// <summary>Both hands rush in from the sides at the SOUL's height and clap together (its lane flashes first).</summary>
+	public class HandClap : RepeatingAttack
+	{
+		public Func<Vector2, Vector2, Bullet> MakeHand;
+		public int Warn = 30;
+		public float Speed = 6f;
+
+		public HandClap(Func<Vector2, Vector2, Bullet> hand, int every = 60)
+		{
+			MakeHand = hand;
+			Every = every;
+			StopBeforeEnd = 60;
+		}
+
+		protected override void Spawn(BattleSystem battle, int index)
+		{
+			Rectangle box = battle.Box;
+			float y = MathHelper.Clamp(battle.SoulCenter.Y, box.Top + 14, box.Bottom - 14);
+			const int lane = 30;
+			battle.Spawn(Shots.Warning(new Rectangle(box.Left, (int)(y - lane / 2f), box.Width, lane), Warn));
+			float speed = Speed;
+			int warn = Warn;
+			foreach (int side in new[] { -1, 1 })
+			{
+				Bullet h = MakeHand(new Vector2(side < 0 ? box.Left - 30 : box.Right + 30, y), Vector2.Zero);
+				h.StartDelay = warn;
+				h.Lifetime = 120;
+				h.DestroyOnHit = false;
+				h.FlipX = side > 0;
+				float centre = box.Center.X;
+				h.OnUpdate += x =>
+				{
+					// In to the middle, a clap, then back out
+					bool coming = side < 0 ? x.Position.X < centre - 10 : x.Position.X > centre + 10;
+					if (x.Age < 2)
+						x.Velocity = new Vector2(-side * speed, 0f);
+					else if (!coming && x.Velocity.X * -side > 0)
+					{
+						x.Velocity = new Vector2(side * speed * 0.6f, 0f);
+						if (side < 0)
+						{
+							AttackSfx.Vanilla(SoundID.NPCHit2, 0.8f, -0.3f);
+							battle.ShakeScreen(2f);
+						}
+					}
+				};
+				battle.Spawn(h);
+			}
+		}
+	}
+
+	/// <summary>
+	/// The Dungeon Guardian drifts after the SOUL for the whole turn, slower than you but relentless, while bones fall:
+	/// it can't be outrun forever, only kept away from.
+	/// </summary>
+	public class GuardianChase : EnemyAttack
+	{
+		public Func<Vector2, Vector2, Bullet> MakeGuardian;
+		public float Speed = 1.1f;
+		private Bullet guardian;
+
+		public override void Update(BattleSystem battle, int tick)
+		{
+			Rectangle box = battle.Box;
+			if (guardian == null)
+			{
+				Vector2 c = box.Center.ToVector2();
+				Vector2 at = new(battle.SoulCenter.X < c.X ? box.Right - 20 : box.Left + 20, battle.SoulCenter.Y < c.Y ? box.Bottom - 20 : box.Top + 20);
+				guardian = MakeGuardian(at, Vector2.Zero);
+				guardian.Harmful = false;
+				guardian.Alpha = 0f;
+				guardian.Lifetime = Duration + 10;
+				guardian.DestroyOnHit = false;
+				guardian.OffscreenMargin = 9999f;
+				guardian.Trail = 4;
+				float speed = Speed;
+				guardian.OnUpdate += x =>
+				{
+					x.Alpha = Math.Min(1f, x.Age / 40f);
+					x.Harmful = x.Age > 40;
+					if (x.Age < 40)
+						return;
+					// Speeding up very slowly: it never gives up
+					x.Velocity = Vector2.Normalize(battle.SoulCenter - x.Position + new Vector2(0.01f, 0f)) * (speed + x.Age * 0.0015f);
+				};
+				battle.Spawn(guardian);
+				AttackSfx.Vanilla(SoundID.Roar, 0.6f, -0.4f);
+			}
+		}
+	}
+
+	/// <summary>Two long bones turn round the middle of the box like propeller blades; stay ahead of them.</summary>
+	public class BoneWheel : EnemyAttack
+	{
+		public int Arms = 2;
+		public float Turn = 0.014f;
+		private float angle;
+		private bool started;
+
+		public override void Update(BattleSystem battle, int tick)
+		{
+			if (started)
+			{
+				angle += Turn * Math.Min(1f, tick / 60f);
+				return;
+			}
+			started = true;
+			angle = (battle.SoulCenter - battle.Box.Center.ToVector2()).ToRotation() + MathHelper.PiOver2;
+			int arms = Arms, duration = Duration;
+			for (int i = 0; i < arms; i++)
+			{
+				float offset = MathHelper.TwoPi * i / arms;
+				battle.Spawn(new Bullet
+				{
+					Position = battle.Box.Center.ToVector2(),
+					Lifetime = duration - 10,
+					DestroyOnHit = false,
+					Harmful = false,
+					OnUpdate = x => x.Harmful = x.Age > 40,
+					HitTest = (x, soul) =>
+					{
+						Rectangle b = battle.Box;
+						Vector2 c = b.Center.ToVector2(), tip = c + (angle + offset).ToRotationVector2() * b.Width;
+						Vector2 p = soul.Center.ToVector2(), ab = tip - c;
+						float tt = MathHelper.Clamp(Vector2.Dot(p - c, ab) / ab.LengthSquared(), 0.12f, 1f);
+						return Vector2.Distance(p, c + ab * tt) < 4f + soul.Width / 2f - 2f;
+					},
+					OnDraw = x =>
+					{
+						Rectangle b = battle.Box;
+						Vector2 c = b.Center.ToVector2(), dir = (angle + offset).ToRotationVector2();
+						float a = Math.Min(1f, x.Age / 40f) * (x.Age < 40 && x.Age / 4 % 2 == 0 ? 0.5f : 1f);
+						Vector2 from = c + dir * (b.Width * 0.12f), to = c + dir * b.Width * 0.75f;
+						DrDraw.Line(from, to, 6f, SansBones.White * a);
+						DrDraw.Ball(from, 4f, SansBones.White * a);
+						DrDraw.Ball(to, 4f, SansBones.White * a);
+					},
+				});
+			}
+			// The hub
+			battle.Spawn(new Bullet { Position = battle.Box.Center.ToVector2(), Harmful = false, Lifetime = duration - 10, OnDraw = x => DrDraw.Ball(battle.Box.Center.ToVector2(), 6f, SansBones.White * Math.Min(1f, x.Age / 40f)) });
+		}
+	}
+
+	/// <summary>A square of bones closes in round the SOUL with one side missing: get out through the gap in time.</summary>
+	public class BoneCage : RepeatingAttack
+	{
+		public int Close = 80;
+		public float Start = 70f;
+
+		public BoneCage(int every = 120)
+		{
+			Every = every;
+			StopBeforeEnd = 100;
+		}
+
+		protected override void Spawn(BattleSystem battle, int index)
+		{
+			Vector2 c = battle.SoulCenter;
+			int open = Main.rand.Next(4), close = Close;
+			float start = Start;
+			AttackSfx.Appear();
+			for (int side = 0; side < 4; side++)
+			{
+				if (side == open)
+					continue;
+				int s = side;
+				battle.Spawn(new Bullet
+				{
+					Position = c,
+					Lifetime = close + 30,
+					DestroyOnHit = false,
+					Harmful = false,
+					OnUpdate = x => x.Harmful = x.Age > 12,
+					HitTest = (x, soul) => Wall(c, s, Half(x.Age, close, start)).Intersects(soul),
+					OnDraw = x =>
+					{
+						Rectangle w = Wall(c, s, Half(x.Age, close, start));
+						float a = Math.Min(1f, x.Age / 12f) * Math.Min(1f, (close + 30 - x.Age) / 10f);
+						DrDraw.Rect(w.X, w.Y, w.Width, w.Height, SansBones.White * a);
+					},
+				});
+			}
+		}
+
+		/// <summary>Half the cage's size: closing in from start to 8 over the time it takes.</summary>
+		private static float Half(int age, int close, float start) => MathHelper.Lerp(start, 8f, MathHelper.Clamp(age / (float)close, 0f, 1f));
+
+		private static Rectangle Wall(Vector2 c, int side, float half) => side switch
+		{
+			0 => new Rectangle((int)(c.X - half), (int)(c.Y - half - 3), (int)(half * 2), 6),
+			1 => new Rectangle((int)(c.X + half - 3), (int)(c.Y - half), 6, (int)(half * 2)),
+			2 => new Rectangle((int)(c.X - half), (int)(c.Y + half - 3), (int)(half * 2), 6),
+			_ => new Rectangle((int)(c.X - half - 3), (int)(c.Y - half), 6, (int)(half * 2)),
+		};
+	}
+
+	/// <summary>Bones shoot out of the left and right walls at different heights (each lane flashes first), then pull back.</summary>
+	public class SpikeWalls : RepeatingAttack
+	{
+		public int Warn = 24, Hold = 20;
+		public float Reach = 0.62f;
+
+		public SpikeWalls(int every = 26)
+		{
+			Every = every;
+			StopBeforeEnd = 60;
+		}
+
+		protected override void Spawn(BattleSystem battle, int index)
+		{
+			Rectangle box = battle.Box;
+			bool left = index % 2 == 0;
+			float y = Main.rand.NextFloat(box.Top + 10, box.Bottom - 10);
+			int warn = Warn, hold = Hold;
+			float reach = box.Width * Reach;
+			const int thick = 10;
+			battle.Spawn(Shots.Warning(new Rectangle(left ? box.Left : (int)(box.Right - reach), (int)(y - thick / 2f), (int)reach, thick), warn));
+			battle.Spawn(new Bullet
+			{
+				Position = new Vector2(left ? box.Left : box.Right, y),
+				StartDelay = warn,
+				Lifetime = hold + 16,
+				DestroyOnHit = false,
+				HitTest = (x, soul) => Spike(box, left, y, Len(x.Age, hold, reach), thick).Intersects(soul),
+				OnDraw = x =>
+				{
+					Rectangle r = Spike(box, left, y, Len(x.Age, hold, reach), thick);
+					DrDraw.Rect(r.X, r.Y + 2, r.Width, r.Height - 4, SansBones.White);
+					float tipX = left ? r.Right : r.Left;
+					DrDraw.Ball(new Vector2(tipX, y), 5f, SansBones.White);
+				},
+			});
+		}
+
+		private static float Len(int age, int hold, float reach) =>
+			age < 6 ? reach * age / 6f : age < 6 + hold ? reach : Math.Max(0f, reach * (1f - (age - 6 - hold) / 10f));
+
+		private static Rectangle Spike(Rectangle box, bool left, float y, float len, int thick) =>
+			new(left ? box.Left : (int)(box.Right - len), (int)(y - thick / 2f), (int)len, thick);
 	}
 }
