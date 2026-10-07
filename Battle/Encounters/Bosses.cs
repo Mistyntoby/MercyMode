@@ -995,20 +995,18 @@ namespace MercyMode.Battle.Encounters
 			float s = 84f / Math.Max(1, mouthFrame.Height);
 			bool flashOn = time / 6 % 2 == 0;
 
-			// The flesh: Terraria's wall strip (three frames, stacked), tiled up and down the screen from the mouth's back
-			// edge and on off the right of it, darker further back
+			// The flesh: Terraria's wall strip (three frames, stacked), tiled up and down the screen behind the mouth (one
+			// strip, as in the game: a second one beside it showed as a stray band of membrane)
 			Texture2D wall = TextureAssets.Wof.Value;
 			int fh = wall.Height / 3;
 			int wf = time / 6 % 3;
 			float ws = s, left = at.X - mouthFrame.Width * s * 0.35f;
-			for (int col = 0; col < 6; col++)
+			Color shade = Color.White * alpha;
+			for (float y = at.Y - 300f; y < at.Y + 260f; y += fh * ws)
 			{
-				float x = left + col * wall.Width * ws;
-				Color shade = Color.Lerp(Color.White, new Color(60, 40, 40), Math.Min(1f, col * 0.35f)) * alpha;
-				// The deeper columns lag behind the heave a little, so the mass ripples
-				float ripple = (float)Math.Sin(time / 45f - col * 0.6f) * 2f;
-				for (float y = at.Y - 300f; y < at.Y + 260f; y += fh * ws)
-					sb.Draw(wall, new Vector2(x + ripple, y), new Rectangle(0, wf * fh, wall.Width, fh), shade, 0f, Vector2.Zero, ws, SpriteEffects.None, 0f);
+				// It ripples as it heaves, a little behind the mouth
+				float ripple = (float)Math.Sin(time / 45f - y * 0.01f) * 2f;
+				sb.Draw(wall, new Vector2(left + ripple, y), new Rectangle(0, wf * fh, wall.Width, fh), shade, 0f, Vector2.Zero, ws, SpriteEffects.None, 0f);
 			}
 
 			// The eyes (or the torn holes where they were), turning to watch the SOUL in the box or you outside it

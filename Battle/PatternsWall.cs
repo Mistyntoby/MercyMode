@@ -112,7 +112,8 @@ namespace MercyMode.Battle
 	}
 
 	/// <summary>
-	/// Each living eye in turn draws a thin aiming line beside the SOUL, then fires a wide beam that sweeps across it.
+	/// Each living eye in turn draws a thin aiming line beside the SOUL, then fires a wide beam that sweeps across it:
+	/// a blue one passes through you if you keep still, an orange one if you keep moving.
 	/// One eye at a time, both sweeping the same way: two beams crossing at once made a pair of scissors with nowhere
 	/// to stand.
 	/// </summary>
@@ -141,6 +142,9 @@ namespace MercyMode.Battle
 			{
 				Vector2 from = eyes[e];
 				int delay = e * (aim + fire + 14);
+				// Blue (keep still and it passes through you) or orange (keep moving), taking turns
+				int kind = (index + e) % 2 == 0 ? 1 : 2;
+				Color colour = kind == 1 ? SansBones.Blue : SansBones.Orange;
 				// Starts off to one side of the SOUL and sweeps through it (aimed where the SOUL is when it starts aiming)
 				float centre = (battle.SoulCenter - from).ToRotation();
 				float start = centre - Sweep * side, end = centre + Sweep * side;
@@ -153,6 +157,7 @@ namespace MercyMode.Battle
 					Lifetime = aim + fire,
 					OffscreenMargin = 2000f,
 					DamageMult = 1f,
+					Sans = kind,
 					OnUpdate = x =>
 					{
 						x.Harmful = x.Age >= aim;
@@ -169,14 +174,14 @@ namespace MercyMode.Battle
 						if (x.Age < aim)
 						{
 							float a = x.Age / 3 % 2 == 0 ? 0.6f : 0.25f;
-							DrDraw.Line(from, to, 1.5f, Flesh.Laser * a);
-							DrDraw.Glow(from, 6f + 10f * x.Age / aim, Flesh.Laser * 0.6f);
+							DrDraw.Line(from, to, 1.5f, colour * a);
+							DrDraw.Glow(from, 6f + 10f * x.Age / aim, colour * 0.6f);
 						}
 						else
 						{
 							float k = 1f - (x.Age - aim) / (float)fire * 0.4f;
-							DrDraw.Line(from, to, width + 8f, Flesh.Laser * (0.35f * k));
-							DrDraw.Line(from, to, width, Color.Lerp(Flesh.Laser, Color.White, 0.5f) * k);
+							DrDraw.Line(from, to, width + 8f, colour * (0.35f * k));
+							DrDraw.Line(from, to, width, Color.Lerp(colour, Color.White, 0.35f) * k);
 						}
 					},
 				};

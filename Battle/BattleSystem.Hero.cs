@@ -245,7 +245,7 @@ namespace MercyMode.Battle
 			return (Main.GameViewMatrix?.Zoom.X ?? 1f) / drScale;
 		}
 
-		private bool Gliding => phase == Phase.Intro && phaseTicks <= GlideTicks || phase == Phase.Outro && phaseTicks <= GlideTicks;
+		private bool Gliding => phase == Phase.Intro && introAge <= GlideTicks || phase == Phase.Outro && phaseTicks <= GlideTicks;
 
 		/// <summary>0 at the world position, 1 at the battle position. Eases out going in, eases in coming back.</summary>
 		private float FlyProgress()
@@ -253,7 +253,9 @@ namespace MercyMode.Battle
 			float t;
 			if (phase == Phase.Intro)
 			{
-				t = MathHelper.Clamp(phaseTicks / (float)GlideTicks, 0f, 1f);
+				// From the battle's first tick, even while an enemy is still making its entrance (the hero stayed tiny
+				// in its world spot until then)
+				t = MathHelper.Clamp(introAge / (float)GlideTicks, 0f, 1f);
 				return 1f - (float)Math.Pow(1f - t, 3); // ease-out cubic
 			}
 			if (phase == Phase.Outro)
