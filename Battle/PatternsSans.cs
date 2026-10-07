@@ -659,7 +659,7 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>How far down the stretched box sits, so Skeletron's face shows over it while he watches.</summary>
-		public int Lower = 60;
+		public int Lower = 75;
 
 		/// <summary>The normal box, moved down by <see cref="Lower"/>: the stretched box keeps its top and bottom.</summary>
 		private Rectangle Low => new((int)(BattleConstants.BoxCenterX - BattleConstants.BoxSize / 2f), (int)(BattleConstants.BoxCenterY - BattleConstants.BoxSize / 2f) + Lower, BattleConstants.BoxSize, BattleConstants.BoxSize);
@@ -765,7 +765,7 @@ namespace MercyMode.Battle
 			{
 				// A new spot ahead of the SOUL, a little different each time
 				float x = 380f + k % 3 * 70f;
-				battle.EnemyShift = new Vector2(x - home.X, (k % 2 == 0 ? -20f : -34f));
+				battle.EnemyShift = new Vector2(x - home.X, (k % 2 == 0 ? -45f : -52f));
 				battle.AddEffect(new Shockwave(battle.EnemyScreenNow, new Color(220, 220, 255), 70f));
 				AttackSfx.Vanilla(Terraria.ID.SoundID.Item8, 0.6f, -0.3f);
 			}
