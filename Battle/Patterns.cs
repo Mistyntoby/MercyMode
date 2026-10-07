@@ -662,6 +662,7 @@ namespace MercyMode.Battle
 			Duration = duration;
 			foreach (var p in parts)
 				p.Duration = duration;
+			Scripted = parts.Any(p => p.Scripted);
 			// One SOUL mode for all: shared if they agree; a shield that can't move doesn't mix with other attacks
 			Soul = parts.All(p => p.Soul == parts[0].Soul) ? parts[0].Soul
 				: parts.Any(p => p.Soul == SoulMode.Green) ? SoulMode.Red

@@ -278,6 +278,7 @@ namespace MercyMode.Battle
 				this.first = first;
 				this.second = second;
 				Duration = first.Duration + second.Duration;
+				Scripted = first.Scripted || second.Scripted;
 			}
 
 			public override void Update(BattleSystem battle, int tick)
@@ -306,6 +307,7 @@ namespace MercyMode.Battle
 				FullScreen = inner.FullScreen;
 				Grow = inner.Grow;
 				Soul = inner.Soul;
+				Scripted = inner.Scripted;
 			}
 
 			public override void Update(BattleSystem battle, int tick)

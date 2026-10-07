@@ -1817,7 +1817,7 @@ namespace MercyMode.Battle
 				b.Grazed = true;
 				// One TP per bullet grazed (Deltarune's graze points filled the bar far too fast here)
 				tension = GrazeTP / TensionToTP;
-				if (turnTimer >= GrazeTurnCutMinTicks && duelWith < 0)
+				if (turnTimer >= GrazeTurnCutMinTicks && duelWith < 0 && !(attack?.Scripted ?? false))
 					turnTimer -= b.TimePoints * TicksPerFrame;
 				grazeTimer = GrazeFlashTicks;
 				DeltaruneAssets.PlayIfLoaded("graze");
@@ -1826,7 +1826,7 @@ namespace MercyMode.Battle
 			{
 				// Staying close keeps the graze flash (and cuts the turn short) but gives no more TP
 				tension = 0f;
-				if (turnTimer >= GrazeTurnCutMinTicks && duelWith < 0)
+				if (turnTimer >= GrazeTurnCutMinTicks && duelWith < 0 && !(attack?.Scripted ?? false))
 					turnTimer -= b.TimePoints / GrazeHoldDivisor;
 				if (grazeTimer >= 0 && grazeTimer < 4 * TicksPerFrame)
 					grazeTimer = 3 * TicksPerFrame;

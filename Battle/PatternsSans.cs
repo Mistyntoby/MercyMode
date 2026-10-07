@@ -654,15 +654,19 @@ namespace MercyMode.Battle
 		public SideFall()
 		{
 			Soul = SoulMode.Blue;
+			Scripted = true;
 			Duration = FloorFor + 20 + FallFor + 150;
 		}
 
-		/// <summary>The normal box (the stretched one keeps its top and bottom).</summary>
-		private static Rectangle Normal => new((int)(BattleConstants.BoxCenterX - BattleConstants.BoxSize / 2f), (int)(BattleConstants.BoxCenterY - BattleConstants.BoxSize / 2f), BattleConstants.BoxSize, BattleConstants.BoxSize);
+		/// <summary>How far down the stretched box sits, so Skeletron's face shows over it while he watches.</summary>
+		public int Lower = 60;
+
+		/// <summary>The normal box, moved down by <see cref="Lower"/>: the stretched box keeps its top and bottom.</summary>
+		private Rectangle Low => new((int)(BattleConstants.BoxCenterX - BattleConstants.BoxSize / 2f), (int)(BattleConstants.BoxCenterY - BattleConstants.BoxSize / 2f) + Lower, BattleConstants.BoxSize, BattleConstants.BoxSize);
 
 		public override void Update(BattleSystem battle, int tick)
 		{
-			Rectangle box = Normal;
+			Rectangle box = Low;
 			if (tick < FloorFor)
 			{
 				floor.Duration = FloorFor + 30;

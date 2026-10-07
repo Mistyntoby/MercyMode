@@ -41,6 +41,8 @@ namespace MercyMode.Battle
 		public float Grow;
 		/// <summary>How the SOUL moves during this attack (red: freely).</summary>
 		public SoulMode Soul;
+		/// <summary>Plays out to the end: grazing doesn't cut it short (it has a beginning, middle and end).</summary>
+		public bool Scripted;
 		public abstract void Update(BattleSystem battle, int tick);
 	}
 
