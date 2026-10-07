@@ -1,17 +1,21 @@
 Spare bosses instead of killing them. A Deltarune-inspired fan mod.
 
+Heads up for 1.0.0: so far I've only properly playtested the pre-Hardmode bosses (Eye of Cthulhu through the Wall of Flesh). The Hardmode bosses have battles too, but they haven't had the same polish yet, and I haven't tried every weapon in FIGHT either. If something breaks or feels unfair, please report it.
+
 Turn-based battles: touch or hit a boss or an enemy and it turns into a Deltarune-style battle.
 Custom battles for the Eye of Cthulhu, King Slime, Eater of Worlds, Brain of Cthulhu, Queen Bee, Skeletron, Deerclops, Wall of Flesh, Queen Slime, the Twins, the Destroyer, Skeletron Prime, Plantera, Golem, Duke Fishron, the Empress of Light, the Lunatic Cultist and the Moon Lord; every other boss (modded too) gets a generic one. Bosses with parts (Skeletron's hands, the Twins, Prime's arms, Golem, the Moon Lord) let you pick which part to hit.
-Regular enemies fight in squads of up to three, and event armies (goblins, pirates, the moons, Martians...) come as squads of their army. Enemy battles can be turned off in the config.
+Regular enemies fight in squads of up to three, and event armies (goblins, pirates, the moons, Martians...) come as squads of their army. Enemy battles can be turned off in the config. A hit that would kill an ordinary enemy outright just kills it, no battle screen.
+Some enemies talk instead of using speech bubbles (Tim, the Clown, the Pirate Captain...) and ask you questions; your answer changes how the fight goes. You can even fight falling boulders.
 
 - FIGHT: pick a weapon from your inventory, then press Z as the bolt crosses the line. Magic weapons use mana, guns and bows use ammo.
 - ACT: enemy-specific actions that raise MERCY. Heal Prayer costs 32% TP.
-- ITEM: drink healing potions from your inventory.
+- ITEM: drink healing potions from your inventory. Standing near a campfire or Heart Lantern heals you a little every turn.
 - SPARE: works once MERCY reaches 100%. Bosses still drop their loot.
 - DEFEND: take 2/3 damage this turn and gain TP.
 On the enemy turn, dodge with the arrow keys (hold X to move slower). Bullets hit your real health; grazing them gives TP. Some enemies change your SOUL: blue (gravity), green (shield), purple (strings) and yellow (shoot with Z).
 
-Multiplayer (experimental, expect bugs and report them): players close together enter a battle as a party of up to three. Everyone picks an action, then the party acts one at a time, and everyone dodges in the same bullet box. Others can press Join Battle (J) near a battle to jump in at its next attack. Pick your party colour in the config.
+Multiplayer (experimental, expect bugs and report them): players close together enter a battle as a party of up to three. Everyone picks an action, then the party acts one at a time, and everyone dodges in the same bullet box. Others can press Join Battle (J) near a battle to jump in at its next attack. Questions from talking enemies are put to a vote (a tie is decided at random). Pick your party color in the config. Players in a battle can't be hurt from outside it.
+PvP duels: with PvP on, hitting another player offers a duel (both press J). You take turns: on yours you FIGHT, ACT, SPARE and so on; on theirs you build the attack they have to dodge out of pieces based on your weapons.
 
 Arrow keys move, Z confirms, X goes back, Esc opens the pause menu. Every battle key can be rebound in Settings > Controls. Battles can be turned off in the config.
 
