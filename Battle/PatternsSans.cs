@@ -641,8 +641,13 @@ namespace MercyMode.Battle
 	public class SideFall : EnemyAttack
 	{
 		public Func<Vector2, Vector2, Bullet> MakeSkull;
-		public int FloorFor = 120, FallFor = 620, WallEvery = 56, SkullEvery = 80, Watch = 150;
-		public float TopSpeed = 6f, Gap = 48f;
+		public int FloorFor = 120, WallEvery = 56, SkullEvery = 80, Watch = 150;
+		/// <summary>The fall's sections (ticks into the fall): walls with gaps and skulls, then the tunnel.</summary>
+		public int WallsUntil = 330, TunnelFrom = 360, TunnelUntil = 660;
+		public float TopSpeed = 6f, Gap = 48f, TunnelGap = 52f;
+		/// <summary>The whole fall: the wall at the end shows up once the tunnel has gone by.</summary>
+		public int FallFor => TunnelUntil + 180;
+		private float tunnelY = -1f, tunnelTarget;
 		/// <summary>Where things in the fall start: past the right edge of even a very wide screen.</summary>
 		private const float FarRight = 1000f;
 		/// <summary>The stretched box's left and right: off the screen either side however wide it is.</summary>
@@ -721,8 +726,7 @@ namespace MercyMode.Battle
 				// Everything that stays behind slides off to the left
 				battle.HeroShift = new Vector2(-Math.Min(scroll, 1500f), 0f);
 				UpdateWatcher(battle, f);
-				if (f < FallFor - 150)
-					SpawnObstacles(battle, box, f);
+				SpawnObstacles(battle, box, f);
 				return;
 			}
 
@@ -777,8 +781,11 @@ namespace MercyMode.Battle
 
 		private void SpawnObstacles(BattleSystem battle, Rectangle box, int f)
 		{
+			// The tunnel: bones packed side by side with a hole through them that winds up and down. Follow it
+			if (f >= TunnelFrom && f < TunnelUntil && f % 2 == 0)
+				SpawnTunnel(battle, box, f);
 			// Walls of bones with a gap that wanders from one wall to the next
-			if (f >= 50 && f % WallEvery == 0)
+			if (f >= 50 && f < WallsUntil && f % WallEvery == 0)
 			{
 				float half = Gap / 2f;
 				gapY = gapY < 0f ? box.Center.Y : gapY + Main.rand.NextFloat(-45f, 45f);
@@ -792,7 +799,7 @@ namespace MercyMode.Battle
 				}
 			}
 			// A skull flies across a lane, faster than the fall (the lane flashes first)
-			if (f >= 90 && f % SkullEvery == 0 && MakeSkull != null)
+			if (f >= 90 && f < WallsUntil && f % SkullEvery == 0 && MakeSkull != null)
 			{
 				float y = Main.rand.NextFloat(box.Top + 16, box.Bottom - 16);
 				const int warn = 30;
@@ -805,6 +812,28 @@ namespace MercyMode.Battle
 				battle.Spawn(sk);
 				AttackSfx.Appear();
 			}
+		}
+
+		/// <summary>
+		/// One column of the tunnel (they come 12 px apart at full speed). The hole drifts toward a new height every so
+		/// often, never faster than the SOUL can follow (it moves 2 px a tick up or down; the fall is 6 across).
+		/// </summary>
+		private void SpawnTunnel(BattleSystem battle, Rectangle box, int f)
+		{
+			float half = TunnelGap / 2f;
+			float lo = box.Top + half + 6f, hi = box.Bottom - half - 6f;
+			if (tunnelY < 0f)
+				tunnelY = tunnelTarget = MathHelper.Clamp(gapY < 0f ? box.Center.Y : gapY, lo, hi);
+			// A new place to go: sometimes a long climb or dive, sometimes a short wiggle
+			if ((f - TunnelFrom) % 40 == 0)
+				tunnelTarget = Main.rand.NextBool(3) ? (tunnelY < box.Center.Y ? hi : lo) : Main.rand.NextFloat(lo, hi);
+			float step = MathHelper.Clamp(tunnelTarget - tunnelY, -2.6f, 2.6f);
+			tunnelY = MathHelper.Clamp(tunnelY + step, lo, hi);
+			float top = tunnelY - half, bottom = tunnelY + half;
+			if (top - box.Top > 4f)
+				Wall(battle, SansBones.Make(new Vector2(FarRight, (box.Top + top) / 2f), Vector2.Zero, top - box.Top, 0));
+			if (box.Bottom - bottom > 4f)
+				Wall(battle, SansBones.Make(new Vector2(FarRight, (bottom + box.Bottom) / 2f), Vector2.Zero, box.Bottom - bottom, 0));
 		}
 
 		/// <summary>Something standing still in the world: on screen it moves left as fast as the fall.</summary>

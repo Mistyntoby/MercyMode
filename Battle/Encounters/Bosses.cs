@@ -696,7 +696,7 @@ namespace MercyMode.Battle.Encounters
 		private bool fell;
 
 		private static EnemyAttack Fall(bool hard, Func<Vector2, Vector2, Bullet> skull) =>
-			new SideFall { MakeSkull = skull, WallEvery = hard ? 48 : 56, SkullEvery = hard ? 66 : 80, Gap = hard ? 44f : 48f };
+			new SideFall { MakeSkull = skull, WallEvery = hard ? 48 : 56, SkullEvery = hard ? 66 : 80, Gap = hard ? 44f : 48f, TunnelGap = hard ? 46f : 52f };
 	}
 
 	// ====================================================================== Deerclops
