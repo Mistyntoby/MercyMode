@@ -558,6 +558,8 @@ namespace MercyMode.Battle.Encounters
 			}
 		}
 		public override string EncounterText => "* SKELETRON rises to guard the dungeon!";
+		// Its turns are busy (two patterns at once): each hit stings a bit less to make up for it
+		public override float DamageFactor => 0.8f;
 
 		/// <summary>
 		/// Its hands are sturdy (they took a hit or two), and its head shrugs off most of a hit while its hands guard it:
