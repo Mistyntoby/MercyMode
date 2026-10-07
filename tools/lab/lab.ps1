@@ -16,7 +16,9 @@ param(
 	[string]$HeadlessDir = "$env:USERPROFILE\tml-lab-headless",
 	[int]$Port = 7778,
 	[int]$Speed = 8,
-	[int]$Instance = 1
+	[int]$Instance = 1,
+	# The lab character "client" loads straight into (set MERCYLAB_CHARACTER once so you don't have to pass it)
+	[string]$Character = $(if ($env:MERCYLAB_CHARACTER) { $env:MERCYLAB_CHARACTER } else { "Lab" })
 )
 $ErrorActionPreference = "Stop"
 $source = Resolve-Path "$PSScriptRoot\..\.."
@@ -38,7 +40,7 @@ Set-Location $TmlDir
 switch ($Mode) {
 	"client" {
 		Install-Mod $LabDir
-		dotnet tModLoader.dll -tmlsavedirectory $LabDir -skipselect "YourCharacter:MercyLab"
+		dotnet tModLoader.dll -tmlsavedirectory $LabDir -skipselect "${Character}:MercyLab"
 	}
 	"join" {
 		$dir = if ($Instance -le 1) { $LabDir } else { "$LabDir-$Instance" }
