@@ -182,6 +182,8 @@ namespace MercyMode.Battle
 		public virtual bool DrawWithTerraria => false;
 		/// <summary>Draws itself (<see cref="DrawSelf"/>) instead of one sprite or Terraria's drawing.</summary>
 		public virtual bool DrawsSelf => false;
+		/// <summary>Ticks the battle waits at the start while this enemy makes its entrance, before the hero swings.</summary>
+		public virtual int IntroHold => 0;
 		/// <summary>
 		/// Draws the enemy centred on <paramref name="at"/> (battle pixels), noting where each targetable part is in
 		/// <paramref name="partSpots"/>; <paramref name="flash"/> is the part being picked. Returns the sprite the spare and

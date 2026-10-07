@@ -325,6 +325,8 @@ namespace MercyMode.Battle
 			testClock.Restart();
 			firstStrikeAskedAt = 0;
 			SetText(OpeningText());
+			introHold = encounter.IntroHold;
+			introAge = 0;
 			SetPhase(Phase.Intro);
 			Mod.Logger.Info($"Battle started with {boss.FullName} as {encounter.GetType().Name} ({encounter.Life}/{encounter.LifeMax} HP) by {reason}");
 		}
@@ -894,8 +896,23 @@ namespace MercyMode.Battle
 
 		// ---- phases ----
 
+		private int introHold, introAge;
+
+		/// <summary>How far the enemy has made its entrance (0 to 1): its own slide-in at the start, gliding out at the end.</summary>
+		public float EnemyEntrance => phase == Phase.Intro ? MathHelper.Clamp(introAge / (float)Math.Max(1, encounter?.IntroHold ?? 1), 0f, 1f)
+			: phase == Phase.Outro ? FlyProgress() : 1f;
+
 		private void UpdateIntro()
 		{
+			introAge++;
+			// Some enemies take a moment to arrive before anything else happens (the Wall of Flesh slides in): the hero's
+			// swing, its sound and the panel all wait for it
+			if (introHold > 0)
+			{
+				introHold--;
+				phaseTicks = 0;
+				return;
+			}
 			// 1. glide in (FlyProgress) while the background fades in
 			// 2. the hero swings their weapon, with the weapon-draw sound
 			// (or, having hit the enemy to start the battle, strikes it: see FirstStrikeUpdate)
@@ -2106,8 +2123,9 @@ namespace MercyMode.Battle
 			}
 			if (encounter != null && encounter.DrawsSelf)
 			{
-				// The encounter draws itself (the whole Wall of Flesh), saying where each part ended up
-				Vector2 at = EnemyPosNow;
+				// The encounter draws itself (the whole Wall of Flesh), saying where each part ended up; it makes its own
+				// entrance (EnemyEntrance) instead of gliding from the world
+				Vector2 at = encounter.ScreenCenter + cutEnemy;
 				if (enemyShake > 0)
 					at.X += (enemyShake % 4 < 2 ? 1 : -1) * enemyShake / 2f;
 				NPC flash = phase == Phase.EnemySelect && pendingChoice == Choice.Fight && focus == targetEnemy && encounter.TargetableParts ? encounter.ChosenPart : null;

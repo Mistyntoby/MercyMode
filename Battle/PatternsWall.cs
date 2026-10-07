@@ -112,8 +112,9 @@ namespace MercyMode.Battle
 	}
 
 	/// <summary>
-	/// Each living eye draws a thin aiming line near the SOUL, then fires a wide beam that sweeps across. Two eyes
-	/// sweep from opposite sides, crossing.
+	/// Each living eye in turn draws a thin aiming line beside the SOUL, then fires a wide beam that sweeps across it.
+	/// One eye at a time, both sweeping the same way: two beams crossing at once made a pair of scissors with nowhere
+	/// to stand.
 	/// </summary>
 	public class EyeBeams : RepeatingAttack
 	{
@@ -134,15 +135,17 @@ namespace MercyMode.Battle
 			List<Vector2> eyes = Eyes();
 			int aim = Aim, fire = Fire;
 			float width = Width;
+			// The way they sweep this time (both the same way)
+			float side = index % 2 == 0 ? 1f : -1f;
 			for (int e = 0; e < eyes.Count; e++)
 			{
 				Vector2 from = eyes[e];
-				// Starts off to one side of the SOUL and sweeps through it
-				float side = e % 2 == 0 ? 1f : -1f;
+				int delay = e * (aim + fire + 14);
+				// Starts off to one side of the SOUL and sweeps through it (aimed where the SOUL is when it starts aiming)
 				float centre = (battle.SoulCenter - from).ToRotation();
 				float start = centre - Sweep * side, end = centre + Sweep * side;
 				float Angle(int age) => age < aim ? start : MathHelper.Lerp(start, end, Math.Min(1f, (age - aim) / (float)fire));
-				battle.Spawn(new Bullet
+				Bullet beam = new Bullet
 				{
 					Position = from,
 					Harmful = false,
@@ -176,7 +179,29 @@ namespace MercyMode.Battle
 							DrDraw.Line(from, to, width, Color.Lerp(Flesh.Laser, Color.White, 0.5f) * k);
 						}
 					},
+				};
+				beam.StartDelay = delay;
+				if (delay == 0)
+				{
+					battle.Spawn(beam);
+					continue;
+				}
+				// The second eye aims where the SOUL is when its turn comes, not where it was
+				int wait = delay;
+				battle.Spawn(new Bullet
+				{
+					Harmful = false,
+					Lifetime = wait,
+					OnUpdate = x =>
+					{
+						if (x.Age != wait - 1)
+							return;
+						float c = (battle.SoulCenter - from).ToRotation();
+						start = c - Sweep * side;
+						end = c + Sweep * side;
+					},
 				});
+				battle.Spawn(beam);
 			}
 		}
 	}
@@ -221,6 +246,9 @@ namespace MercyMode.Battle
 				float k = x.Age < outT ? 1f - (float)Math.Pow(1f - x.Age / (float)outT, 3) : x.Age < outT + hold ? 1f : 1f - (x.Age - outT - hold) / (float)back;
 				Vector2 to = new(anchor.X - 40 - reach * k, y + (float)Math.Sin(x.Age * 0.5f) * 2f);
 				x.Velocity = to - x.Position;
+				// Always facing out of the wall, at you, even while it's yanked back
+				x.FlipX = false;
+				x.Rotation = 0f;
 				if (x.Age == outT)
 					AttackSfx.Vanilla(SoundID.NPCHit1, 0.5f, -0.3f);
 			};

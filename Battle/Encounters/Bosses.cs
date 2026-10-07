@@ -20,6 +20,24 @@ namespace MercyMode.Battle.Encounters
 			return b;
 		}
 
+		/// <summary>
+		/// Faces the way it's going at any angle, like Terraria turns the Hungry: a left-facing sprite flipped while it
+		/// heads right, and tilted to its heading (only flipping, it looked backwards coming in from above or below).
+		/// </summary>
+		public static Bullet FaceAlong(this Bullet b)
+		{
+			b.OnUpdate += x =>
+			{
+				x.RotateWithVelocity = false;
+				if (x.Velocity.LengthSquared() < 0.01f)
+					return;
+				float a = x.Velocity.ToRotation();
+				x.FlipX = x.Velocity.X > 0f;
+				x.Rotation = x.FlipX ? a : a + MathHelper.Pi;
+			};
+			return b;
+		}
+
 		public static Bullet Spin(this Bullet b, float speed)
 		{
 			b.RotateWithVelocity = false;
@@ -951,20 +969,30 @@ namespace MercyMode.Battle.Encounters
 		// ---- drawing: the whole wall, not just its mouth ----
 
 		public override bool DrawsSelf => true;
+		// It slides in from the right over a second before the battle gets going
+		public override int IntroHold => 60;
 
 		/// <summary>Where the eyes sit on the wall, above and below the mouth.</summary>
-		private const float EyeOffset = 108f;
+		private const float EyeOffset = 104f;
 
 		public override EnemySnapshot DrawSelf(Vector2 at, int time, NPC flash, Dictionary<NPC, Vector2> partSpots, BattleSystem battle)
 		{
 			var sb = DrDraw.Sb;
 			NPC mouth = Mouth;
+			// Its entrance: sliding in from off the right edge, fading up as it comes
+			float enter = battle.EnemyEntrance;
+			float eased = 1f - (float)Math.Pow(1f - enter, 3);
+			at.X += (1f - eased) * 320f;
+			float alpha = MathHelper.Clamp(enter * 1.4f, 0f, 1f);
+			// Idle: the whole wall heaves slowly, and the mouth and eyes each bob on their own beat
+			float heave = (float)Math.Sin(time / 45f);
+			at.X += heave * 3f;
 			Main.instance.LoadNPC(NPCID.WallofFlesh);
 			Main.instance.LoadNPC(NPCID.WallofFleshEye);
 			Texture2D mouthTex = TextureAssets.Npc[NPCID.WallofFlesh].Value, eyeTex = TextureAssets.Npc[NPCID.WallofFleshEye].Value;
 			int mouthFrames = Math.Max(1, Main.npcFrameCount[NPCID.WallofFlesh]), eyeFrames = Math.Max(1, Main.npcFrameCount[NPCID.WallofFleshEye]);
 			Rectangle mouthFrame = mouthTex.Frame(1, mouthFrames, 0, time / 8 % mouthFrames);
-			float s = 112f / Math.Max(1, mouthFrame.Height);
+			float s = 84f / Math.Max(1, mouthFrame.Height);
 			bool flashOn = time / 6 % 2 == 0;
 
 			// The flesh: Terraria's wall strip (three frames, stacked), tiled up and down the screen from the mouth's back
@@ -976,9 +1004,11 @@ namespace MercyMode.Battle.Encounters
 			for (int col = 0; col < 6; col++)
 			{
 				float x = left + col * wall.Width * ws;
-				Color shade = Color.Lerp(Color.White, new Color(60, 40, 40), Math.Min(1f, col * 0.35f));
+				Color shade = Color.Lerp(Color.White, new Color(60, 40, 40), Math.Min(1f, col * 0.35f)) * alpha;
+				// The deeper columns lag behind the heave a little, so the mass ripples
+				float ripple = (float)Math.Sin(time / 45f - col * 0.6f) * 2f;
 				for (float y = at.Y - 300f; y < at.Y + 260f; y += fh * ws)
-					sb.Draw(wall, new Vector2(x, y), new Rectangle(0, wf * fh, wall.Width, fh), shade, 0f, Vector2.Zero, ws, SpriteEffects.None, 0f);
+					sb.Draw(wall, new Vector2(x + ripple, y), new Rectangle(0, wf * fh, wall.Width, fh), shade, 0f, Vector2.Zero, ws, SpriteEffects.None, 0f);
 			}
 
 			// The eyes (or the torn holes where they were), turning to watch the SOUL in the box or you outside it
@@ -986,25 +1016,28 @@ namespace MercyMode.Battle.Encounters
 			List<NPC> eyes = Eyes;
 			foreach (int side in new[] { -1, 1 })
 			{
-				Vector2 pos = at + new Vector2(6f, side * EyeOffset);
+				Vector2 pos = at + new Vector2(6f, side * EyeOffset + (float)Math.Sin(time / 28f + side * 1.7f) * 4f);
 				NPC eye = eyes.FirstOrDefault(e => Math.Sign(e.Center.Y - mouth.Center.Y) == side) ?? (eyes.Count == 2 ? eyes[side < 0 ? 0 : 1] : null);
 				if (eye == null)
 				{
-					DrDraw.Ball(pos, 18f, new Color(60, 5, 15));
-					DrDraw.Ball(pos + new Vector2(-3, 2), 11f, new Color(25, 0, 5));
+					DrDraw.Ball(pos, 14f, new Color(60, 5, 15) * alpha);
+					DrDraw.Ball(pos + new Vector2(-3, 2), 9f, new Color(25, 0, 5) * alpha);
 					continue;
 				}
 				partSpots[eye] = pos;
 				Rectangle ef = eyeTex.Frame(1, eyeFrames, 0, time / 8 % eyeFrames);
 				float rot = (look - pos).ToRotation() - MathHelper.Pi;
-				Color c = eye == flash && flashOn ? Color.Lerp(Color.White, Color.Yellow, 0.5f) : Color.White;
-				sb.Draw(eyeTex, pos, ef, c, rot, ef.Size() / 2f, s, SpriteEffects.None, 0f);
+				Color c = (eye == flash && flashOn ? Color.Lerp(Color.White, Color.Yellow, 0.5f) : Color.White) * alpha;
+				float blink = 1f + (float)Math.Sin(time / 20f + side) * 0.03f;
+				sb.Draw(eyeTex, pos, ef, c, rot, ef.Size() / 2f, s * blink, SpriteEffects.None, 0f);
 			}
 
-			// The mouth, in the middle
-			partSpots[mouth] = at;
-			Color mc = mouth == flash && flashOn ? Color.Lerp(Color.White, Color.Yellow, 0.5f) : Color.White;
-			sb.Draw(mouthTex, at, mouthFrame, mc, 0f, mouthFrame.Size() / 2f, s, SpriteEffects.None, 0f);
+			// The mouth, in the middle, breathing
+			Vector2 mouthAt = at + new Vector2(0f, (float)Math.Sin(time / 32f) * 3f);
+			partSpots[mouth] = mouthAt;
+			Color mc = (mouth == flash && flashOn ? Color.Lerp(Color.White, Color.Yellow, 0.5f) : Color.White) * alpha;
+			float breathe = 1f + (float)Math.Sin(time / 32f) * 0.04f;
+			sb.Draw(mouthTex, mouthAt, mouthFrame, mc, 0f, mouthFrame.Size() / 2f, s * breathe, SpriteEffects.None, 0f);
 			return new EnemySnapshot { Texture = mouthTex, Frame = mouthFrame, Position = at, Scale = s, Color = Color.White, Valid = true };
 		}
 
@@ -1037,7 +1070,7 @@ namespace MercyMode.Battle.Encounters
 			bool hard = LifeRatio < 0.5f;
 			int turn = BattleConstants.DefaultEnemyTurnTicks;
 			Bullet laser(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.EyeLaser, p, v, 1f, 0.7f, new Vector2(14, 6), rotationOffset: MathHelper.PiOver2);
-			Bullet hungry(Vector2 p, Vector2 v) => Shots.Npc(NPCID.TheHungry, p, v, 0.55f, 0.8f, new Vector2(12, 12), rotate: false);
+			Bullet hungry(Vector2 p, Vector2 v) => Shots.Npc(NPCID.TheHungry, p, v, 0.55f, 0.8f, new Vector2(12, 12), rotate: false).FaceAlong();
 			Bullet leechHead(Vector2 p, Vector2 v) => Shots.Npc(NPCID.LeechHead, p, v, 0.8f, 0.8f, new Vector2(12, 12), rotationOffset: BossKit.WormRotation);
 			Bullet leechBody(Vector2 p, Vector2 v) => Shots.Npc(NPCID.LeechBody, p, v, 0.8f, 0.7f, new Vector2(10, 10), rotationOffset: BossKit.WormRotation);
 			Bullet scythe(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.DemonSickle, p, v, 0.8f, 0.8f, new Vector2(16, 16), rotate: false);
@@ -1062,7 +1095,7 @@ namespace MercyMode.Battle.Encounters
 					new HungryTethers(hungry, hard ? 52 : 66) { FirstAt = 30 }),
 				// The eyes aim, then sweep beams through you, crossing
 				() => With(eyesOr(
-					() => new EyeBeams(eyeSpots, hard ? 70 : 84) { Width = hard ? 18f : 15f, Sweep = hard ? 0.42f : 0.35f },
+					() => new EyeBeams(eyeSpots, hard ? 140 : 160) { Width = hard ? 16f : 14f, Sweep = hard ? 0.34f : 0.3f },
 					() => new Jaws((p, v) => Shots.Ball(p, v, new Color(255, 220, 220), 1f, 1.5f), 60) { GapSize = 36f })),
 				// Its tongue latches on and drags you toward the wall while lasers come
 				() => With(new Tongue { Mouth = mouthSpot, Pull = (hard ? 0.62f : 0.5f) * rage },
@@ -1085,11 +1118,11 @@ namespace MercyMode.Battle.Encounters
 					new HungryTethers(hungry, hard ? 44 : 56)),
 				// The wall shoves into the box while its eyes fire across what's left
 				() => With(new FleshPush { Side = -1, MaxPush = hard ? 0.55f : 0.45f },
-					eyesOr(() => new EyeBeams(eyeSpots, hard ? 90 : 110) { FirstAt = 70 }, () => new Scythes(scythe, 60) { FirstAt = 60 })),
+					eyesOr(() => new EyeBeams(eyeSpots, 200) { FirstAt = 70 }, () => new Scythes(scythe, 60) { FirstAt = 60 })),
 				// Everything it has: beams, tethers and scythes in a bigger box, the lava coming up
 				() => hard
 					? With(new LavaRise { MakeSide = ember, Peak = 0.3f, RiseShare = 0.6f, Duration = turn * 3 / 2 },
-						eyesOr(() => new EyeBeams(eyeSpots, 95) { FirstAt = 40 }, () => new Jaws((p, v) => Shots.Ball(p, v, new Color(255, 220, 220), 1f, 1.5f), 90)),
+						eyesOr(() => new EyeBeams(eyeSpots, 180) { FirstAt = 40 }, () => new Jaws((p, v) => Shots.Ball(p, v, new Color(255, 220, 220), 1f, 1.5f), 90)),
 						new HungryTethers(hungry, 48),
 						new Scythes(scythe, 80) { FirstAt = 60 }).WithGrow(1.25f)
 					: With(new HungryTethers(hungry, 34), new Scythes(scythe, 70) { FirstAt = 40 }));
