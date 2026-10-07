@@ -227,7 +227,7 @@ namespace MercyMode.Battle
 		}
 
 		/// <summary>A vertical bone of a given height centred on a point.</summary>
-		public static Bullet Bone(Vector2 centre, Vector2 vel, float height, Color color) => new()
+		public static Bullet Bone(Vector2 centre, Vector2 vel, float height, Color boneColor) => new()
 		{
 			Position = centre,
 			Velocity = vel,
@@ -237,6 +237,7 @@ namespace MercyMode.Battle
 			OnDraw = b =>
 			{
 				float top = b.Position.Y - b.HitSize.Y / 2f, x = b.Position.X;
+				Color color = boneColor * b.Alpha;
 				if (DrawBoneSprite(x, top, b.HitSize.Y, color))
 					return;
 				DrDraw.Rect(x - 3f, top + 3f, 6f, b.HitSize.Y - 6f, color);

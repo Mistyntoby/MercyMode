@@ -443,3 +443,4 @@ Resolution 640x480. All sizes below in those pixels.
 - 0.146: the fall's stretched box sits 60 px lower (SideFall.Lower) so Skeletron's face shows over it. EnemyAttack.Scripted: grazing no longer cuts the turn short (it ended the fall before the wall arrived); Combo, OwnedAttack and the desperation Sequence pass it on.
 - 0.147: fall box 75 px lower, Skeletron raised 45-52 px while watching, so his whole skull shows over the box.
 - 0.148: the fall is longer: gap walls and skulls (ticks 50-330 of the fall), then a bone tunnel (360-660): columns 12 px apart with a winding hole (52 px, 46 hard) that never moves faster than the SOUL can follow (2.6 px per column). The wall arrives after the tunnel; ~16 s of falling.
+- 0.149: when the fall's SOUL hits the wall, every leftover fall bone keeps sliding left and fades out (no stragglers). Bones (BoneWalls.Bone) now draw with Bullet.Alpha.

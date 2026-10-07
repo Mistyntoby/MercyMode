@@ -842,7 +842,20 @@ namespace MercyMode.Battle
 			b.Lifetime = 700;
 			b.OffscreenMargin = 800f;
 			b.DestroyOnHit = false;
-			b.OnUpdate += x => x.Velocity.X = -speed;
+			b.OnUpdate += x =>
+			{
+				if (hitAt < 0)
+				{
+					x.Velocity.X = -speed;
+					return;
+				}
+				// The fall's over: whatever's left keeps going off to the left, fading, and is gone
+				x.Velocity.X = -TopSpeed;
+				x.Harmful = false;
+				x.Alpha -= 1f / 30f;
+				if (x.Alpha <= 0f)
+					x.Dead = true;
+			};
 			battle.Spawn(b);
 		}
 	}
