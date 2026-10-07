@@ -332,7 +332,7 @@ namespace MercyMode.Battle.Encounters
 				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
 					new Underground { LightRadius = hard ? 40f : 46f },
 					new Eruption(hard ? 64 : 78) { Segments = 9, Hunt = hard ? 0.045f : 0.035f, MaxDive = 3.6f, Warn = 60, FirstAt = 50, DamageMult = 0.6f })
-					{ Grow = 1.45f },
+					{ Grow = 1.2f },
 				// It burrows under the box toward you, then bursts out in a spray of teeth
 				() => new BurrowTrail(tooth, hard ? 64 : 80) { Speed = hard ? 1.8f : 1.5f, Shards = hard ? 9 : 7 },
 				// It coils round the box, closing in, spitting from its head
@@ -568,9 +568,9 @@ namespace MercyMode.Battle.Encounters
 			if (part == null)
 				return 1f;
 			if (part.type == NPCID.SkeletronHand)
-				return 0.4f;
+				return 0.16f;
 			int hands = Members().Count(m => m.type == NPCID.SkeletronHand && m.active && m.life > 0);
-			return hands >= 2 ? 0.2f : hands == 1 ? 0.5f : 1f;
+			return hands >= 2 ? 0.08f : hands == 1 ? 0.25f : 0.6f;
 		}
 		public override bool TargetableParts => true;
 		// Hands sit at head - 120 * ai[0] across (see PoseForBattle): ai[0] = 1 is the left one
@@ -617,33 +617,35 @@ namespace MercyMode.Battle.Encounters
 				? Shots.Npc(NPCID.SkeletronHand, p, Vector2.Zero, 0.9f, 1f, new Vector2(26, 26), rotate: false)
 				: head(p, d);
 			Bullet bone(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Bone, p, v, 1f, 0.6f, new Vector2(10, 10), spin: 0.25f);
+			Bullet skull(Vector2 p, Vector2 v) => Shots.Npc(NPCID.SkeletronHead, p, v, 0.55f, 1.2f, new Vector2(30, 30), rotate: false);
 			return Cycle(
-				() => new LaneDash(hand, hard ? 45 : 60) { AllowVertical = true, Speed = hard ? 8f : 7f },
+				// Slammed into the floor, then bones burst up along it: jump, and keep jumping
+				() => new FloorBoneWave(hard ? 56 : 70) { Height = hard ? 32f : 28f },
+				// Skulls slide in round the box, charge, and fire beams through the SOUL
+				() => new SkullBlasters(skull, hard ? 36 : 48) { Charge = hard ? 28 : 34 },
+				// Blue SOUL: blue bones (stand still) and orange bones (keep moving) sweep across, white ones to hop
+				() => new ColoredBones(hard ? 30 : 38) { Speed = hard ? 3f : 2.6f },
 				// A tunnel of bones slides through; follow the gap as it winds
 				() => new BoneTunnel(hard ? 9 : 11) { Speed = hard ? 2.6f : 2.2f, GapSize = hard ? 42f : 48f, WanderSpeed = hard ? 0.022f : 0.018f },
-				// The spinning-head charge
-				() => new LaneDash(head, hard ? 60 : 80) { AllowVertical = true, Speed = hard ? 7f : 5.5f, LaneWidth = 40f, LaunchSound = SoundID.Roar },
 				// A hand slams the floor and scatters bones along it (blue SOUL: jump them)
-				() => new Slam(hand, bone, hard ? 60 : 78) { Width = 40f, Shards = hard ? 3 : 2, ShardSpeed = 2.6f }.WithSoul(SoulMode.Blue),
-				// Blue SOUL: thrown to the floor, then walls of bones to jump over and duck under
-				() => new BoneWalls(hard ? 26 : 34) { Speed = hard ? 3.2f : 2.6f, Color = new Color(235, 225, 200) },
-				// Bones fall in rows with a drifting gap
-				() => new GapRows(bone, hard ? 30 : 38) { Speed = hard ? 2f : 1.7f, GapSize = hard ? 42f : 48f, Spacing = 16f },
-				() => hard
-					? new Combo(BattleConstants.DefaultEnemyTurnTicks,
-						new Converge(bone, 60) { Count = 8, Speed = 4.4f },
-						new LaneDash(hand, 90) { Speed = 7.5f })
-					: new Combo(BattleConstants.DefaultEnemyTurnTicks,
-						new Rain(bone, 16) { SpeedMin = 2f, SpeedMax = 2.6f, Wobble = 0f },
-						new LaneDash(hand, 80) { Speed = 7f }),
-				// Phase 2, full screen: its huge spinning head ricochets round the whole room, bursting into bones
-				// every time it hits a wall, while a hand sweeps across now and then
+				() => new Slam(hand, bone, hard ? 56 : 72) { Width = 40f, Shards = hard ? 3 : 2, ShardSpeed = 2.6f }.WithSoul(SoulMode.Blue),
+				// Blasters while a hand sweeps through
+				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
+					new SkullBlasters(skull, hard ? 54 : 70) { Charge = 36 },
+					new LaneDash(hand, hard ? 70 : 90) { Speed = 7f, FirstAt = 40 }),
+				// Blue SOUL: walls of bones to jump over and duck under, with blue ones mixed in
+				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
+					new BoneWalls(hard ? 30 : 38) { Speed = hard ? 3.2f : 2.6f, Color = new Color(235, 225, 200) },
+					new ColoredBones(hard ? 60 : 80) { Speed = 2.4f, FirstAt = 40 }),
+				// Its spinning head ricochets round a bigger box, bursting into bones at the walls
+				() => new BouncingSkull((p, v) => Shots.Npc(NPCID.SkeletronHead, p, v, 0.7f, 1.3f, new Vector2(44, 44), rotate: false).Spin(0.3f), bone)
+					{ Speed = hard ? 3.2f : 2.8f, Bones = hard ? 7 : 5, Grow = 1.3f },
+				// Phase 2, full screen: skulls all round the room, one after another, over sweeping coloured bones
 				() => hard
 					? new Combo(BattleConstants.FullScreenTurnTicks,
-						new BouncingSkull((p, v) => Shots.Npc(NPCID.SkeletronHead, p, v, 0.9f, 1.3f, new Vector2(56, 56), rotate: false).Spin(0.3f), bone)
-							{ Speed = 3.4f, Bones = 7 },
-						new LaneDash(hand, 120) { Speed = 7f, FirstAt = 80 }) { FullScreen = true }
-					: new LaneDash(hand, 60) { AllowVertical = true, Speed = 7f });
+						new SkullBlasters(skull, 22) { Charge = 30, Width = 26f },
+						new ColoredBones(56) { Speed = 3f, FirstAt = 60 }) { FullScreen = true }
+					: new SkullBlasters(skull, 40) { Charge = 32 });
 		}
 	}
 

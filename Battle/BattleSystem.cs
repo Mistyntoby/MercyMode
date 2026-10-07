@@ -1640,7 +1640,9 @@ namespace MercyMode.Battle
 		private void UpdateEnemyTurn()
 		{
 			WithNetRand(() => attack.Update(this, phaseTicks));
+			Vector2 soulBefore = soul;
 			MoveSoul();
+			soulMoved = Vector2.DistanceSquared(soulBefore, soul) > 0.04f;
 			UpdateYellowShots();
 
 			// obj_heart: global.inv -= 1 every frame
@@ -1659,7 +1661,7 @@ namespace MercyMode.Battle
 					continue;
 				if (ShieldBlocks(b))
 					continue;
-				if (inv < 0 && b.Touches(soulHit))
+				if (inv < 0 && b.Touches(soulHit) && ColourAllows(b))
 				{
 					HitSoul(b);
 					if (b.DestroyOnHit)
@@ -1745,6 +1747,12 @@ namespace MercyMode.Battle
 
 		/// <summary>The least share of max HP (after defense) a regular enemy's bullet takes off.</summary>
 		private const float RegularMinLifeShare = 0.03f;
+
+		/// <summary>The SOUL moved this tick (falling counts): blue bones hurt it, orange ones don't.</summary>
+		private bool soulMoved;
+
+		/// <summary>A blue bone only hurts a moving SOUL, an orange one only a still one; anything else always does.</summary>
+		private bool ColourAllows(Bullet b) => b.Sans switch { 1 => soulMoved, 2 => !soulMoved, _ => true };
 
 		private void HitSoul(Bullet b)
 		{

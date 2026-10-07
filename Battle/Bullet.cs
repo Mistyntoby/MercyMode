@@ -56,6 +56,8 @@ namespace MercyMode.Battle
 		/// defense, however weak the enemy. 0 = no floor (the enemy's contact damage, as usual).
 		/// </summary>
 		public float MinLifeShare;
+		/// <summary>Undertale's coloured bones: 1 blue (only hurts a SOUL that's moving), 2 orange (only one that's still).</summary>
+		public int Sans;
 		/// <summary>Ticks left of a white flash (it was shot).</summary>
 		public int Flash;
 		/// <summary>Afterimages left behind while it moves (0 = none).</summary>
@@ -135,6 +137,12 @@ namespace MercyMode.Battle
 				OnDraw(this);
 				return;
 			}
+			DrawSprite();
+		}
+
+		/// <summary>Its sprite (and afterimages), ignoring <see cref="OnDraw"/>: for custom drawing that adds to it.</summary>
+		public void DrawSprite()
+		{
 			// Afterimages, oldest faintest
 			for (int k = 0; k < trailCount; k++)
 			{

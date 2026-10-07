@@ -193,6 +193,7 @@ namespace MercyMode.Lab
 				("cozy-heal", CozyHeal),
 				("talker", TalkerQuestion),
 				("hazard-damage", HazardDamage),
+				("sans-bones", SansBonesTest),
 				("vote", VoteTally),
 				("boulder", BoulderBattle),
 				("boss-kill", () => BossKill(NPCID.EyeofCthulhu)),
@@ -1628,6 +1629,36 @@ namespace MercyMode.Lab
 			yield return WaitForEnd();
 		}
 
+		/// <summary>A blue bone passes through a SOUL that stands still; an orange one hits it.</summary>
+		private IEnumerable SansBonesTest()
+		{
+			yield return StartWith(NPCID.IceSlime);
+			var lost = new List<int>();
+			foreach (int kind in new[] { 1, 2 })
+			{
+				yield return Menu();
+				yield return Spare(0);
+				yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the enemy turn");
+				for (int i = 0; i < 5; i++)
+					yield return null;
+				B.Bullets.Clear();
+				P.statLife = P.statLifeMax2;
+				B.SetBattleLife(P.statLife);
+				int before = P.statLife;
+				B.Spawn(SansBones.Make(B.SoulCenter, Vector2.Zero, 60f, kind));
+				for (int i = 0; i < 6; i++)
+					yield return null;
+				lost.Add(before - P.statLife);
+				B.Bullets.Clear();
+			}
+			Log($"  standing still: blue bone took {lost[0]}, orange bone took {lost[1]}");
+			Check(lost[0] == 0, "a blue bone hurt a SOUL standing still");
+			Check(lost[1] > 0, "an orange bone didn't hurt a SOUL standing still");
+			foreach (NPC m in B.LabTarget.Members().ToList())
+				m.active = false;
+			yield return WaitForEnd();
+		}
+
 		/// <summary>Weak enemies still hurt: a hazard takes its share of max HP, any regular bullet at least 3%.</summary>
 		private IEnumerable HazardDamage()
 		{
@@ -1823,8 +1854,8 @@ namespace MercyMode.Lab
 		/// <summary>Skeletron's moves, healthy and below half HP (the bouncing skull is its phase-2 full-screen turn).</summary>
 		private IEnumerable AttacksSkeletron()
 		{
-			yield return SweepAttacks("skeletron", 8, NPCID.SkeletronHead);
-			yield return SweepAttacks("skeletron (hurt)", 8, 0.4f, NPCID.SkeletronHead);
+			yield return SweepAttacks("skeletron", 9, NPCID.SkeletronHead);
+			yield return SweepAttacks("skeletron (hurt)", 9, 0.4f, NPCID.SkeletronHead);
 		}
 
 		/// <summary>The Eater of Worlds' and Brain of Cthulhu's moves, healthy and below half HP.</summary>

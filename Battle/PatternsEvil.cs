@@ -125,6 +125,10 @@ namespace MercyMode.Battle
 
 		internal WormRig Build(BattleSystem battle, Vector2 head, Vector2 vel, int segments, float spacing, int toughness = 0)
 		{
+			// Segments as far apart as a body segment is long, so one doesn't cover the next one's eye
+			Bullet probe = Make(Body, head, BodyHit, 0);
+			if (probe.Source is Rectangle frame && frame.Height > 4)
+				spacing = Math.Max(spacing, frame.Height * Scale * 0.82f);
 			var rig = new WormRig(head, vel, spacing);
 			rig.Seed(segments);
 			for (int i = 0; i < segments; i++)
@@ -257,7 +261,9 @@ namespace MercyMode.Battle
 		{
 			if (segs[0].Texture != null && segs[0].HitSize != Look.HeadHit)
 				Look.MakeHead(segs[0]);
-			var rig = new WormRig(segs[0].Position, vel, 13f);
+			// (Spaced like the worm it broke off)
+			float spacing = segs.Count > 1 ? Math.Max(13f, Vector2.Distance(segs[0].Position, segs[1].Position)) : 13f;
+			var rig = new WormRig(segs[0].Position, vel, spacing);
 			for (int k = segs.Count - 1; k >= 0; k--)
 				rig.Path.Add(segs[k].Position);
 			rig.Segs.AddRange(segs);
@@ -324,9 +330,7 @@ namespace MercyMode.Battle
 					}
 				},
 			});
-			float gravity = Gravity;
-			// High enough to reach the top of the box, whatever its size (a bigger box left the SOUL out of reach)
-			float launch = Math.Max(Launch, (float)Math.Sqrt(2f * gravity * (box.Height * 0.9f + 30f)));
+			float gravity = Gravity, minLaunch = Launch;
 			float damageMult = DamageMult;
 			int segments = Segments;
 			battle.Spawn(new Bullet
@@ -339,7 +343,13 @@ namespace MercyMode.Battle
 				{
 					if (b.Age != warn)
 						return;
-					WormRig rig = Look.Build(battle, new Vector2(x, box.Bottom + 30f), new Vector2(drift, -launch), segments, 13f);
+					// High enough to reach the SOUL wherever it is now, and the top of the box as it is now (it may have
+					// grown since the crack showed)
+					Rectangle now = battle.Box;
+					float startY = now.Bottom + 30f;
+					float apex = Math.Min(battle.SoulCenter.Y - 24f, now.Top + 24f);
+					float launch = Math.Max(minLaunch, (float)Math.Sqrt(2f * gravity * Math.Max(40f, startY - apex)));
+					WormRig rig = Look.Build(battle, new Vector2(x, startY), new Vector2(drift, -launch), segments, 13f);
 					foreach (Bullet seg in rig.Segs)
 						seg.DamageMult *= damageMult;
 					float hunt = Hunt;
