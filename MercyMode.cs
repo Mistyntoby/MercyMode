@@ -81,19 +81,69 @@ namespace MercyMode
 			return state == Microsoft.Xna.Framework.Input.ButtonState.Pressed;
 		}
 
+		/// <summary>Every keybind of ours with its default key, so a blank one can be given it back.</summary>
+		private static readonly List<(ModKeybind Bind, string Key)> keyDefaults = new();
+
+		private ModKeybind Key(string name, string key)
+		{
+			ModKeybind bind = KeybindLoader.RegisterKeybind(this, name, key);
+			keyDefaults.Add((bind, key));
+			return bind;
+		}
+
+		/// <summary>
+		/// Gives any of our keybinds that has no key at all its default back. tModLoader only applies a default the first
+		/// time it sees a keybind; after that the saved (possibly empty) binding wins, and an empty Join Battle key or
+		/// battle key leaves the mod unusable. Runs as the game finishes loading and on entering a world.
+		/// </summary>
+		public static void RestoreBlankKeybinds()
+		{
+			if (Main.dedServ)
+				return;
+			bool changed = false;
+			foreach (var (bind, key) in keyDefaults)
+			{
+				try
+				{
+					List<string> keys = bind.GetAssignedKeys(Terraria.GameInput.InputMode.Keyboard);
+					if (keys != null && keys.Count == 0)
+					{
+						keys.Add(key);
+						changed = true;
+					}
+				}
+				catch (KeyNotFoundException)
+				{
+					// Not in the profile yet: tModLoader will use the default itself
+				}
+			}
+			if (changed)
+			{
+				try
+				{
+					Terraria.GameInput.PlayerInput.Save();
+				}
+				catch (System.Exception e)
+				{
+					ModContent.GetInstance<MercyMode>().Logger.Warn("Couldn't save the restored keybinds: " + e.Message);
+				}
+			}
+		}
+
 		public override void Load()
 		{
-			JoinBattleKey = KeybindLoader.RegisterKeybind(this, "JoinBattle", "J");
-			BuffsKey = KeybindLoader.RegisterKeybind(this, "BattleBuffs", "B");
+			keyDefaults.Clear();
+			JoinBattleKey = Key("JoinBattle", "J");
+			BuffsKey = Key("BattleBuffs", "B");
 			// The battle screen's keys, rebindable in Settings > Controls
 			BattleKeys = new Dictionary<Keys, ModKeybind>
 			{
-				[Keys.Z] = KeybindLoader.RegisterKeybind(this, "BattleConfirm", "Z"),
-				[Keys.X] = KeybindLoader.RegisterKeybind(this, "BattleBack", "X"),
-				[Keys.Up] = KeybindLoader.RegisterKeybind(this, "BattleUp", "Up"),
-				[Keys.Down] = KeybindLoader.RegisterKeybind(this, "BattleDown", "Down"),
-				[Keys.Left] = KeybindLoader.RegisterKeybind(this, "BattleLeft", "Left"),
-				[Keys.Right] = KeybindLoader.RegisterKeybind(this, "BattleRight", "Right"),
+				[Keys.Z] = Key("BattleConfirm", "Z"),
+				[Keys.X] = Key("BattleBack", "X"),
+				[Keys.Up] = Key("BattleUp", "Up"),
+				[Keys.Down] = Key("BattleDown", "Down"),
+				[Keys.Left] = Key("BattleLeft", "Left"),
+				[Keys.Right] = Key("BattleRight", "Right"),
 			};
 		}
 
@@ -102,6 +152,7 @@ namespace MercyMode
 			JoinBattleKey = null;
 			BuffsKey = null;
 			BattleKeys = null;
+			keyDefaults.Clear();
 		}
 
 		// Chat colors, Deltarune-ish
@@ -138,5 +189,12 @@ namespace MercyMode
 		}
 
 		public static bool IsSingleplayer => Main.netMode == NetmodeID.SinglePlayer || Lab.LabSystem.Enabled;
+	}
+
+	/// <summary>Puts back any battle key that ended up with no key at all (see <see cref="MercyMode.RestoreBlankKeybinds"/>).</summary>
+	public class KeybindRestore : ModSystem
+	{
+		public override void PostSetupContent() => MercyMode.RestoreBlankKeybinds();
+		public override void OnWorldLoad() => MercyMode.RestoreBlankKeybinds();
 	}
 }
