@@ -180,6 +180,7 @@ namespace MercyMode.Lab
 				("soul-gravity", SoulGravity),
 				("side-fall", SideFallTest),
 				("attacks-queen", AttacksQueen),
+				("attacks-deerclops", AttacksDeerclops),
 				("honey", HoneyTest),
 				("soul-green", SoulGreen),
 				("soul-purple", SoulPurple),
@@ -1016,6 +1017,13 @@ namespace MercyMode.Lab
 		{
 			yield return SweepAttacks("queen bee", 18, NPCID.QueenBee);
 			yield return SweepAttacks("queen bee (hurt)", 18, 0.4f, NPCID.QueenBee);
+		}
+
+		/// <summary>Every Deerclops move, healthy and below half HP (its full-screen dark turn).</summary>
+		private IEnumerable AttacksDeerclops()
+		{
+			yield return SweepAttacks("deerclops", 17, NPCID.Deerclops);
+			yield return SweepAttacks("deerclops (hurt)", 17, 0.4f, NPCID.Deerclops);
 		}
 
 		/// <summary>In honey the SOUL wades at under half speed.</summary>

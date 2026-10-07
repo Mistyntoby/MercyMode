@@ -1008,6 +1008,8 @@ namespace MercyMode.Battle
 	public class Underground : EnemyAttack
 	{
 		public float LightRadius = 40f, Darkness = 1f;
+		/// <summary>Played as the lights go out (the Eater's is it digging in).</summary>
+		public Terraria.Audio.SoundStyle? Sound = SoundID.WormDig;
 		public int FadeIn = 30;
 		private int started = -1;
 
@@ -1016,7 +1018,8 @@ namespace MercyMode.Battle
 			if (started < 0)
 			{
 				started = tick;
-				AttackSfx.Vanilla(SoundID.WormDig, 0.8f, -0.3f);
+				if (Sound is Terraria.Audio.SoundStyle sound)
+					AttackSfx.Vanilla(sound, 0.8f, -0.3f);
 				battle.ShakeScreen(3f);
 			}
 			int age = tick - started, duration = Duration, fadeIn = FadeIn;

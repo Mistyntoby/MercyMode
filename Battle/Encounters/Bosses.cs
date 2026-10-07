@@ -500,6 +500,8 @@ namespace MercyMode.Battle.Encounters
 
 		/// <summary>Tougher than she looks: she takes a bit over half of every hit (she went down in a few turns).</summary>
 		public override float PartDamageScale(NPC part) => 0.55f;
+		// Her turns are dense: each sting takes off less
+		public override float DamageFactor => 0.65f;
 
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
@@ -821,25 +823,59 @@ namespace MercyMode.Battle.Encounters
 			Bullet rock(Vector2 p, Vector2 v) => Rubble(p, v, 1f, 0.8f, new Vector2(14, 14));
 			Bullet boulder(Vector2 p, Vector2 v) => Rubble(p, v, 1.8f, 1.2f, new Vector2(26, 26));
 			Bullet iceShard(Vector2 p, Vector2 v) => Shots.Ball(p, v, Shots.Ice, 0.7f);
+			// Shadow hands glow in the dark: their eyes are all you see of them
+			Bullet shadowHand(Vector2 p, Vector2 v)
+			{
+				Bullet h = hand(p, v);
+				h.Light = 18f;
+				return h;
+			}
+			int turn = BattleConstants.DefaultEnemyTurnTicks;
 			return Cycle(
-				() => new FloorSpikes(spike, hard ? 24 : 34) { Warn = hard ? 24 : 30 }.WithSoul(SoulMode.Blue),
-				// Its shadow hands creep in, freeze, then lunge at you
-				() => new FreezeAndFire(hand, hard ? 11 : 15) { LungeSpeed = hard ? 4.2f : 3.6f, FreezeEvery = hard ? 70 : 84 },
-				() => new Homing(hand, hard ? 26 : 36) { Speed = 1.5f, Turn = 0.05f, SteerTicks = 110 },
+				() => new FloorSpikes(spike, hard ? 26 : 34) { Warn = hard ? 26 : 30 }.WithSoul(SoulMode.Blue),
+				// Its shadow hands creep in, freeze, then lunge at you (fewer and slower than they were: a crowd of them
+				// all lunging at once couldn't be dodged)
+				() => new FreezeAndFire(hand, hard ? 22 : 28) { LungeSpeed = hard ? 3.4f : 3f, FreezeEvery = hard ? 80 : 92, CreepSpeed = 0.6f },
+				// Rubble tears up in a line across the box, from the floor or the ceiling
+				() => new RubbleLine(hard ? 58 : 72) { Reach = hard ? 0.6f : 0.55f, StepEvery = hard ? 5 : 6 },
 				// A boulder crashes down and breaks into rubble along the floor
 				() => new Slam(boulder, rock, hard ? 58 : 76) { Width = 44f, Shards = hard ? 3 : 2, Debris = 4 }.WithSoul(SoulMode.Blue),
+				// A blizzard shoves you about while snowballs ride the wind
+				() => new Blizzard { Make = iceShard, Push = hard ? 0.8f : 0.65f, SnowEvery = hard ? 8 : 11, Speed = hard ? 3.3f : 2.8f },
 				// Frost gathers around you, then shatters inward
 				() => new Converge(iceShard, hard ? 52 : 68) { Count = hard ? 10 : 8, Speed = hard ? 4.4f : 3.8f },
+				// Its stare sweeps across: keep still while it passes, dodge the rocks between
+				() => new Combo(turn,
+					new FrostStare(hard ? 60 : 72) { Speed = hard ? 2.6f : 2.3f },
+					new Rain(rock, hard ? 16 : 22) { SpeedMin = 2f, SpeedMax = 2.6f, Wobble = 0f }),
+				// It stomps and ice rolls along the floor: jump it (sometimes from both sides)
+				() => new StompWaves(hard ? 42 : 52) { Speed = hard ? 3.2f : 2.8f },
+				// Shadow hands grab along your row or your column, from both ends
+				() => new ShadowGrab(hand, hard ? 52 : 64) { Speed = hard ? 6.5f : 6f },
 				() => new Rain(rock, hard ? 10 : 15) { SpeedMin = 2.2f, SpeedMax = 3f, Wobble = 0f },
-				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
+				// The floor freezes over (you slide) while icicles drop
+				() => new IceFloor { IcicleEvery = hard ? 18 : 24 },
+				// An avalanche: walls of snow sweep through with a gap
+				() => new Tsunami(hard ? 80 : 100) { Water = new Color(225, 240, 255), Speed = hard ? 1.7f : 1.5f, GapSize = hard ? 42f : 48f },
+				// Boulders lobbed in arcs, bursting into rubble where they land
+				() => new Lobs(boulder, hard ? 34 : 44) { Splash = 3 },
+				// An ice prison closes in round you; find the gap
+				() => new Combo(turn,
+					new ClosingRing(iceShard, hard ? 64 : 80) { Count = 18, GapSize = 3, Speed = hard ? 1.25f : 1.05f },
+					new RubbleLine(hard ? 110 : 140) { FirstAt = 50 }),
+				// Stomps send rings of frost out across the box
+				() => new ShockwaveRings(hard ? 60 : 75) { Color = Frost.Deep, GrowSpeed = hard ? 1.7f : 1.5f },
+				() => new Combo(turn,
 					new FloorSpikes(spike, 45),
 					new Rain(rock, 22) { Wobble = 0f }),
-				// Phase 2, full screen: icy slashes across the whole field, rocks falling everywhere
+				// Phase 2, full screen: the lights go out. In the dark you only see the shadow hands' eyes as they creep
+				// in, freeze and lunge, and the cracks where rubble is about to tear up
 				() => hard
 					? new Combo(BattleConstants.FullScreenTurnTicks,
-						new Slashes(68) { Color = Shots.Ice, PerBurst = 3 },
-						new Rain(rock, 16) { SpeedMin = 2.2f, SpeedMax = 3f, Wobble = 0f }) { FullScreen = true }
-					: new FloorSpikes(spike, 34));
+						new Underground { LightRadius = 70f, Sound = SoundID.DeerclopsScream },
+						new FreezeAndFire(shadowHand, 26) { LungeSpeed = 3.2f, FreezeEvery = 96, CreepSpeed = 0.55f },
+						new RubbleLine(120) { FirstAt = 90, Reach = 0.4f }) { FullScreen = true }
+					: new ShadowGrab(hand, 58));
 		}
 	}
 
