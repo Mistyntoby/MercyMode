@@ -41,6 +41,8 @@ namespace MercyMode.Battle
 			Every = every;
 			StopBeforeEnd = 60;
 			Soul = SoulMode.Green;
+			// Every spear gets blocked or lands before the turn ends
+			WaitForBullets = true;
 		}
 
 		protected override void Spawn(BattleSystem battle, int index)

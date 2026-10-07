@@ -279,6 +279,7 @@ namespace MercyMode.Battle
 				this.second = second;
 				Duration = first.Duration + second.Duration;
 				Scripted = first.Scripted || second.Scripted;
+				WaitForBullets = second.WaitForBullets;
 			}
 
 			public override void Update(BattleSystem battle, int tick)
@@ -308,6 +309,7 @@ namespace MercyMode.Battle
 				Grow = inner.Grow;
 				Soul = inner.Soul;
 				Scripted = inner.Scripted;
+				WaitForBullets = inner.WaitForBullets;
 			}
 
 			public override void Update(BattleSystem battle, int tick)

@@ -179,6 +179,8 @@ namespace MercyMode.Lab
 				("soul-blue", SoulBlue),
 				("soul-gravity", SoulGravity),
 				("side-fall", SideFallTest),
+				("attacks-queen", AttacksQueen),
+				("honey", HoneyTest),
 				("soul-green", SoulGreen),
 				("soul-purple", SoulPurple),
 				("soul-yellow", SoulYellow),
@@ -1009,6 +1011,35 @@ namespace MercyMode.Lab
 				yield return SweepAttacks(label, 9, types);
 		}
 
+		/// <summary>Every Queen Bee move, healthy and below half HP.</summary>
+		private IEnumerable AttacksQueen()
+		{
+			yield return SweepAttacks("queen bee", 18, NPCID.QueenBee);
+			yield return SweepAttacks("queen bee (hurt)", 18, 0.4f, NPCID.QueenBee);
+		}
+
+		/// <summary>In honey the SOUL wades at under half speed.</summary>
+		private IEnumerable HoneyTest()
+		{
+			try
+			{
+				yield return ForcedTurn(() => new HoneyFlood { Fill = 1f, RiseTicks = 20 });
+				yield return Wait(40);
+				float x0 = B.LabSoul.X;
+				down.Add(Keys.Left);
+				yield return Wait(10);
+				down.Remove(Keys.Left);
+				float moved = x0 - B.LabSoul.X;
+				Log($"  moved {moved:0.0} px in 10 ticks of honey");
+				Check(moved > 1f && moved < 12f, $"honey didn't slow the SOUL ({moved:0.0} px)");
+			}
+			finally
+			{
+				BattleSystem.LabForcedAttack = null;
+			}
+			yield return EndForced();
+		}
+
 		/// <summary>Every Eye of Cthulhu move (the boss tuned most often), without the full sweep.</summary>
 		private IEnumerable AttacksEye()
 		{
@@ -1335,10 +1366,11 @@ namespace MercyMode.Lab
 				yield return Press(Keys.Right);
 				Check(B.LabShieldDir == 1, $"shield faces {B.LabShieldDir}, expected right");
 				B.LabBlocks = 0;
-				int hp = P.statLife;
+				int hp = P.statLife, live = 0;
 				// Turn the shield to the nearest spear, like a player would
 				while (B.LabPhase == Phase.EnemyTurn)
 				{
+					live = B.Bullets.Count(b => b.Harmful && !b.Dead);
 					Bullet near = B.Bullets.Where(b => b.Harmful && !b.Waiting).OrderBy(b => Vector2.DistanceSquared(b.Position, centre)).FirstOrDefault();
 					down.Clear();
 					if (near != null)
@@ -1352,6 +1384,7 @@ namespace MercyMode.Lab
 				}
 				Log($"  blocked {B.LabBlocks} spears, HP {hp} -> {P.statLife}");
 				Check(B.LabBlocks >= 5, "the shield blocked almost nothing");
+				Check(live <= 1, $"the shield turn ended with {live} spears still flying");
 			}
 			finally
 			{

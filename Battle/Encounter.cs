@@ -43,6 +43,8 @@ namespace MercyMode.Battle
 		public SoulMode Soul;
 		/// <summary>Plays out to the end: grazing doesn't cut it short (it has a beginning, middle and end).</summary>
 		public bool Scripted;
+		/// <summary>The turn isn't over until every harmful bullet is gone (blocked, dodged or off the screen).</summary>
+		public bool WaitForBullets;
 		public abstract void Update(BattleSystem battle, int tick);
 	}
 

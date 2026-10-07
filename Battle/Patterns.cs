@@ -667,6 +667,8 @@ namespace MercyMode.Battle
 			Soul = parts.All(p => p.Soul == parts[0].Soul) ? parts[0].Soul
 				: parts.Any(p => p.Soul == SoulMode.Green) ? SoulMode.Red
 				: parts.FirstOrDefault(p => p.Soul != SoulMode.Red)?.Soul ?? SoulMode.Red;
+			// (Only a shield turn waits: in a mix the other parts' bullets could keep it going)
+			WaitForBullets = Soul == SoulMode.Green && parts.Any(p => p.WaitForBullets);
 		}
 
 		public override void Update(BattleSystem battle, int tick)

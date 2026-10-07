@@ -1585,6 +1585,9 @@ namespace MercyMode.Battle
 		private Vector2 slipVelocity;
 		/// <summary>The (red) SOUL slides on ice this tick: it speeds up and slows down gradually instead of stopping dead.</summary>
 		public void MakeSlippery() => slipTicks = 2;
+		private int stickyTicks;
+		/// <summary>The (red) SOUL wades through honey this tick: it moves at under half speed.</summary>
+		public void SlowSoul() => stickyTicks = 2;
 		public void Spawn(Bullet b)
 		{
 			b.Owner ??= spawnOwner;
@@ -1691,7 +1694,9 @@ namespace MercyMode.Battle
 			}
 
 			turnTimer--;
-			if (turnTimer <= 0 && !Player.dead)
+			// Some attacks only end once their last bullet is gone (for up to 10 s more)
+			bool stillGoing = attack.WaitForBullets && turnTimer > -600 && Bullets.Any(b => b.Harmful && !b.Dead);
+			if (turnTimer <= 0 && !Player.dead && !stillGoing)
 			{
 				Bullets.Clear();
 				soulFrom = soul;
@@ -1727,6 +1732,12 @@ namespace MercyMode.Battle
 				px = -px;
 				py = -py;
 				confusedTicks--;
+			}
+			if (stickyTicks > 0)
+			{
+				px *= 0.45f;
+				py *= 0.45f;
+				stickyTicks--;
 			}
 			if (slipTicks > 0)
 			{

@@ -498,32 +498,69 @@ namespace MercyMode.Battle.Encounters
 			HealPrayerAct(),
 		};
 
+		/// <summary>Tougher than she looks: she takes a bit over half of every hit (she went down in a few turns).</summary>
+		public override float PartDamageScale(NPC part) => 0.55f;
+
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			bool hard = LifeRatio < 0.5f;
+			int turn = BattleConstants.DefaultEnemyTurnTicks;
 			Bullet bee(Vector2 p, Vector2 v) => Shots.Npc(NPCID.Bee, p, v, 1f, 0.5f, new Vector2(10, 10), rotate: false).FaceTravel();
 			Bullet stinger(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Stinger, p, v, 1f, 0.6f, new Vector2(8, 8), rotationOffset: MathHelper.PiOver2);
+			Bullet queen(Vector2 p, Vector2 v) => Shots.Npc(NPCID.QueenBee, p, v, 0.45f, 1.2f, new Vector2(40, 30), rotate: false);
+			Bullet honeyBall(Vector2 p, Vector2 v) => Shots.Ball(p, v, Honey.Amber, 0.6f, 1.3f);
 			return Cycle(
-				() => new Homing(bee, hard ? 14 : 20) { Speed = hard ? 2.2f : 1.8f, Turn = 0.03f, SteerTicks = 70 },
+				() => new Homing(bee, hard ? 12 : 16) { Speed = hard ? 2.4f : 2f, Turn = 0.035f, SteerTicks = 75 },
+				// Honey puddles over the box: in them you wade at half speed, while bees home in
+				() => new Combo(turn,
+					new HoneyPuddles { Count = hard ? 4 : 3, Drift = hard ? 0.6f : 0f },
+					new Homing(bee, hard ? 22 : 28) { Speed = 1.8f, FirstAt = 30 }),
 				// The box turns into honeycomb: cells light up, then fill with honey
 				() => hard
-					? new Combo(BattleConstants.DefaultEnemyTurnTicks, new Honeycomb(72) { Fill = 0.62f }, new Homing(bee, 40) { Speed = 1.5f, FirstAt = 30 })
-					: new Honeycomb(84),
-				// Green SOUL: stingers from every side; turn the shield to block them
-				() => new ShieldSpears(stinger, hard ? 16 : 22) { Speed = hard ? 2.8f : 2.3f },
+					? new Combo(turn, new Honeycomb(64) { Fill = 0.66f }, new Homing(bee, 34) { Speed = 1.6f, FirstAt = 30 })
+					: new Combo(turn, new Honeycomb(76), new Homing(bee, 60) { Speed = 1.4f, FirstAt = 60 }),
+				// The swarm: a cloud of bees drifting after you, bursting wide every so often
+				() => new Swarm { Make = bee, Count = hard ? 20 : 16, Speed = hard ? 0.75f : 0.6f, BurstEvery = hard ? 75 : 90 },
+				// Green SOUL: stingers from every side; turn the shield to block them (the turn lasts until the last one)
+				() => new ShieldSpears(stinger, hard ? 14 : 19) { Speed = hard ? 3f : 2.5f },
+				// The Queen charges across your row, leaving stingers hanging behind her that fire up and down
+				() => new RoyalDash(queen, stinger, hard ? 62 : 78) { Speed = hard ? 9f : 8f, FireSpeed = hard ? 3.4f : 3f },
 				// She hovers above and sprays stingers in a sweeping fan
 				() => new Sprinkler(stinger)
 				{
-					Every = hard ? 6 : 8, Arms = hard ? 2 : 1, Speed = 3f, TurnSpeed = 0.06f, FanSpread = hard ? 0.95f : 0.8f,
+					Every = hard ? 5 : 7, Arms = hard ? 2 : 1, Speed = 3.2f, TurnSpeed = 0.065f, FanSpread = hard ? 1f : 0.85f,
 				},
+				// Honey eggs pulse, then hatch into bees that come for you
+				() => new LarvaHatch(bee, hard ? 36 : 46) { Bees = hard ? 4 : 3, BeeSpeed = hard ? 2.2f : 1.9f },
 				() => new LaneDash((p, d) => Shots.Npc(NPCID.QueenBee, p, Vector2.Zero, 0.45f, 1.2f, new Vector2(40, 30), rotate: false).FaceTravel(),
-					hard ? 50 : 65) { Speed = hard ? 9f : 7.5f, LaunchSound = SoundID.Roar },
-				() => new SideShots(stinger, hard ? 9 : 13) { Side = 0, Speed = 3.5f },
+					hard ? 44 : 58) { Speed = hard ? 9.5f : 8f, LaunchSound = SoundID.Roar },
+				// The waggle dance: one bee shows the path, then the swarm flies it (backwards below half HP)
+				() => new WaggleDance { Make = bee, Reverse = hard, Stream = hard ? 32 : 26 },
+				() => new Combo(turn,
+					new SideShots(stinger, hard ? 8 : 11) { Side = 0, Speed = 3.8f },
+					new Homing(bee, hard ? 40 : 55) { Speed = 1.6f, FirstAt = 40 }),
+				// Honey floods up the box (wade through it slowly) while stingers rain down
+				() => new Combo(turn,
+					new HoneyFlood { Fill = hard ? 0.6f : 0.5f },
+					new Rain(stinger, hard ? 9 : 12) { SpeedMin = 2.2f, SpeedMax = 3f }),
 				// Stingers hang in the air around you, then dive
-				() => new Converge(stinger, hard ? 52 : 68) { Count = hard ? 10 : 7, Speed = hard ? 4.8f : 4f, RotationOffset = MathHelper.PiOver2 },
-				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
-					new Homing(bee, 30) { Speed = 1.6f },
-					new SideShots(stinger, 20) { Side = 0 }));
+				() => new Converge(stinger, hard ? 46 : 60) { Count = hard ? 11 : 8, Speed = hard ? 5f : 4.3f, RotationOffset = MathHelper.PiOver2 },
+				// Bees close in from all round; find the gap
+				() => new Combo(turn,
+					new ClosingRing(bee, hard ? 60 : 75) { Count = 18, GapSize = hard ? 2 : 3, Speed = hard ? 1.3f : 1.1f },
+					new Rain(stinger, hard ? 26 : 34)),
+				// Green SOUL, harder: tricksters every third stinger
+				() => new ShieldSpears(stinger, hard ? 16 : 20) { Speed = hard ? 2.8f : 2.4f, TricksterEvery = 3 },
+				// Honey bombs float in and burst into rings of stingers
+				() => new Fireworks(honeyBall, stinger, hard ? 40 : 52) { Count = hard ? 10 : 8, ShardSpeed = 2f },
+				// Rows of stingers with a gap to thread, bees chasing you through them
+				() => new Combo(turn,
+					new GapRows(stinger, hard ? 30 : 36) { Speed = 1.7f, GapSize = hard ? 40f : 46f },
+					new Homing(bee, hard ? 45 : 60) { Speed = 1.5f, FirstAt = 50 }),
+				() => new Combo(turn,
+					new Homing(bee, hard ? 22 : 28) { Speed = 1.8f },
+					new SideShots(stinger, hard ? 14 : 18) { Side = 0 },
+					new HoneyPuddles { Count = 2 }));
 		}
 	}
 
