@@ -125,6 +125,9 @@ namespace MercyMode.Battle
 					parts[i].IsABestiaryIconDummy = true;
 					if (encounter.ForceOpaque)
 						parts[i].alpha = 0;
+					// Fading (teleporting in or out)
+					if (EnemyFade < 1f)
+						parts[i].alpha = Math.Max(parts[i].alpha, (int)(255 * (1f - MathHelper.Clamp(EnemyFade, 0f, 1f))));
 					if (parts[i] != anchorNpc && encounter.SwayParts)
 						parts[i].position += PartSway(i);
 				}

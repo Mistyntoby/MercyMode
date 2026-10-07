@@ -178,6 +178,7 @@ namespace MercyMode.Lab
 				("parts-golem", PartsGolem),
 				("soul-blue", SoulBlue),
 				("soul-gravity", SoulGravity),
+				("side-fall", SideFallTest),
 				("soul-green", SoulGreen),
 				("soul-purple", SoulPurple),
 				("soul-yellow", SoulYellow),
@@ -1262,6 +1263,59 @@ namespace MercyMode.Lab
 				yield return Wait(10);
 				down.Remove(Keys.Up);
 				Check(B.LabSoul.Y < y0 - 10f, "Up didn't slide the SOUL along the wall");
+			}
+			finally
+			{
+				BattleSystem.LabForcedAttack = null;
+			}
+			yield return EndForced();
+		}
+
+		/// <summary>
+		/// Skeletron's fall: the box stretches past the screen, the SOUL is held still (only up and down), the hero slides
+		/// away, then the right wall arrives, the SOUL lands on it and everything is back to normal by the turn's end.
+		/// </summary>
+		private IEnumerable SideFallTest()
+		{
+			var fall = new SideFall { MakeSkull = (p, v) => Shots.Ball(p, v, Color.White) };
+			try
+			{
+				yield return ForcedTurn(() => fall);
+				int fallAt = fall.FloorFor + 20;
+				for (int i = 0; i < fallAt + 90; i++)
+				{
+					Heal();
+					yield return null;
+				}
+				Check(B.Box.Width > 2000, $"the box didn't stretch ({B.Box.Width} px)");
+				Check(B.HeroShift.X < -200f, $"the hero didn't slide away ({B.HeroShift.X:0})");
+				float x0 = B.LabSoul.X;
+				down.Add(Keys.Left);
+				for (int i = 0; i < 20; i++)
+				{
+					Heal();
+					yield return null;
+				}
+				down.Remove(Keys.Left);
+				Check(Math.Abs(B.LabSoul.X - x0) < 3f, $"the held SOUL moved sideways ({x0:0} -> {B.LabSoul.X:0})");
+				float y0 = B.LabSoul.Y;
+				down.Add(Keys.Up);
+				yield return Wait(8);
+				down.Remove(Keys.Up);
+				Check(B.LabSoul.Y < y0 - 5f, "the held SOUL can't move up");
+				// Through to the wall
+				int landed = -1;
+				for (int i = 0; i < fall.FallFor + 60 && B.LabPhase == Phase.EnemyTurn; i++)
+				{
+					Heal();
+					if (landed < 0 && B.HoldSoulX == null)
+						landed = i;
+					yield return null;
+				}
+				Check(landed >= 0, "the SOUL never hit the wall");
+				Log($"  hit the wall {landed + fallAt + 90 + 28} ticks in");
+				yield return Until(() => B.LabPhase != Phase.EnemyTurn, "the turn ending", 60 * 30);
+				Check(B.HeroShift == Vector2.Zero && B.EnemyShift == Vector2.Zero && B.BoxOverride == null, "the camera wasn't reset");
 			}
 			finally
 			{

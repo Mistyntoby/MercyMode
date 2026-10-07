@@ -620,13 +620,12 @@ namespace MercyMode.Battle.Encounters
 				: head(p, d);
 			Bullet bone(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Bone, p, v, 1f, 0.6f, new Vector2(10, 10), spin: 0.25f);
 			Bullet skull(Vector2 p, Vector2 v) => Shots.Npc(NPCID.SkeletronHead, p, v, 0.55f, 1.2f, new Vector2(30, 30), rotate: false);
-			Bullet ghost(Vector2 p, Vector2 v) => Shots.Npc(NPCID.SkeletronHead, p, v, 1.4f, 1f, new Vector2(40, 40), rotate: false).Spin(0.08f);
 			Bullet water(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.WaterBolt, p, v, 1f, 0.7f, new Vector2(12, 12));
 			// The big finish, once, as it gets low: the SOUL falls sideways past Skeletron after Skeletron
 			if (LifeRatio < 0.4f && !fell)
 			{
 				fell = true;
-				return Fall(hard, skull, ghost);
+				return Fall(hard, skull);
 			}
 			// Every turn has more than one thing going on (one pattern at a time was easy, just long)
 			int turn = BattleConstants.DefaultEnemyTurnTicks;
@@ -691,13 +690,13 @@ namespace MercyMode.Battle.Encounters
 					new SkullBlasters(skull, hard ? 54 : 70) { Charge = 36 },
 					new LaneDash(hand, hard ? 70 : 90) { Speed = 7f, FirstAt = 40 }),
 				// The fall (also its finish as it gets low)
-				() => Fall(hard, skull, ghost));
+				() => Fall(hard, skull));
 		}
 
 		private bool fell;
 
-		private static EnemyAttack Fall(bool hard, Func<Vector2, Vector2, Bullet> skull, Func<Vector2, Vector2, Bullet> ghost) =>
-			new SideFall { MakeSkull = skull, MakeGhost = ghost, BoneEvery = hard ? 28 : 34, SkullEvery = hard ? 48 : 60, SkullSpeed = hard ? 8f : 7f };
+		private static EnemyAttack Fall(bool hard, Func<Vector2, Vector2, Bullet> skull) =>
+			new SideFall { MakeSkull = skull, WallEvery = hard ? 48 : 56, SkullEvery = hard ? 66 : 80, Gap = hard ? 44f : 48f };
 	}
 
 	// ====================================================================== Deerclops

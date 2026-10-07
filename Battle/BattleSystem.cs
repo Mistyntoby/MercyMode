@@ -562,6 +562,9 @@ namespace MercyMode.Battle
 				StopChargeLoop();
 				zHold = 0;
 			}
+			// An attack's camera only lasts its turn
+			if (p != Phase.EnemyTurn)
+				ResetCamera();
 			phase = p;
 			phaseTicks = 0;
 			Mod.Logger.Debug($"Battle phase {p} (turn {encounter?.Turn}, boss {encounter?.Life}/{encounter?.LifeMax}, mercy {encounter?.Mercy:0}, TP {Player.GetModPlayer<MercyPlayer>().TP:0.0}, HP {Player.statLife})");
@@ -1544,8 +1547,13 @@ namespace MercyMode.Battle
 
 		private void UpdateArena()
 		{
-			bool open = phase == Phase.EnemyTurn && attack != null && (attack.FullScreen || attack.Grow > 0f && attack.Grow != 1f);
-			if (open)
+			bool open = phase == Phase.EnemyTurn && attack != null && (attack.FullScreen || attack.Grow > 0f && attack.Grow != 1f || BoxOverride != null);
+			if (open && BoxOverride is Rectangle wanted)
+			{
+				arenaIsFull = false;
+				arenaRect = wanted;
+			}
+			else if (open)
 			{
 				arenaIsFull = attack.FullScreen;
 				int size = (int)(BoxSize * attack.Grow);
@@ -1978,12 +1986,19 @@ namespace MercyMode.Battle
 				float left = -ox / scale, top = -oy / scale, width = Main.screenWidth / scale, height = Main.screenHeight / scale;
 				DrawBackground(left - BackgroundBleed, top - BackgroundBleed,
 					width + BackgroundBleed * 2f, height + BackgroundBleed * 2f);
-				DrawEnemy(sb, m);
-				DrawBubbles();
-				DrawAllies(sb, m);
-				// Summons behind the player
-				DrawMinions(sb, m);
-				DrawHero(sb, m);
+				// Each moved by the camera when an attack moves it (Skeletron's fall)
+				WithShift(sb, EnemyShift, m, s =>
+				{
+					DrawEnemy(sb, s);
+					DrawBubbles();
+				});
+				WithShift(sb, HeroShift, m, s =>
+				{
+					DrawAllies(sb, s);
+					// Summons behind the player
+					DrawMinions(sb, s);
+					DrawHero(sb, s);
+				});
 				DrawSwingSlash();
 				DrawFightBeam();
 				DrawDuelOppBeam();
@@ -2049,8 +2064,9 @@ namespace MercyMode.Battle
 					for (float y = startY; y < top + height; y += h)
 						DrDraw.Sb.Draw(tile.Frames[0], new Vector2(Snap(x), Snap(y)), Color.White * alpha);
 			}
-			tiled(-100 + siner, -100 + siner, screenFade / 2f);
-			tiled(-200 - siner2, -210 - siner2, screenFade);
+			float pan = -SceneScroll * 0.5f;
+			tiled(-100 + siner + pan, -100 + siner, screenFade / 2f);
+			tiled(-200 - siner2 + pan, -210 - siner2, screenFade);
 		}
 
 		/// <summary>Every enemy in the battle, each at its own spot (back row first, so the front one overlaps).</summary>

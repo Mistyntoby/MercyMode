@@ -631,83 +631,186 @@ namespace MercyMode.Battle
 	}
 
 	/// <summary>
-	/// Blue SOUL, the big finish: bones burst out of the floor, then gravity swings sideways and the SOUL falls to the
-	/// right, past Skeletron after Skeletron as the whole scene rushes by. Bones slide along the wall you're pinned to
-	/// and skulls come flying across.
+	/// Blue SOUL, the big finish. Bones burst out of the floor, then gravity swings right and the SOUL falls: the box
+	/// stretches out past both edges of the screen, the camera follows the SOUL (it stays put, only moving up and
+	/// down) and everything else rushes left: the hero and Skeletron slide away, bone walls with a gap fly at you,
+	/// skulls cross your lane, and Skeletron keeps teleporting in behind the box to watch you go by. At last the
+	/// box's right wall comes into view, the SOUL slams into it, and everything comes back.
+	/// Every position the attack plays by is fixed (not the screen's width), so a party all sees the same thing.
 	/// </summary>
 	public class SideFall : EnemyAttack
 	{
-		public Func<Vector2, Vector2, Bullet> MakeSkull, MakeGhost;
-		public int FallAt = 150, BoneEvery = 34, SkullEvery = 60, GhostEvery = 40;
-		public float BoneSpeed = 2.4f, SkullSpeed = 7f;
+		public Func<Vector2, Vector2, Bullet> MakeSkull;
+		public int FloorFor = 120, FallFor = 620, WallEvery = 56, SkullEvery = 80, Watch = 150;
+		public float TopSpeed = 6f, Gap = 48f;
+		/// <summary>Where things in the fall start: past the right edge of even a very wide screen.</summary>
+		private const float FarRight = 1000f;
+		/// <summary>The stretched box's left and right: off the screen either side however wide it is.</summary>
+		private const int WideLeft = -1000, WideRight = 1700;
 		private readonly FloorBoneWave floor = new(50) { Height = 26f };
+		private float speed, scroll, gapY = -1f, wallX = FarRight + 40f, hold;
+		private int fallStart = -1, hitAt = -1;
 
 		public SideFall()
 		{
 			Soul = SoulMode.Blue;
-			Duration = BattleConstants.DefaultEnemyTurnTicks * 8 / 5;
+			Duration = FloorFor + 20 + FallFor + 150;
 		}
+
+		/// <summary>The normal box (the stretched one keeps its top and bottom).</summary>
+		private static Rectangle Normal => new((int)(BattleConstants.BoxCenterX - BattleConstants.BoxSize / 2f), (int)(BattleConstants.BoxCenterY - BattleConstants.BoxSize / 2f), BattleConstants.BoxSize, BattleConstants.BoxSize);
 
 		public override void Update(BattleSystem battle, int tick)
 		{
-			Rectangle box = battle.Box;
-			if (tick < FallAt)
+			Rectangle box = Normal;
+			if (tick < FloorFor)
 			{
-				floor.Duration = FallAt + 30;
+				floor.Duration = FloorFor + 30;
 				floor.Update(battle, tick);
 			}
-			if (tick == FallAt - 30)
+			if (tick == FloorFor - 30)
 				battle.Spawn(SansBones.GravityArrow(battle, 3, 30));
-			if (tick == FallAt)
+			if (tick == FloorFor)
 			{
 				battle.SetGravity(3);
 				battle.ShakeScreen(5f);
 				AttackSfx.Impact();
 			}
-			if (tick < FallAt)
-				return;
-			int t = tick - FallAt;
-			bool spawning = tick < Duration - 50;
-			// The rush: streaks flying past, and Skeletron's head going by again and again in the background
-			if (t % 3 == 0)
+			if (tick == FloorFor + 20)
 			{
-				float y = Main.rand.NextFloat(box.Top + 4, box.Bottom - 4), len = Main.rand.NextFloat(14f, 30f);
-				battle.Spawn(new Bullet
+				// It's falling now: hold it where it is and let the camera follow
+				fallStart = tick;
+				hold = battle.SoulCenter.X - BattleConstants.SoulSize / 2f;
+				AttackSfx.Vanilla(Terraria.ID.SoundID.Item24, 0.6f, -0.4f);
+			}
+			if (fallStart < 0)
+				return;
+			int f = tick - fallStart;
+
+			if (hitAt < 0)
+			{
+				// Speeding up, the camera drifting to keep the SOUL in the middle
+				speed = TopSpeed * Math.Min(1f, f / 50f);
+				hold = MathHelper.Lerp(hold, BattleConstants.BoxCenterX - BattleConstants.SoulSize / 2f, 0.03f);
+				battle.HoldSoulX = hold;
+				// The wall at the end comes into view and rushes up to the SOUL
+				if (f >= FallFor - 120)
+					wallX -= speed;
+				float stop = hold + BattleConstants.BoxClampHigh;
+				if (wallX <= stop)
 				{
-					Position = new Vector2(box.Right + 20, y),
-					Velocity = new Vector2(-12f, 0f),
-					Harmful = false,
-					Lifetime = 40,
-					OnDraw = x => DrDraw.Line(x.Position, x.Position + new Vector2(len, 0f), 1.5f, Color.White * 0.3f),
-				});
+					wallX = stop;
+					hitAt = tick;
+					speed = 0f;
+					battle.HoldSoulX = null;
+					battle.ShakeScreen(7f);
+					AttackSfx.Impact();
+					AttackSfx.Vanilla(Terraria.ID.SoundID.Item70, 0.7f, -0.2f);
+				}
+				battle.BoxOverride = new Rectangle(WideLeft, box.Top, (int)Math.Min(WideRight, wallX) - WideLeft, box.Height);
 			}
-			if (t % GhostEvery == 0 && MakeGhost != null)
+			scroll += speed;
+			battle.SceneScroll = scroll;
+
+			if (hitAt < 0)
 			{
-				Bullet g = MakeGhost(new Vector2(box.Right + 80, Main.rand.NextFloat(box.Top - 40, box.Bottom + 40)), new Vector2(-5f, Main.rand.NextFloat(-0.4f, 0.4f)));
-				g.Harmful = false;
-				g.Alpha = 0.22f;
-				g.Lifetime = 160;
-				g.OffscreenMargin = 400f;
-				battle.Spawn(g);
-			}
-			if (!spawning)
+				// Everything that stays behind slides off to the left
+				battle.HeroShift = new Vector2(-Math.Min(scroll, 1500f), 0f);
+				UpdateWatcher(battle, f);
+				if (f < FallFor - 150)
+					SpawnObstacles(battle, box, f);
 				return;
-			// Bones along the right wall, the new floor: hop left over them
-			if (t > 20 && t % BoneEvery == 0)
-				battle.Spawn(SansBones.AlongFloor(box, 3, t / BoneEvery % 2 == 0, BoneSpeed, Main.rand.NextFloat(18f, 30f)));
-			// A skull flies across a lane near you: get off it
-			if (t > 40 && t % SkullEvery == 0 && MakeSkull != null)
+			}
+
+			// Landed: the box closes back in, and the camera finds everyone again
+			int after = tick - hitAt;
+			if (after == 30)
 			{
-				float y = MathHelper.Clamp(battle.SoulCenter.Y + Main.rand.NextFloat(-20f, 20f), box.Top + 14, box.Bottom - 14);
-				const int warn = 28;
-				battle.Spawn(Shots.Warning(new Rectangle(box.Left, (int)y - 13, box.Width, 26), warn));
-				Bullet sk = MakeSkull(new Vector2(box.Right + 30, y), new Vector2(-SkullSpeed, 0f));
+				battle.BoxOverride = null;
+				// They come in from the right, as the scene's last bit of motion
+				battle.HeroShift = new Vector2(700f, 0f);
+				battle.EnemyShift = new Vector2(700f, 0f);
+				battle.EnemyFade = 1f;
+			}
+			if (after > 30)
+			{
+				battle.HeroShift *= 0.9f;
+				battle.EnemyShift *= 0.9f;
+				if (battle.HeroShift.Length() < 0.5f)
+					battle.HeroShift = battle.EnemyShift = Vector2.Zero;
+			}
+			if (after == 50)
+				battle.SetGravity(0);
+		}
+
+		/// <summary>
+		/// Skeletron: first it slides away with everything else, then it keeps teleporting in behind the box, drifting
+		/// along (slower than the fall, so it falls behind) and blinking out again.
+		/// </summary>
+		private void UpdateWatcher(BattleSystem battle, int f)
+		{
+			const int leave = 110;
+			if (f < leave)
+			{
+				battle.EnemyShift = new Vector2(-Math.Min(scroll, 1500f), 0f);
+				return;
+			}
+			int c = (f - leave) % Watch, k = (f - leave) / Watch;
+			Vector2 home = battle.Encounter?.ScreenCenter ?? new Vector2(500f, 150f);
+			if (c == 0)
+			{
+				// A new spot ahead of the SOUL, a little different each time
+				float x = 380f + k % 3 * 70f;
+				battle.EnemyShift = new Vector2(x - home.X, (k % 2 == 0 ? -20f : -34f));
+				battle.AddEffect(new Shockwave(battle.EnemyScreenNow, new Color(220, 220, 255), 70f));
+				AttackSfx.Vanilla(Terraria.ID.SoundID.Item8, 0.6f, -0.3f);
+			}
+			battle.EnemyShift -= new Vector2(speed * 0.35f, 0f);
+			battle.EnemyFade = c < 14 ? c / 14f : c < Watch - 30 ? 1f : c < Watch - 16 ? 1f - (c - (Watch - 30)) / 14f : 0f;
+			if (c == Watch - 30)
+				battle.AddEffect(new Shockwave(battle.EnemyScreenNow, new Color(220, 220, 255), 50f));
+		}
+
+		private void SpawnObstacles(BattleSystem battle, Rectangle box, int f)
+		{
+			// Walls of bones with a gap that wanders from one wall to the next
+			if (f >= 50 && f % WallEvery == 0)
+			{
+				float half = Gap / 2f;
+				gapY = gapY < 0f ? box.Center.Y : gapY + Main.rand.NextFloat(-45f, 45f);
+				gapY = MathHelper.Clamp(gapY, box.Top + half + 8f, box.Bottom - half - 8f);
+				float top = gapY - half, bottom = gapY + half;
+				for (int col = 0; col < 2; col++)
+				{
+					float x = FarRight + col * 12f;
+					Wall(battle, SansBones.Make(new Vector2(x, (box.Top + top) / 2f), Vector2.Zero, top - box.Top, 0));
+					Wall(battle, SansBones.Make(new Vector2(x, (bottom + box.Bottom) / 2f), Vector2.Zero, box.Bottom - bottom, 0));
+				}
+			}
+			// A skull flies across a lane, faster than the fall (the lane flashes first)
+			if (f >= 90 && f % SkullEvery == 0 && MakeSkull != null)
+			{
+				float y = Main.rand.NextFloat(box.Top + 16, box.Bottom - 16);
+				const int warn = 30;
+				battle.Spawn(Shots.Warning(new Rectangle(WideLeft, (int)y - 13, WideRight - WideLeft, 26), warn + 40));
+				Bullet sk = MakeSkull(new Vector2(FarRight - 100f, y), new Vector2(-14f, 0f));
 				sk.StartDelay = warn;
-				sk.Lifetime = 90;
+				sk.Lifetime = 120;
+				sk.OffscreenMargin = 800f;
 				sk.DestroyOnHit = false;
 				battle.Spawn(sk);
 				AttackSfx.Appear();
 			}
+		}
+
+		/// <summary>Something standing still in the world: on screen it moves left as fast as the fall.</summary>
+		private void Wall(BattleSystem battle, Bullet b)
+		{
+			b.Lifetime = 700;
+			b.OffscreenMargin = 800f;
+			b.DestroyOnHit = false;
+			b.OnUpdate += x => x.Velocity.X = -speed;
+			battle.Spawn(b);
 		}
 	}
 }

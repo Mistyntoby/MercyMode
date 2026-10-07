@@ -213,6 +213,14 @@ namespace MercyMode.Battle
 			{
 				case SoulMode.Blue:
 				{
+					// Held by the camera: it only moves up and down
+					if (HoldSoulX is float hold)
+					{
+						soul.X = hold;
+						soulVy = 0f;
+						soul.Y = MathHelper.Clamp(soul.Y + (Held(Keys.Down) ? speed : 0f) - (Held(Keys.Up) ? speed : 0f), minY, maxY);
+						return true;
+					}
 					// soulVy runs toward the floor, whichever side that is; the key pointing away from it jumps, and the
 					// SOUL slides freely along the floor's axis
 					bool vertical = Gravity == 0 || Gravity == 2;
