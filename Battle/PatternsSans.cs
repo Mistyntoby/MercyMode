@@ -21,6 +21,64 @@ namespace MercyMode.Battle
 			b.Sans = kind;
 			return b;
 		}
+
+		/// <summary>A sideways bone (lying along x) of a length, centred on a point.</summary>
+		public static Bullet Lying(Vector2 centre, Vector2 vel, float length, Color? color = null)
+		{
+			Color c = color ?? White;
+			return new Bullet
+			{
+				Position = centre,
+				Velocity = vel,
+				HitSize = new Vector2(length, 8f),
+				Lifetime = 400,
+				DamageMult = 0.8f,
+				OnDraw = b =>
+				{
+					float half = b.HitSize.X / 2f - 4f;
+					Vector2 l = b.Position - new Vector2(half, 0f), r = b.Position + new Vector2(half, 0f);
+					DrDraw.Line(l, r, 6f, c * b.Alpha);
+					DrDraw.Ball(l + new Vector2(0f, -3f), 3.5f, c * b.Alpha);
+					DrDraw.Ball(l + new Vector2(0f, 3f), 3.5f, c * b.Alpha);
+					DrDraw.Ball(r + new Vector2(0f, -3f), 3.5f, c * b.Alpha);
+					DrDraw.Ball(r + new Vector2(0f, 3f), 3.5f, c * b.Alpha);
+				},
+			};
+		}
+
+		/// <summary>
+		/// A bone sticking out of whichever side is the floor for this gravity (0 down, 1 left, 2 up, 3 right), sliding
+		/// along it from one end: hop it.
+		/// </summary>
+		public static Bullet AlongFloor(Rectangle box, int gravity, bool fromStart, float speed, float height)
+		{
+			float s = fromStart ? speed : -speed;
+			switch (gravity)
+			{
+				case 1: return Lying(new Vector2(box.Left + height / 2f, fromStart ? box.Top - 10 : box.Bottom + 10), new Vector2(0f, s), height);
+				case 3: return Lying(new Vector2(box.Right - height / 2f, fromStart ? box.Top - 10 : box.Bottom + 10), new Vector2(0f, s), height);
+				case 2: return Make(new Vector2(fromStart ? box.Left - 10 : box.Right + 10, box.Top + height / 2f), new Vector2(s, 0f), height, 0);
+				default: return Make(new Vector2(fromStart ? box.Left - 10 : box.Right + 10, box.Bottom - height / 2f), new Vector2(s, 0f), height, 0);
+			}
+		}
+
+		/// <summary>A flashing arrow in the middle of the box pointing the way gravity is about to go.</summary>
+		public static Bullet GravityArrow(BattleSystem battle, int gravity, int ticks) => new()
+		{
+			Harmful = false,
+			Lifetime = ticks,
+			Position = battle.Box.Center.ToVector2(),
+			OnDraw = x =>
+			{
+				float a = x.Age / 4 % 2 == 0 ? 0.8f : 0.35f;
+				Vector2 d = (MathHelper.PiOver2 + gravity * MathHelper.PiOver2).ToRotationVector2();
+				Vector2 side = new(-d.Y, d.X);
+				Vector2 c = battle.Box.Center.ToVector2();
+				DrDraw.Line(c - d * 18f, c + d * 18f, 3f, Blue * a);
+				DrDraw.Line(c + d * 18f, c + d * 8f + side * 9f, 3f, Blue * a);
+				DrDraw.Line(c + d * 18f, c + d * 8f - side * 9f, 3f, Blue * a);
+			},
+		};
 	}
 
 	/// <summary>
@@ -223,6 +281,9 @@ namespace MercyMode.Battle
 	{
 		public int FlipEvery = 100, Warn = 30, BoneEvery = 30;
 		public float Speed = 2.6f;
+		/// <summary>Gravity can go any of the four ways, not just floor and ceiling.</summary>
+		public bool AllWays;
+		private int next = -1;
 
 		public GravityFlip() => Soul = SoulMode.Blue;
 
@@ -232,39 +293,23 @@ namespace MercyMode.Battle
 			if (tick == 1)
 				battle.SlamSoul();
 			int t = tick % FlipEvery;
-			bool nextUp = !battle.GravityUp;
 			if (tick > 20 && t == FlipEvery - Warn && tick < Duration - 60)
 			{
-				// An arrow the way gravity's about to go
-				int warn = Warn;
-				battle.Spawn(new Bullet
-				{
-					Harmful = false,
-					Lifetime = warn,
-					Position = box.Center.ToVector2(),
-					OnDraw = x =>
-					{
-						float a = x.Age / 4 % 2 == 0 ? 0.8f : 0.35f;
-						float dir = nextUp ? -1f : 1f;
-						Vector2 c = battle.Box.Center.ToVector2();
-						DrDraw.Line(c - new Vector2(0, 18 * dir), c + new Vector2(0, 18 * dir), 3f, SansBones.Blue * a);
-						DrDraw.Line(c + new Vector2(0, 18 * dir), c + new Vector2(-9, 8 * dir), 3f, SansBones.Blue * a);
-						DrDraw.Line(c + new Vector2(0, 18 * dir), c + new Vector2(9, 8 * dir), 3f, SansBones.Blue * a);
-					},
-				});
+				// Where it goes next: the other way, or (all ways) any other side
+				next = AllWays ? (battle.Gravity + Main.rand.Next(1, 4)) % 4 : battle.Gravity == 2 ? 0 : 2;
+				battle.Spawn(SansBones.GravityArrow(battle, next, Warn));
 			}
-			if (tick > 20 && t == 0 && tick < Duration - 60)
+			if (tick > 20 && t == 0 && tick < Duration - 60 && next >= 0)
 			{
-				battle.FlipGravity(nextUp);
+				battle.SetGravity(next);
+				next = -1;
 				AttackSfx.Impact();
 			}
 			// Low bones along the side that's down, to hop
 			if (tick > 30 && tick % BoneEvery == 0 && tick < Duration - 50)
 			{
-				bool fromLeft = tick / BoneEvery % 2 == 0;
-				float h = Main.rand.NextFloat(16f, 28f);
-				float y = battle.GravityUp ? box.Top + h / 2f : box.Bottom - h / 2f;
-				battle.Spawn(SansBones.Make(new Vector2(fromLeft ? box.Left - 10 : box.Right + 10, y), new Vector2(fromLeft ? Speed : -Speed, 0f), h, 0));
+				bool fromStart = tick / BoneEvery % 2 == 0;
+				battle.Spawn(SansBones.AlongFloor(box, battle.Gravity, fromStart, Speed, Main.rand.NextFloat(16f, 28f)));
 			}
 		}
 	}
@@ -509,5 +554,160 @@ namespace MercyMode.Battle
 
 		private static Rectangle Spike(Rectangle box, bool left, float y, float len, int thick) =>
 			new(left ? box.Left : (int)(box.Right - len), (int)(y - thick / 2f), (int)len, thick);
+	}
+
+	/// <summary>
+	/// Blue SOUL, Undertale's platform bit: rows of platforms drift across the box, the floor fills with bones, and
+	/// you have to hop from platform to platform while bones skim along the lower row.
+	/// </summary>
+	public class BonePlatforms : EnemyAttack
+	{
+		public float LowSpeed = 1.2f, HighSpeed = 1.4f, SkimSpeed = 2.2f;
+		public int LowEvery = 70, HighEvery = 80, SkimEvery = 55, FloorAt = 70;
+		public const float Width = 52f;
+
+		public BonePlatforms() => Soul = SoulMode.Blue;
+
+		public static Bullet Make(Vector2 centre, Vector2 vel, float width) => new()
+		{
+			Position = centre,
+			Velocity = vel,
+			HitSize = new Vector2(width, 6f),
+			Harmful = false,
+			Platform = true,
+			DestroyOnHit = false,
+			Lifetime = 600,
+			OnDraw = b =>
+			{
+				float l = b.Position.X - b.HitSize.X / 2f, t = b.Position.Y - 3f;
+				DrDraw.Rect(l, t, b.HitSize.X, 6f, new Color(20, 60, 20) * b.Alpha);
+				DrDraw.Rect(l, t, b.HitSize.X, 2f, Color.White * b.Alpha);
+				DrDraw.Rect(l, t + 4f, b.HitSize.X, 2f, new Color(60, 200, 60) * b.Alpha);
+				DrDraw.Rect(l, t, 2f, 6f, Color.White * b.Alpha);
+				DrDraw.Rect(l + b.HitSize.X - 2f, t, 2f, 6f, Color.White * b.Alpha);
+			},
+		};
+
+		private static float LowTop(Rectangle box) => box.Bottom - 42f;
+		private static float HighTop(Rectangle box) => box.Bottom - 84f;
+
+		public override void Update(BattleSystem battle, int tick)
+		{
+			Rectangle box = battle.Box;
+			float low = LowTop(box) + 3f, high = HighTop(box) + 3f;
+			if (tick == 1)
+			{
+				battle.SlamSoul();
+				// Already a row going by, so there's somewhere to jump to before the floor fills
+				for (float x = box.Left + Width / 2f; x < box.Right; x += LowSpeed * LowEvery)
+					battle.Spawn(Make(new Vector2(x, low), new Vector2(LowSpeed, 0f), Width));
+			}
+			if (tick > 1 && tick % LowEvery == 0 && tick < Duration - 40)
+				battle.Spawn(Make(new Vector2(box.Left - Width / 2f, low), new Vector2(LowSpeed, 0f), Width));
+			if (tick % HighEvery == 20 && tick < Duration - 40)
+				battle.Spawn(Make(new Vector2(box.Right + Width / 2f, high), new Vector2(-HighSpeed, 0f), Width - 6f));
+			// The floor flashes, then fills with bones for the rest of the turn
+			if (tick == FloorAt - 30)
+				battle.Spawn(Shots.Warning(new Rectangle(box.Left, box.Bottom - 16, box.Width, 16), 30, SansBones.White));
+			if (tick == FloorAt)
+			{
+				int left = Duration - FloorAt;
+				for (float x = box.Left + 6; x < box.Right - 2; x += 12f)
+				{
+					Bullet b = SansBones.Make(new Vector2(x, box.Bottom - 8f), Vector2.Zero, 16f, 0);
+					b.Lifetime = left;
+					b.DestroyOnHit = false;
+					battle.Spawn(b);
+				}
+				AttackSfx.Vanilla(SoundID.Item71, 0.4f, 0.5f);
+			}
+			// Bones skimming along the lower row: hop them, or get up to the high row
+			if (tick > FloorAt + 20 && tick % SkimEvery == 0 && tick < Duration - 50)
+			{
+				float h = 20f;
+				battle.Spawn(SansBones.Make(new Vector2(box.Right + 10, LowTop(box) - h / 2f), new Vector2(-SkimSpeed, 0f), h, 0));
+			}
+		}
+	}
+
+	/// <summary>
+	/// Blue SOUL, the big finish: bones burst out of the floor, then gravity swings sideways and the SOUL falls to the
+	/// right, past Skeletron after Skeletron as the whole scene rushes by. Bones slide along the wall you're pinned to
+	/// and skulls come flying across.
+	/// </summary>
+	public class SideFall : EnemyAttack
+	{
+		public Func<Vector2, Vector2, Bullet> MakeSkull, MakeGhost;
+		public int FallAt = 150, BoneEvery = 34, SkullEvery = 60, GhostEvery = 40;
+		public float BoneSpeed = 2.4f, SkullSpeed = 7f;
+		private readonly FloorBoneWave floor = new(50) { Height = 26f };
+
+		public SideFall()
+		{
+			Soul = SoulMode.Blue;
+			Duration = BattleConstants.DefaultEnemyTurnTicks * 8 / 5;
+		}
+
+		public override void Update(BattleSystem battle, int tick)
+		{
+			Rectangle box = battle.Box;
+			if (tick < FallAt)
+			{
+				floor.Duration = FallAt + 30;
+				floor.Update(battle, tick);
+			}
+			if (tick == FallAt - 30)
+				battle.Spawn(SansBones.GravityArrow(battle, 3, 30));
+			if (tick == FallAt)
+			{
+				battle.SetGravity(3);
+				battle.ShakeScreen(5f);
+				AttackSfx.Impact();
+			}
+			if (tick < FallAt)
+				return;
+			int t = tick - FallAt;
+			bool spawning = tick < Duration - 50;
+			// The rush: streaks flying past, and Skeletron's head going by again and again in the background
+			if (t % 3 == 0)
+			{
+				float y = Main.rand.NextFloat(box.Top + 4, box.Bottom - 4), len = Main.rand.NextFloat(14f, 30f);
+				battle.Spawn(new Bullet
+				{
+					Position = new Vector2(box.Right + 20, y),
+					Velocity = new Vector2(-12f, 0f),
+					Harmful = false,
+					Lifetime = 40,
+					OnDraw = x => DrDraw.Line(x.Position, x.Position + new Vector2(len, 0f), 1.5f, Color.White * 0.3f),
+				});
+			}
+			if (t % GhostEvery == 0 && MakeGhost != null)
+			{
+				Bullet g = MakeGhost(new Vector2(box.Right + 80, Main.rand.NextFloat(box.Top - 40, box.Bottom + 40)), new Vector2(-5f, Main.rand.NextFloat(-0.4f, 0.4f)));
+				g.Harmful = false;
+				g.Alpha = 0.22f;
+				g.Lifetime = 160;
+				g.OffscreenMargin = 400f;
+				battle.Spawn(g);
+			}
+			if (!spawning)
+				return;
+			// Bones along the right wall, the new floor: hop left over them
+			if (t > 20 && t % BoneEvery == 0)
+				battle.Spawn(SansBones.AlongFloor(box, 3, t / BoneEvery % 2 == 0, BoneSpeed, Main.rand.NextFloat(18f, 30f)));
+			// A skull flies across a lane near you: get off it
+			if (t > 40 && t % SkullEvery == 0 && MakeSkull != null)
+			{
+				float y = MathHelper.Clamp(battle.SoulCenter.Y + Main.rand.NextFloat(-20f, 20f), box.Top + 14, box.Bottom - 14);
+				const int warn = 28;
+				battle.Spawn(Shots.Warning(new Rectangle(box.Left, (int)y - 13, box.Width, 26), warn));
+				Bullet sk = MakeSkull(new Vector2(box.Right + 30, y), new Vector2(-SkullSpeed, 0f));
+				sk.StartDelay = warn;
+				sk.Lifetime = 90;
+				sk.DestroyOnHit = false;
+				battle.Spawn(sk);
+				AttackSfx.Appear();
+			}
+		}
 	}
 }

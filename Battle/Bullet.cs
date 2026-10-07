@@ -68,6 +68,8 @@ namespace MercyMode.Battle
 
 		/// <summary>False for warnings and effects that can't hurt or be grazed.</summary>
 		public bool Harmful = true;
+		/// <summary>The blue SOUL can stand on its top (and ride along with it): a Sans-style platform.</summary>
+		public bool Platform;
 		/// <summary>Disappears when it hits the SOUL (false for beams, which keep firing).</summary>
 		public bool DestroyOnHit = true;
 		/// <summary>Ticks before the bullet appears and starts moving (for chains like worm segments).</summary>

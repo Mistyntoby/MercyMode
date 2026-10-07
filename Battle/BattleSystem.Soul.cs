@@ -129,23 +129,48 @@ namespace MercyMode.Battle
 			AttackSfx.Impact();
 		}
 
+		/// <summary>Which way the blue SOUL falls: 0 down, 1 left, 2 up, 3 right. The key the other way jumps.</summary>
+		public int Gravity;
+
 		/// <summary>The blue SOUL falls up (to the top of the box) instead of down; Down jumps.</summary>
-		public bool GravityUp;
+		public bool GravityUp => Gravity == 2;
 
 		/// <summary>Flips the blue SOUL's gravity and slams it into its new floor.</summary>
-		public void FlipGravity(bool up)
+		public void FlipGravity(bool up) => SetGravity(up ? 2 : 0);
+
+		/// <summary>Turns the blue SOUL's gravity (0 down, 1 left, 2 up, 3 right) and slams it into its new floor.</summary>
+		public void SetGravity(int dir)
 		{
-			if (GravityUp == up)
+			dir = (dir % 4 + 4) % 4;
+			if (Gravity == dir)
 				return;
-			GravityUp = up;
+			Gravity = dir;
 			if (soulMode == SoulMode.Blue)
 				SlamSoul();
+		}
+
+		/// <summary>How the SOUL is drawn turned: its point faces the way it falls (blue), eased round.</summary>
+		private float soulAngle;
+
+		/// <summary>The platform the blue SOUL stands on (its top within a few pixels of the SOUL's feet), or null.</summary>
+		private Bullet PlatformUnder(float feetY, float centreX, float slack)
+		{
+			foreach (Bullet b in Bullets)
+			{
+				if (!b.Platform || b.Dead || b.Waiting)
+					continue;
+				float top = b.Position.Y - b.HitSize.Y / 2f, half = b.HitSize.X / 2f;
+				if (Math.Abs(centreX - b.Position.X) <= half + 3f && feetY >= top - slack && feetY <= top + slack)
+					return b;
+			}
+			return null;
 		}
 
 		private void BeginSoulMode(SoulMode mode)
 		{
 			soulMode = mode;
-			GravityUp = false;
+			Gravity = 0;
+			soulAngle = 0f;
 			soulVy = 0f;
 			shieldDir = 0;
 			shieldAngle = -MathHelper.PiOver2;
@@ -188,31 +213,71 @@ namespace MercyMode.Battle
 			{
 				case SoulMode.Blue:
 				{
-					soul.X = MathHelper.Clamp(soul.X + px, minX, maxX);
-					// soulVy runs toward the floor; with gravity flipped the floor is the top of the box and Down jumps
-					float g = GravityUp ? -1f : 1f;
-					float floor = GravityUp ? minY : maxY, ceiling = GravityUp ? maxY : minY;
-					Keys jump = GravityUp ? Keys.Down : Keys.Up;
-					bool grounded = Math.Abs(soul.Y - floor) < 0.01f;
+					// soulVy runs toward the floor, whichever side that is; the key pointing away from it jumps, and the
+					// SOUL slides freely along the floor's axis
+					bool vertical = Gravity == 0 || Gravity == 2;
+					float g = Gravity == 0 || Gravity == 3 ? 1f : -1f;
+					float lo = vertical ? minY : minX, hi = vertical ? maxY : maxX;
+					float floor = g > 0f ? hi : lo, ceiling = g > 0f ? lo : hi;
+					Keys jump = Gravity switch { 0 => Keys.Up, 2 => Keys.Down, 3 => Keys.Left, _ => Keys.Right };
+					if (vertical)
+						soul.X = MathHelper.Clamp(soul.X + px, minX, maxX);
+					else
+					{
+						float py = (Held(Keys.Down) ? speed : 0f) - (Held(Keys.Up) ? speed : 0f);
+						soul.Y = MathHelper.Clamp(soul.Y + py, minY, maxY);
+					}
+					float a = vertical ? soul.Y : soul.X;
+					// Standing on a platform (gravity down only): carried along with it
+					Bullet ride = Gravity == 0 && soulVy >= 0f ? PlatformUnder(a + SoulSize, soul.X + SoulSize / 2f, 4f) : null;
+					if (ride != null)
+					{
+						soul.X = MathHelper.Clamp(soul.X + ride.Velocity.X, minX, maxX);
+						a = ride.Position.Y - ride.HitSize.Y / 2f - SoulSize;
+						soulVy = 0f;
+					}
+					bool grounded = Math.Abs(a - floor) < 0.01f || ride != null;
 					if (grounded && Held(jump))
 						soulVy = -BlueJumpSpeed;
 					// Let go of the jump to stop rising early
 					if (!Held(jump) && soulVy < -BlueJumpCut)
 						soulVy = -BlueJumpCut;
 					soulVy = Math.Min(soulVy + BlueGravity, soulVy > BlueMaxFall ? soulVy : BlueMaxFall);
-					soul.Y += soulVy * g;
-					if ((soul.Y - floor) * g >= 0f)
+					float before = a;
+					if (ride == null || soulVy < 0f)
+						a += soulVy * g;
+					// Landing on a platform from above
+					if (Gravity == 0 && soulVy > 0f && ride == null)
+					{
+						foreach (Bullet b in Bullets)
+						{
+							if (!b.Platform || b.Dead || b.Waiting)
+								continue;
+							float top = b.Position.Y - b.HitSize.Y / 2f;
+							if (Math.Abs(soul.X + SoulSize / 2f - b.Position.X) <= b.HitSize.X / 2f + 3f && before + SoulSize <= top + 2f && a + SoulSize >= top)
+							{
+								a = top - SoulSize;
+								soulVy = 0f;
+								break;
+							}
+						}
+					}
+					if ((a - floor) * g >= 0f)
 					{
 						if (soulVy > BlueMaxFall)
 							ShakeScreen(2); // landing from a slam
-						soul.Y = floor;
+						a = floor;
 						soulVy = 0f;
 					}
-					if ((soul.Y - ceiling) * g <= 0f)
+					if ((a - ceiling) * g <= 0f)
 					{
-						soul.Y = ceiling;
+						a = ceiling;
 						soulVy = Math.Max(0f, soulVy);
 					}
+					if (vertical)
+						soul.Y = a;
+					else
+						soul.X = a;
 					return true;
 				}
 				case SoulMode.Green:
@@ -491,6 +556,20 @@ namespace MercyMode.Battle
 			stringPlucked[nearest] = time;
 		}
 
+		/// <summary>
+		/// Draws the SOUL's sprite turned by <see cref="soulAngle"/> round its middle: the blue SOUL's point faces the way
+		/// it falls (Undertale turns it when the gravity changes).
+		/// </summary>
+		private void DrawSoulTurned(Microsoft.Xna.Framework.Graphics.Texture2D tex, Vector2 origin, Color color)
+		{
+			float want = soulMode == SoulMode.Blue ? Gravity * MathHelper.PiOver2 : 0f;
+			soulAngle += MathHelper.WrapAngle(want - soulAngle) * 0.35f;
+			if (Math.Abs(MathHelper.WrapAngle(want - soulAngle)) < 0.01f)
+				soulAngle = want;
+			var half = new Vector2(tex.Width, tex.Height) / 2f;
+			DrDraw.Sb.Draw(tex, soul - origin + half, null, color, soulAngle, half, 1f, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
+		}
+
 		private static float Ease(float t) => 1f - (1f - t) * (1f - t) * (1f - t);
 
 		/// <summary>The SOUL in its mode's colour, with the mode's extras (strings, shield, shots).</summary>
@@ -546,12 +625,12 @@ namespace MercyMode.Battle
 			else if (DeltaruneAssets.Sprite("soul_" + soulMode.ToString().ToLowerInvariant()) is DrSprite own)
 			{
 				// Deltarune's own SOUL in this colour, if the installed chapters have one
-				DrDraw.Sb.Draw(own.Frame(0), soul, null, (frame == 1 ? Color.Gray : Color.White) * alpha, 0f, own.Origin, 1f, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
+				DrawSoulTurned(own.Frame(0), own.Origin, (frame == 1 ? Color.Gray : Color.White) * alpha);
 			}
 			else if (DeltaruneAssets.Sprite("spr_dodgeheart") is DrSprite s)
 			{
 				// The red SOUL recoloured, keeping its edge and shading
-				DrDraw.Sb.Draw(Recolor.Of(s.Frame(frame), soulMode.Color()), soul, null, Color.White * alpha, 0f, s.Origin, 1f, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
+				DrawSoulTurned(Recolor.Of(s.Frame(frame), soulMode.Color()), s.Origin, Color.White * alpha);
 			}
 			else
 			{

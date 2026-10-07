@@ -177,6 +177,7 @@ namespace MercyMode.Lab
 				("parts-twins", PartsTwins),
 				("parts-golem", PartsGolem),
 				("soul-blue", SoulBlue),
+				("soul-gravity", SoulGravity),
 				("soul-green", SoulGreen),
 				("soul-purple", SoulPurple),
 				("soul-yellow", SoulYellow),
@@ -1205,6 +1206,70 @@ namespace MercyMode.Lab
 			yield return EndForced();
 		}
 
+		/// <summary>A blue turn with nothing in it but a still platform over the SOUL's head.</summary>
+		private sealed class PlatformProbe : EnemyAttack
+		{
+			public float Top;
+
+			public PlatformProbe()
+			{
+				Soul = SoulMode.Blue;
+				Duration = 900;
+			}
+
+			public override void Update(BattleSystem battle, int tick)
+			{
+				if (tick != 1)
+					return;
+				Top = battle.Box.Bottom - 42f;
+				float x = battle.LabSoul.X + BattleConstants.SoulSize / 2f;
+				battle.Spawn(BonePlatforms.Make(new Vector2(x, Top + 3f), Vector2.Zero, 52f));
+			}
+		}
+
+		/// <summary>Blue SOUL extras: it lands on a platform from below, and falls whichever way gravity points.</summary>
+		private IEnumerable SoulGravity()
+		{
+			var probe = new PlatformProbe();
+			try
+			{
+				yield return ForcedTurn(() => probe);
+				yield return Wait(30);
+				float floor = B.Box.Bottom - BattleConstants.BoxClampHigh;
+				Check(Math.Abs(B.LabSoul.Y - floor) < 1f, $"the blue SOUL isn't on the floor ({B.LabSoul.Y} vs {floor})");
+				// Jump up through the platform and land on top of it
+				down.Add(Keys.Up);
+				yield return Wait(22);
+				down.Remove(Keys.Up);
+				yield return Wait(60);
+				float feet = B.LabSoul.Y + BattleConstants.SoulSize;
+				Log($"  feet {feet:0}, platform top {probe.Top:0}, floor {floor + BattleConstants.SoulSize:0}");
+				Check(Math.Abs(feet - probe.Top) < 1.5f, "the SOUL didn't land on the platform");
+				// Gravity to the right: it falls to the right wall, and Left jumps off it
+				B.SetGravity(3);
+				yield return Wait(50);
+				float wall = B.Box.Right - BattleConstants.BoxClampHigh;
+				Check(Math.Abs(B.LabSoul.X - wall) < 1f, $"the SOUL didn't fall right ({B.LabSoul.X:0} vs {wall:0})");
+				down.Add(Keys.Left);
+				yield return Wait(14);
+				down.Remove(Keys.Left);
+				Check(B.LabSoul.X < wall - 25f, $"Left didn't jump off the right wall ({wall - B.LabSoul.X:0} px)");
+				yield return Wait(60);
+				Check(Math.Abs(B.LabSoul.X - wall) < 1f, "the SOUL didn't fall back to the right wall");
+				// Up and Down slide along it
+				float y0 = B.LabSoul.Y;
+				down.Add(Keys.Up);
+				yield return Wait(10);
+				down.Remove(Keys.Up);
+				Check(B.LabSoul.Y < y0 - 10f, "Up didn't slide the SOUL along the wall");
+			}
+			finally
+			{
+				BattleSystem.LabForcedAttack = null;
+			}
+			yield return EndForced();
+		}
+
 		private IEnumerable SoulGreen()
 		{
 			try
@@ -1854,8 +1919,8 @@ namespace MercyMode.Lab
 		/// <summary>Skeletron's moves, healthy and below half HP (the bouncing skull is its phase-2 full-screen turn).</summary>
 		private IEnumerable AttacksSkeletron()
 		{
-			yield return SweepAttacks("skeletron", 19, NPCID.SkeletronHead);
-			yield return SweepAttacks("skeletron (hurt)", 19, 0.4f, NPCID.SkeletronHead);
+			yield return SweepAttacks("skeletron", 18, NPCID.SkeletronHead);
+			yield return SweepAttacks("skeletron (hurt)", 18, 0.4f, NPCID.SkeletronHead);
 		}
 
 		/// <summary>The Eater of Worlds' and Brain of Cthulhu's moves, healthy and below half HP.</summary>

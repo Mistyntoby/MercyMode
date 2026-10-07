@@ -618,57 +618,84 @@ namespace MercyMode.Battle.Encounters
 				: head(p, d);
 			Bullet bone(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.Bone, p, v, 1f, 0.6f, new Vector2(10, 10), spin: 0.25f);
 			Bullet skull(Vector2 p, Vector2 v) => Shots.Npc(NPCID.SkeletronHead, p, v, 0.55f, 1.2f, new Vector2(30, 30), rotate: false);
+			Bullet ghost(Vector2 p, Vector2 v) => Shots.Npc(NPCID.SkeletronHead, p, v, 1.4f, 1f, new Vector2(40, 40), rotate: false).Spin(0.08f);
+			Bullet water(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.WaterBolt, p, v, 1f, 0.7f, new Vector2(12, 12));
+			// The big finish, once, as it gets low: the SOUL falls sideways past Skeletron after Skeletron
+			if (LifeRatio < 0.4f && !fell)
+			{
+				fell = true;
+				return Fall(hard, skull, ghost);
+			}
+			// Every turn has more than one thing going on (one pattern at a time was easy, just long)
+			int turn = BattleConstants.DefaultEnemyTurnTicks;
 			return Cycle(
-				// Slammed into the floor, then bones burst up along it: jump, and keep jumping
-				() => new FloorBoneWave(hard ? 56 : 70) { Height = hard ? 32f : 28f },
-				// Skulls slide in round the box, charge, and fire beams through the SOUL
-				() => new SkullBlasters(skull, hard ? 36 : 48) { Charge = hard ? 28 : 34 },
+				// Slammed into the floor, bones burst up along it, and a skull blaster now and then: jump, and keep jumping
+				() => new Combo(turn,
+					new FloorBoneWave(hard ? 56 : 70) { Height = hard ? 32f : 28f },
+					new SkullBlasters(skull, hard ? 70 : 90) { Charge = 34, FirstAt = 60 }),
+				// Undertale's platforms: hop from platform to platform over a floor full of bones
+				() => new BonePlatforms { LowSpeed = hard ? 1.4f : 1.2f, SkimEvery = hard ? 44 : 55, Duration = turn * 3 / 2 },
+				// Skulls slide in round the box, charge, and fire beams through the SOUL, while water bolts bounce about
+				() => new Combo(turn,
+					new SkullBlasters(skull, hard ? 36 : 48) { Charge = hard ? 28 : 34 },
+					new Ricochet(water, hard ? 60 : 80) { Bounces = 3, Speed = 2.2f, FirstAt = 30 }),
+				// Gravity goes every which way (an arrow shows where), bones along whichever side is down
+				() => new GravityFlip { FlipEvery = hard ? 80 : 96, Speed = hard ? 3f : 2.6f, AllWays = true, Duration = turn * 4 / 3 },
 				// Blue SOUL: blue bones (stand still) and orange bones (keep moving) sweep across, white ones to hop
 				() => new ColoredBones(hard ? 30 : 38) { Speed = hard ? 3f : 2.6f },
-				// A tunnel of bones slides through; follow the gap as it winds
-				() => new BoneTunnel(hard ? 9 : 11) { Speed = hard ? 2.6f : 2.2f, GapSize = hard ? 42f : 48f, WanderSpeed = hard ? 0.022f : 0.018f },
-				// A hand slams the floor and scatters bones along it (blue SOUL: jump them)
-				() => new Slam(hand, bone, hard ? 56 : 72) { Width = 40f, Shards = hard ? 3 : 2, ShardSpeed = 2.6f }.WithSoul(SoulMode.Blue),
-				// Blasters while a hand sweeps through
-				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
-					new SkullBlasters(skull, hard ? 54 : 70) { Charge = 36 },
-					new LaneDash(hand, hard ? 70 : 90) { Speed = 7f, FirstAt = 40 }),
+				// The hands clap together on the SOUL's row while bones rain down
+				() => new Combo(turn,
+					new HandClap(hand, hard ? 48 : 60),
+					new Rain(bone, hard ? 18 : 24)),
+				// A tunnel of bones slides through; follow the gap as it winds, skulls flying in along it
+				() => new Combo(turn,
+					new BoneTunnel(hard ? 9 : 11) { Speed = hard ? 2.6f : 2.2f, GapSize = hard ? 42f : 48f, WanderSpeed = hard ? 0.022f : 0.018f },
+					new LaneDash(skull, hard ? 80 : 100) { Speed = 6f, FirstAt = 60 }),
+				// The Dungeon Guardian drifts after you while bones fall: keep moving, don't get cornered
+				() => new Combo(turn,
+					new GuardianChase { MakeGuardian = (p, v) => Shots.Npc(NPCID.DungeonGuardian, p, v, 0.6f, 1.5f, new Vector2(30, 30), rotate: false), Speed = hard ? 1.25f : 1.1f },
+					new Rain(bone, hard ? 20 : 26)),
+				// A hand slams the floor and scatters bones along it (blue SOUL: jump them), skulls swooping low
+				() => new Combo(turn,
+					new Slam(hand, bone, hard ? 56 : 72) { Width = 40f, Shards = hard ? 3 : 2, ShardSpeed = 2.6f }.WithSoul(SoulMode.Blue),
+					new SkullBlasters(skull, hard ? 80 : 100) { Charge = 36, FirstAt = 70 }),
+				// Two long bones turn round the middle like propeller blades, water bolts bouncing between them
+				() => new Combo(turn,
+					new BoneWheel { Arms = hard ? 3 : 2, Turn = hard ? 0.017f : 0.014f },
+					new Ricochet(water, hard ? 70 : 90) { Bounces = 3, Speed = 2f, FirstAt = 50 }),
 				// Blue SOUL: walls of bones to jump over and duck under, with blue ones mixed in
-				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
+				() => new Combo(turn,
 					new BoneWalls(hard ? 30 : 38) { Speed = hard ? 3.2f : 2.6f, Color = new Color(235, 225, 200) },
 					new ColoredBones(hard ? 60 : 80) { Speed = 2.4f, FirstAt = 40 }),
+				// Cursed skulls circle the box, then dive at the SOUL one by one; spikes from the walls between dives
+				() => new Combo(turn,
+					new CreeperCharge { Make = (p, v) => Shots.Npc(NPCID.CursedSkull, p, v, 0.8f, 1f, new Vector2(22, 22), rotate: false), Count = hard ? 7 : 6, Every = hard ? 32 : 38 },
+					new SpikeWalls(hard ? 40 : 52) { FirstAt = 30 }),
+				// The box squeezes in while rows of bones drift through with a gap to thread
+				() => new GapRows(bone, hard ? 30 : 36) { Speed = 1.5f, GapSize = hard ? 30f : 34f, Drift = 16f, Grow = 0.65f },
+				// Four walls of bones close in, one side open, and a skull blaster waits outside
+				() => new Combo(turn,
+					new BoneCage(hard ? 100 : 120),
+					new SkullBlasters(skull, hard ? 80 : 100) { Charge = 36, FirstAt = 50 }),
 				// Its spinning head ricochets round a bigger box, bursting into bones at the walls
 				() => new BouncingSkull((p, v) => Shots.Npc(NPCID.SkeletronHead, p, v, 0.7f, 1.3f, new Vector2(44, 44), rotate: false).Spin(0.3f), bone)
 					{ Speed = hard ? 3.2f : 2.8f, Bones = hard ? 7 : 5, Grow = 1.3f },
-				// Phase 2, full screen: skulls all round the room, one after another, over sweeping coloured bones
-				() => hard
-					? new Combo(BattleConstants.FullScreenTurnTicks,
-						new SkullBlasters(skull, 22) { Charge = 30, Width = 26f },
-						new ColoredBones(56) { Speed = 3f, FirstAt = 60 }) { FullScreen = true }
-					: new SkullBlasters(skull, 40) { Charge = 32 },
-				// Blue SOUL: gravity keeps flipping between the floor and the ceiling, bones along whichever is down
-				() => new GravityFlip { FlipEvery = hard ? 84 : 100, Speed = hard ? 3f : 2.6f },
-				// The box squeezes in around the SOUL while rows of bones drift through with a gap to thread
-				() => new GapRows(bone, hard ? 30 : 36) { Speed = 1.5f, GapSize = hard ? 30f : 34f, Drift = 16f, Grow = 0.65f },
-				// The hands clap together on the SOUL's row: get off the line before they meet
-				() => new HandClap(hand, hard ? 48 : 60),
-				// Water bolts from the dungeon's casters, bouncing round the box
-				() => new Ricochet((p, v) => Shots.Proj(ProjectileID.WaterBolt, p, v, 1f, 0.7f, new Vector2(12, 12)), hard ? 40 : 52) { Bounces = hard ? 5 : 4, Speed = 2.6f },
-				// The Dungeon Guardian drifts after you while bones fall: keep moving, don't get cornered
-				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
-					new GuardianChase { MakeGuardian = (p, v) => Shots.Npc(NPCID.DungeonGuardian, p, v, 0.6f, 1.5f, new Vector2(30, 30), rotate: false), Speed = hard ? 1.25f : 1.1f },
-					new Rain(bone, hard ? 22 : 28)),
-				// Two long bones turn round the middle like propeller blades
-				() => new BoneWheel { Arms = hard ? 3 : 2, Turn = hard ? 0.017f : 0.014f },
-				// Cursed skulls circle the box like its guards, then dive at the SOUL one by one
-				() => new CreeperCharge { Make = (p, v) => Shots.Npc(NPCID.CursedSkull, p, v, 0.8f, 1f, new Vector2(22, 22), rotate: false), Count = hard ? 7 : 6, Every = hard ? 32 : 38 },
-				// Four walls of bones close in, one side left open: find it and get out
-				() => new BoneCage(hard ? 100 : 120),
-				// Spikes shoot out of the walls after a warning flash
-				() => new SpikeWalls(hard ? 22 : 26),
-				// A ring of skulls round the whole box, firing in turn like a clock hand
-				() => new SkullBlasters(skull, hard ? 26 : 32) { Charge = hard ? 26 : 30, Sweep = MathHelper.TwoPi / 6f });
+				// A ring of skulls round the box, firing in turn like a clock hand, over sweeping coloured bones
+				() => new Combo(turn,
+					new SkullBlasters(skull, hard ? 26 : 32) { Charge = hard ? 26 : 30, Sweep = MathHelper.TwoPi / 6f },
+					new ColoredBones(hard ? 70 : 90) { Speed = 2.6f, FirstAt = 50 }) { Grow = 1.2f },
+				// Blasters while a hand sweeps through
+				() => new Combo(turn,
+					new SkullBlasters(skull, hard ? 54 : 70) { Charge = 36 },
+					new LaneDash(hand, hard ? 70 : 90) { Speed = 7f, FirstAt = 40 }),
+				// The fall (also its finish as it gets low)
+				() => Fall(hard, skull, ghost));
 		}
+
+		private bool fell;
+
+		private static EnemyAttack Fall(bool hard, Func<Vector2, Vector2, Bullet> skull, Func<Vector2, Vector2, Bullet> ghost) =>
+			new SideFall { MakeSkull = skull, MakeGhost = ghost, BoneEvery = hard ? 28 : 34, SkullEvery = hard ? 48 : 60, SkullSpeed = hard ? 8f : 7f };
 	}
 
 	// ====================================================================== Deerclops
