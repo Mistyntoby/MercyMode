@@ -936,6 +936,7 @@ namespace MercyMode.Battle
 			if (hitsLanded == 1 && summonPendingTicks < 0 && ChosenSummon() != null)
 				summonPendingTicks = 8 * TicksPerFrame;
 			Net.BattleNet.SendPartyHit(target, dealt, hit.Crit);
+			CountPartHit(target, dealt);
 
 			if (encounter.TargetableParts && (!target.active || target.life <= 0 || !encounter.Members().Contains(target)))
 				BreakPart(target, core, spot);
@@ -962,6 +963,19 @@ namespace MercyMode.Battle
 		/// A part of a breakable boss was destroyed: it bursts, and the rest of a multi-hit attack moves to the next
 		/// part. Losing its core takes the rest of the boss with it.
 		/// </summary>
+		/// <summary>
+		/// A part with its own HP inside a shared pool (the Wall's eyes): count the hit, and when it's used up the part is
+		/// gone (for the whole party: the server takes it out).
+		/// </summary>
+		private void CountPartHit(NPC target, int dealt, bool tellServer = true)
+		{
+			if (!encounter.TargetableParts || dealt <= 0 || !encounter.PartHit(target, dealt))
+				return;
+			target.active = false;
+			if (tellServer && Net.BattleNet.Online)
+				Net.BattleNet.SendKillMembers(new[] { target });
+		}
+
 		private void BreakPart(NPC part, NPC core, Vector2 spot)
 		{
 			AttackSfx.Explosion();
@@ -1656,6 +1670,9 @@ namespace MercyMode.Battle
 				hitStack[targetEnemy] = stack + 1;
 				EnemyNumber(dealt, HeroDamageColor, -1, yOffset: -18f * stack, at: spot);
 				Net.BattleNet.SendPartyHit(target, dealt, false);
+				CountPartHit(target, dealt);
+				if (encounter.TargetableParts && (!target.active || target.life <= 0))
+					BreakPart(target, encounter.CorePart, spot);
 				n++;
 			}
 			if (n == 0)

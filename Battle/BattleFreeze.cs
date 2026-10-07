@@ -397,6 +397,16 @@ namespace MercyMode.Battle
 	/// Silences Terraria's music while Rude Buster plays. In boss battles it stays off, so Terraria picks the boss's
 	/// own track as usual (vanilla, modded, Otherworldly).
 	/// </summary>
+	/// <summary>Holds the encounter's own boss track while its battle runs (<see cref="Encounter.BattleMusic"/>).</summary>
+	public class BossTrackScene : ModSceneEffect
+	{
+		public override int Music => BattleSystem.Active && BattleSystem.Instance.Encounter is Encounter e ? e.BattleMusic : -1;
+		public override SceneEffectPriority Priority => SceneEffectPriority.BossHigh;
+		public override bool IsSceneEffectActive(Player player) =>
+			BattleSystem.Active && !BattleSystem.SilenceTerrariaMusic && BattleSystem.Instance.Encounter is Encounter e && e.BattleMusic >= 0
+			&& (ModContent.GetInstance<MercyConfig>()?.BossBattleMusic ?? true);
+	}
+
 	public class BattleMusicScene : ModSceneEffect
 	{
 		public override int Music => 0;

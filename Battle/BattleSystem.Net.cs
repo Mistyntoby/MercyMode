@@ -529,6 +529,8 @@ namespace MercyMode.Battle
 				allyHitsShown[attacker] = stacked + 1;
 				EnemyNumber(damage, crit ? HeroCritColor : theirs, damage > 0 ? -1 : DamageNumber.MissFrame,
 					yOffset: -18f * stacked, at: PartSpot(npc) + new Vector2(52f * column, 10f));
+				// Their hit counts toward a part's own HP here too (the one who broke it tells the server)
+				CountPartHit(npc, damage, tellServer: false);
 				enemyShake = 18;
 			});
 			Sfx("damage");

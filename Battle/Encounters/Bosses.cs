@@ -885,6 +885,11 @@ namespace MercyMode.Battle.Encounters
 	{
 		public override string Name => "WALL OF FLESH";
 		public override string EncounterText => "* The WALL OF FLESH closes in!";
+		// Its own track, held for the whole battle (Terraria only plays it while it notices the wall near the screen)
+		public override int BattleMusic => 12;
+		// Every turn piles on (two or three things at once), so each hit is a bit lighter
+		public override float DamageFactor => 0.75f;
+		public override Vector2 DrawCenter => new(540f, 165f);
 
 		public override IEnumerable<NPC> Members()
 		{
@@ -893,6 +898,114 @@ namespace MercyMode.Battle.Encounters
 			foreach (NPC n in BossKit.OfTypes(NPCID.TheHungry, NPCID.TheHungryII, NPCID.LeechHead, NPCID.LeechBody, NPCID.LeechTail))
 				if (n.realLife != Npc.whoAmI)
 					yield return n;
+		}
+
+		// ---- three heads: the mouth and both eyes, each with its own HP ----
+
+		private NPC Mouth => Npc.active && Npc.type == NPCID.WallofFlesh ? Npc
+			: Main.wofNPCIndex >= 0 && Main.npc[Main.wofNPCIndex].active ? Main.npc[Main.wofNPCIndex] : Npc;
+
+		/// <summary>The eyes still in the wall, the upper one first.</summary>
+		public List<NPC> Eyes => Members().Where(m => m.active && m.type == NPCID.WallofFleshEye).OrderBy(m => m.Center.Y).ToList();
+
+		private readonly Dictionary<int, int> eyeHp = new();
+		/// <summary>An eye's own HP: an eighth of the wall's. Every hit on it hurts the wall too (they share its life).</summary>
+		private int EyeMax => Math.Max(1, (int)(Mouth.lifeMax * 0.125f));
+
+		public override bool TargetableParts => true;
+		public override NPC CorePart => Mouth.active ? Mouth : null;
+		public override IEnumerable<NPC> PartPool() => Eyes.Prepend(Mouth).Where(m => m.active);
+		public override string PartName(NPC part)
+		{
+			if (part.type != NPCID.WallofFleshEye)
+				return "MOUTH";
+			List<NPC> eyes = Eyes;
+			return eyes.Count > 1 && part == eyes[0] ? "UPPER EYE" : eyes.Count > 1 ? "LOWER EYE" : part.Center.Y < Mouth.Center.Y ? "UPPER EYE" : "LOWER EYE";
+		}
+
+		public override bool PartHit(NPC part, int damage)
+		{
+			if (part.type != NPCID.WallofFleshEye)
+				return false;
+			int left = (eyeHp.TryGetValue(part.whoAmI, out int hp) ? hp : EyeMax) - damage;
+			eyeHp[part.whoAmI] = left;
+			return left <= 0;
+		}
+
+		/// <summary>Lab: sets an eye's own HP.</summary>
+		internal void LabSetEyeHp(NPC eye, int hp) => eyeHp[eye.whoAmI] = hp;
+
+		public override float PartLifeRatio(NPC part) => part.type == NPCID.WallofFleshEye
+			? (eyeHp.TryGetValue(part.whoAmI, out int hp) ? hp : EyeMax) / (float)EyeMax
+			: Mouth.life / (float)Math.Max(1, Mouth.lifeMax);
+
+		/// <summary>The eyes guard the mouth: it takes under half a hit while both watch, all of it once they're gone.</summary>
+		public override float PartDamageScale(NPC part)
+		{
+			if (part != null && part.type == NPCID.WallofFleshEye)
+				return 1f;
+			int eyes = Eyes.Count;
+			return eyes >= 2 ? 0.45f : eyes == 1 ? 0.7f : 1f;
+		}
+
+		// ---- drawing: the whole wall, not just its mouth ----
+
+		public override bool DrawsSelf => true;
+
+		/// <summary>Where the eyes sit on the wall, above and below the mouth.</summary>
+		private const float EyeOffset = 108f;
+
+		public override EnemySnapshot DrawSelf(Vector2 at, int time, NPC flash, Dictionary<NPC, Vector2> partSpots, BattleSystem battle)
+		{
+			var sb = DrDraw.Sb;
+			NPC mouth = Mouth;
+			Main.instance.LoadNPC(NPCID.WallofFlesh);
+			Main.instance.LoadNPC(NPCID.WallofFleshEye);
+			Texture2D mouthTex = TextureAssets.Npc[NPCID.WallofFlesh].Value, eyeTex = TextureAssets.Npc[NPCID.WallofFleshEye].Value;
+			int mouthFrames = Math.Max(1, Main.npcFrameCount[NPCID.WallofFlesh]), eyeFrames = Math.Max(1, Main.npcFrameCount[NPCID.WallofFleshEye]);
+			Rectangle mouthFrame = mouthTex.Frame(1, mouthFrames, 0, time / 8 % mouthFrames);
+			float s = 112f / Math.Max(1, mouthFrame.Height);
+			bool flashOn = time / 6 % 2 == 0;
+
+			// The flesh: Terraria's wall strip (three frames, stacked), tiled up and down the screen from the mouth's back
+			// edge and on off the right of it, darker further back
+			Texture2D wall = TextureAssets.Wof.Value;
+			int fh = wall.Height / 3;
+			int wf = time / 6 % 3;
+			float ws = s, left = at.X - mouthFrame.Width * s * 0.35f;
+			for (int col = 0; col < 6; col++)
+			{
+				float x = left + col * wall.Width * ws;
+				Color shade = Color.Lerp(Color.White, new Color(60, 40, 40), Math.Min(1f, col * 0.35f));
+				for (float y = at.Y - 300f; y < at.Y + 260f; y += fh * ws)
+					sb.Draw(wall, new Vector2(x, y), new Rectangle(0, wf * fh, wall.Width, fh), shade, 0f, Vector2.Zero, ws, SpriteEffects.None, 0f);
+			}
+
+			// The eyes (or the torn holes where they were), turning to watch the SOUL in the box or you outside it
+			Vector2 look = battle.SoulCenter;
+			List<NPC> eyes = Eyes;
+			foreach (int side in new[] { -1, 1 })
+			{
+				Vector2 pos = at + new Vector2(6f, side * EyeOffset);
+				NPC eye = eyes.FirstOrDefault(e => Math.Sign(e.Center.Y - mouth.Center.Y) == side) ?? (eyes.Count == 2 ? eyes[side < 0 ? 0 : 1] : null);
+				if (eye == null)
+				{
+					DrDraw.Ball(pos, 18f, new Color(60, 5, 15));
+					DrDraw.Ball(pos + new Vector2(-3, 2), 11f, new Color(25, 0, 5));
+					continue;
+				}
+				partSpots[eye] = pos;
+				Rectangle ef = eyeTex.Frame(1, eyeFrames, 0, time / 8 % eyeFrames);
+				float rot = (look - pos).ToRotation() - MathHelper.Pi;
+				Color c = eye == flash && flashOn ? Color.Lerp(Color.White, Color.Yellow, 0.5f) : Color.White;
+				sb.Draw(eyeTex, pos, ef, c, rot, ef.Size() / 2f, s, SpriteEffects.None, 0f);
+			}
+
+			// The mouth, in the middle
+			partSpots[mouth] = at;
+			Color mc = mouth == flash && flashOn ? Color.Lerp(Color.White, Color.Yellow, 0.5f) : Color.White;
+			sb.Draw(mouthTex, at, mouthFrame, mc, 0f, mouthFrame.Size() / 2f, s, SpriteEffects.None, 0f);
+			return new EnemySnapshot { Texture = mouthTex, Frame = mouthFrame, Position = at, Scale = s, Color = Color.White, Valid = true };
 		}
 
 		public override string FlavorText()
@@ -916,33 +1029,70 @@ namespace MercyMode.Battle.Encounters
 			HealPrayerAct(),
 		};
 
+		/// <summary>How far the wall has eaten into the box (a share of its width): it's always coming.</summary>
+		private float Advance => Math.Min(0.3f, 0.06f + Turn * 0.025f);
+
 		public override EnemyAttack NextAttack(BattleSystem battle)
 		{
 			bool hard = LifeRatio < 0.5f;
+			int turn = BattleConstants.DefaultEnemyTurnTicks;
 			Bullet laser(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.EyeLaser, p, v, 1f, 0.7f, new Vector2(14, 6), rotationOffset: MathHelper.PiOver2);
 			Bullet hungry(Vector2 p, Vector2 v) => Shots.Npc(NPCID.TheHungry, p, v, 0.55f, 0.8f, new Vector2(12, 12), rotate: false);
 			Bullet leechHead(Vector2 p, Vector2 v) => Shots.Npc(NPCID.LeechHead, p, v, 0.8f, 0.8f, new Vector2(12, 12), rotationOffset: BossKit.WormRotation);
 			Bullet leechBody(Vector2 p, Vector2 v) => Shots.Npc(NPCID.LeechBody, p, v, 0.8f, 0.7f, new Vector2(10, 10), rotationOffset: BossKit.WormRotation);
+			Bullet scythe(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.DemonSickle, p, v, 0.8f, 0.8f, new Vector2(16, 16), rotate: false);
+			Bullet ember(Vector2 p, Vector2 v) => Shots.Proj(ProjectileID.ImpFireball, p, v, 1f, 0.6f, new Vector2(10, 10));
+			// Its eyes fire from where they are on the screen; a broken eye fires nothing
+			List<Vector2> eyeSpots() => Eyes.Select(e => battle.PartScreen(e)).ToList();
+			Vector2 mouthSpot() => battle.PartScreen(Mouth);
+			bool eyesLeft = Eyes.Count > 0;
+			// With both eyes gone it's all mouth (and angrier)
+			float rage = eyesLeft ? 1f : 1.2f;
+
+			EnemyAttack With(EnemyAttack main, params EnemyAttack[] more) =>
+				new Combo(main.Duration, new EnemyAttack[] { new FleshEdge { Share = Advance } }.Concat(new[] { main }).Concat(more).ToArray())
+				{ Grow = main.Grow };
+			EnemyAttack eyesOr(Func<EnemyAttack> withEyes, Func<EnemyAttack> without) => eyesLeft ? withEyes() : without();
+
 			return Cycle(
-				() => new SideShots(laser, hard ? 10 : 14) { Side = -1, Speed = 6f },
-				// The wall itself pushes into the box while its eyes fire across what's left
-				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
-					new FleshPush { Side = -1, MaxPush = hard ? 0.6f : 0.5f },
-					new Beam(hard ? 60 : 80) { FixedAngle = 0f, Tilt = 0.1f, Width = 12f, Color = new Color(255, 80, 200), FireSound = SoundID.Item33, FirstAt = 70 }),
-				// Its eyes lock on and fire big beams across the box
-				() => new Beam(hard ? 46 : 62) { FixedAngle = 0f, Tilt = hard ? 0.35f : 0.2f, Width = hard ? 18f : 15f, Color = new Color(255, 80, 200), FireSound = SoundID.Item33 },
-				() => new Walls(hungry, hard ? 55 : 70) { Side = -1, Speed = hard ? 2f : 1.6f, Spacing = 18f, GapSize = 42f },
-				() => new Snake(leechHead, leechBody, hard ? 70 : 95) { Side = -1, Segments = 6, Speed = 2.6f },
+				// Its eyes take turns firing bursts at you while the Hungry lunge on their tethers
+				() => With(eyesOr(
+					() => new EyeLasers(eyeSpots, laser, hard ? 30 : 38) { Burst = hard ? 4 : 3, Speed = 4.6f },
+					() => new HungryTethers(hungry, 26)),
+					new HungryTethers(hungry, hard ? 52 : 66) { FirstAt = 30 }),
+				// The eyes aim, then sweep beams through you, crossing
+				() => With(eyesOr(
+					() => new EyeBeams(eyeSpots, hard ? 70 : 84) { Width = hard ? 18f : 15f, Sweep = hard ? 0.42f : 0.35f },
+					() => new Jaws((p, v) => Shots.Ball(p, v, new Color(255, 220, 220), 1f, 1.5f), 60) { GapSize = 36f })),
+				// Its tongue latches on and drags you toward the wall while lasers come
+				() => With(new Tongue { Mouth = mouthSpot, Pull = (hard ? 0.62f : 0.5f) * rage },
+					eyesOr(() => new EyeLasers(eyeSpots, laser, hard ? 44 : 56) { Burst = 2 }, () => new Rain((p, v) => Shots.Blood(p, v), 14))),
+				// Walls of the Hungry sweep through with a gap
+				() => With(new Walls(hungry, hard ? 55 : 70) { Side = -1, Speed = (hard ? 2f : 1.6f) * rage, Spacing = 18f, GapSize = 42f }),
+				// Demon scythes fade in round the box, crawl, then speed through it
+				() => With(new Scythes(scythe, hard ? 38 : 48) { Count = hard ? 4 : 3 }),
+				// Leeches wriggle out of the wall
+				() => With(new Snake(leechHead, leechBody, hard ? 70 : 95) { Side = -1, Segments = 6, Speed = 2.6f * rage },
+					new Scythes(scythe, hard ? 90 : 120) { FirstAt = 40, Count = 2 }),
 				// Its mouth: teeth snap shut over the box, leaving one gap
-				() => new Jaws((p, v) => Shots.Ball(p, v, new Color(255, 220, 220), 1f, 1.5f), hard ? 66 : 86) { GapSize = hard ? 34f : 40f },
-				() => new Combo(BattleConstants.DefaultEnemyTurnTicks,
-					new Beam(80) { FixedAngle = 0f, Tilt = 0.15f, Color = new Color(255, 80, 200), FireSound = SoundID.Item33 },
-					new Walls(hungry, 90) { Side = -1, Speed = 1.5f, Spacing = 18f, GapSize = 46f }),
-				// Full screen: the whole wall bears down, lasers cutting across while the Hungry sweep through
-				() => new Combo(BattleConstants.FullScreenTurnTicks,
-					new Slashes(hard ? 60 : 74) { Color = new Color(255, 80, 200), PerBurst = hard ? 4 : 3, Width = 18f },
-					new Walls(hungry, hard ? 95 : 120) { Side = -1, Speed = 2.6f, Spacing = 20f, GapSize = 52f, FirstAt = 40 })
-					{ FullScreen = true });
+				() => With(new Jaws((p, v) => Shots.Ball(p, v, new Color(255, 220, 220), 1f, 1.5f), hard ? 62 : 80) { GapSize = hard ? 34f : 40f }),
+				// The Underworld rises: lava climbs the box while fire imps lob fireballs
+				() => With(new LavaRise { MakeSide = ember, Peak = hard ? 0.45f : 0.38f }),
+				// Green SOUL: the Hungry come from every side; block them
+				() => new ShieldSpears(hungry, hard ? 17 : 21) { Speed = (hard ? 2.6f : 2.3f) * rage, TricksterEvery = 4 },
+				// Blood rains from above while the Hungry lunge
+				() => With(new Rain((p, v) => Shots.Blood(p, v), hard ? 9 : 12) { SpeedMin = 2.2f, SpeedMax = 3f },
+					new HungryTethers(hungry, hard ? 44 : 56)),
+				// The wall shoves into the box while its eyes fire across what's left
+				() => With(new FleshPush { Side = -1, MaxPush = hard ? 0.55f : 0.45f },
+					eyesOr(() => new EyeBeams(eyeSpots, hard ? 90 : 110) { FirstAt = 70 }, () => new Scythes(scythe, 60) { FirstAt = 60 })),
+				// Everything it has: beams, tethers and scythes in a bigger box, the lava coming up
+				() => hard
+					? With(new LavaRise { MakeSide = ember, Peak = 0.3f, RiseShare = 0.6f, Duration = turn * 3 / 2 },
+						eyesOr(() => new EyeBeams(eyeSpots, 95) { FirstAt = 40 }, () => new Jaws((p, v) => Shots.Ball(p, v, new Color(255, 220, 220), 1f, 1.5f), 90)),
+						new HungryTethers(hungry, 48),
+						new Scythes(scythe, 80) { FirstAt = 60 }).WithGrow(1.25f)
+					: With(new HungryTethers(hungry, 34), new Scythes(scythe, 70) { FirstAt = 40 }));
 		}
 	}
 

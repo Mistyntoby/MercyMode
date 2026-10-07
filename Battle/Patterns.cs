@@ -686,5 +686,12 @@ namespace MercyMode.Battle
 			attack.Duration = ticks;
 			return attack;
 		}
+
+		/// <summary>Sets how much bigger the box gets (and returns the attack).</summary>
+		public static T WithGrow<T>(this T attack, float grow) where T : EnemyAttack
+		{
+			attack.Grow = grow;
+			return attack;
+		}
 	}
 }

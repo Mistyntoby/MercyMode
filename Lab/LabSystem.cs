@@ -174,6 +174,8 @@ namespace MercyMode.Lab
 				("single-enemy", SingleEnemy),
 				("worm-chains", WormChains),
 				("parts-skeletron", PartsSkeletron),
+				("parts-wall", PartsWall),
+				("attacks-wall", AttacksWall),
 				("parts-twins", PartsTwins),
 				("parts-golem", PartsGolem),
 				("soul-blue", SoulBlue),
@@ -1144,6 +1146,47 @@ namespace MercyMode.Lab
 			yield return FightPart("SKELETRON");
 			yield return WaitForEnd();
 			Check(!Main.npc.Any(n => n.active && n.type == NPCID.SkeletronHand), "a hand outlived the head");
+		}
+
+		/// <summary>The Wall of Flesh: its mouth and both eyes are separate targets; an eye breaks alone, the mouth ends it.</summary>
+		private IEnumerable PartsWall()
+		{
+			yield return StartWith(NPCID.WallofFlesh);
+			yield return Menu();
+			var wall = B.LabTarget as global::MercyMode.Battle.Encounters.WallOfFlesh;
+			Check(wall != null, $"the encounter is {B.LabTarget?.GetType().Name}");
+			Log($"  eyes: {wall.Eyes.Count}");
+			yield return Choose(0);
+			yield return Until(() => B.LabPhase == Phase.WeaponSelect, "the weapon list", skipText: false);
+			yield return Press(Keys.Z);
+			yield return Until(() => B.LabPhase == Phase.EnemySelect, "the enemy list", skipText: false);
+			var rows = B.LabRows.Select(r => r.Name).ToList();
+			Log($"  rows: {string.Join(", ", rows)}");
+			Check(rows.SequenceEqual(new[] { "MOUTH", "LOWER EYE", "UPPER EYE" }), "expected the mouth and both eyes");
+			yield return Press(Keys.X);
+			yield return Press(Keys.X);
+			yield return Until(() => B.LabPhase == Phase.Menu, "back to the menu", skipText: false);
+
+			NPC upper = wall.Eyes.First();
+			wall.LabSetEyeHp(upper, 1);
+			int mouthLife = wall.CorePart.life;
+			yield return FightPart("UPPER EYE");
+			Check(!upper.active, "the upper eye didn't break");
+			Check(BattleSystem.Active && wall.Alive, "breaking an eye ended the fight");
+			Check(wall.CorePart.life < mouthLife, "hitting an eye didn't hurt the wall");
+			Check(wall.Eyes.Count == 1, $"{wall.Eyes.Count} eyes left, not 1");
+			yield return Until(() => B.LabPhase is Phase.EnemyTurn, "the enemy turn after the eye broke");
+			yield return Menu();
+			yield return FightPart("MOUTH");
+			yield return WaitForEnd();
+			Check(!Main.npc.Any(n => n.active && n.type == NPCID.WallofFleshEye), "an eye outlived the mouth");
+		}
+
+		/// <summary>Every Wall of Flesh move, healthy and below half HP.</summary>
+		private IEnumerable AttacksWall()
+		{
+			yield return SweepAttacks("wall of flesh", 12, NPCID.WallofFlesh);
+			yield return SweepAttacks("wall of flesh (hurt)", 12, 0.4f, NPCID.WallofFlesh);
 		}
 
 		private IEnumerable PartsTwins()

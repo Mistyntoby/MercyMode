@@ -139,12 +139,24 @@ namespace MercyMode.Battle
 
 		public static bool CanHit(NPC n) => n != null && n.active && n.life > 0 && !n.dontTakeDamage;
 
+		/// <summary>What FIGHT can pick from (each with its own HP): Terraria's own health pools unless the encounter says.</summary>
+		public virtual IEnumerable<NPC> PartPool() => HealthPools();
+
+		/// <summary>
+		/// A hit landed on a part. Parts that keep their own HP though Terraria links them to the core (the Wall of
+		/// Flesh's eyes) count it here, and say true when that broke the part.
+		/// </summary>
+		public virtual bool PartHit(NPC part, int damage) => false;
+
+		/// <summary>How much of a part's HP is left (its own, for parts counted by <see cref="PartHit"/>).</summary>
+		public virtual float PartLifeRatio(NPC part) => part.life / (float)Math.Max(1, part.lifeMax);
+
 		/// <summary>The parts FIGHT can choose from: the core first, then by name.</summary>
 		public List<NPC> TargetParts()
 		{
 			UnlockParts();
 			NPC core = CorePart;
-			return HealthPools().Where(m => m.life > 0).Distinct()
+			return PartPool().Where(m => m.life > 0).Distinct()
 				.OrderBy(m => m == core ? 0 : 1).ThenBy(PartName).ToList();
 		}
 
@@ -168,6 +180,14 @@ namespace MercyMode.Battle
 		/// NPCs or drawn by special code (wings, legs, arms), which a single sprite sheet would leave out.
 		/// </summary>
 		public virtual bool DrawWithTerraria => false;
+		/// <summary>Draws itself (<see cref="DrawSelf"/>) instead of one sprite or Terraria's drawing.</summary>
+		public virtual bool DrawsSelf => false;
+		/// <summary>
+		/// Draws the enemy centred on <paramref name="at"/> (battle pixels), noting where each targetable part is in
+		/// <paramref name="partSpots"/>; <paramref name="flash"/> is the part being picked. Returns the sprite the spare and
+		/// death animations break apart.
+		/// </summary>
+		public virtual EnemySnapshot DrawSelf(Vector2 at, int time, NPC flash, Dictionary<NPC, Vector2> partSpots, BattleSystem battle) => default;
 		/// <summary>The NPCs drawn together when <see cref="DrawWithTerraria"/> is on.</summary>
 		public virtual IEnumerable<NPC> DrawParts() => Members();
 		/// <summary>
@@ -363,6 +383,11 @@ namespace MercyMode.Battle
 
 		/// <summary>True for regular enemies (shorter turns, MERCY rises faster).</summary>
 		public virtual bool IsBoss => true;
+		/// <summary>
+		/// A Terraria music track to hold for the whole battle (boss music normally comes from Terraria noticing the boss
+		/// near the screen, which can fail), or -1 to leave it to Terraria.
+		/// </summary>
+		public virtual int BattleMusic => -1;
 
 		/// <summary>Deltarune's TIRED: its name shows blue, and PACIFY puts it to sleep (spared).</summary>
 		public virtual bool Tired => false;

@@ -2104,6 +2104,22 @@ namespace MercyMode.Battle
 				DrawDuelOpponent(sb, m);
 				return;
 			}
+			if (encounter != null && encounter.DrawsSelf)
+			{
+				// The encounter draws itself (the whole Wall of Flesh), saying where each part ended up
+				Vector2 at = EnemyPosNow;
+				if (enemyShake > 0)
+					at.X += (enemyShake % 4 < 2 ? 1 : -1) * enemyShake / 2f;
+				NPC flash = phase == Phase.EnemySelect && pendingChoice == Choice.Fight && focus == targetEnemy && encounter.TargetableParts ? encounter.ChosenPart : null;
+				var spots = new Dictionary<NPC, Vector2>();
+				EnemySnapshot snap = encounter.DrawSelf(at, time, flash, spots, this);
+				foreach (var kv in spots)
+					partScreen[kv.Key.whoAmI] = kv.Value;
+				if (snap.Valid)
+					enemySnap = snap;
+				DrawSlash(slashPart >= 0 && partScreen.TryGetValue(slashPart, out Vector2 hitAt) ? hitAt : at);
+				return;
+			}
 			if (encounter != null && encounter.DrawWithTerraria)
 			{
 				DrawEnemyComposite(sb, m);
@@ -2625,7 +2641,7 @@ namespace MercyMode.Battle
 					}
 				}
 				float hp = row.Part != null
-					? MathHelper.Clamp(row.Part.life / (float)Math.Max(1, row.Part.lifeMax), 0f, 1f)
+					? MathHelper.Clamp(e.PartLifeRatio(row.Part), 0f, 1f)
 					: MathHelper.Clamp(e.LifeRatio, 0f, 1f);
 				DrDraw.Rect(420, rowY + 5, 81, 16, new Color(128, 0, 0));
 				DrDraw.Rect(420, rowY + 5, (float)Math.Ceiling(hp * 81), 16, row.Locked ? new Color(110, 110, 110) : new Color(0, 255, 0));
